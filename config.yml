@@ -69,6 +69,14 @@ devices:
     node: "03"                # muss zur Node-Adresse passen, die der Dummy zurueckechot (beliebig, Dummy ist node-agnostisch)
     max_flow_ml_min: 100.0    # Platzhalter, an echtes Geraet anpassen (Typenschild/Kalibrierschein)
 
+  dosing_pump:
+    driver: longer_wt600
+    address: 127.0.0.1:12352
+    pump_address: 1           # WT600-Protokolladresse (1-30, ab Werk 1) - nicht die obige TCP-Adresse
+    tubing: "LS16"
+    tubing_table:              # mL pro Umdrehung je Schlauch - Platzhalter, per Kalibrierung ermitteln
+      LS16: 0.5
+
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
   # Reusing conditions is only problematic when nesting experiments.
@@ -227,3 +235,26 @@ experiments:
     observables:
     commands:
       - [mfc, stop_flow, [], {}]
+
+  # ---- new: exercise the simulated Longer WT600-2J directly ----
+
+  test_wt600_speed:
+    conditions:
+    stopconditions:
+    parameters:
+      rpm: [float, rpm]
+    observables:
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [dosing_pump, set_speed, [], { rpm: "{rpm}" }]
+      - [dosing_pump, start_pumping, [], {}]
+      - [dosing_pump, read_speed, [], {}]
+
+  stop_wt600:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [dosing_pump, stop_pumping, [], {}]
