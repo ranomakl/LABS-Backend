@@ -63,6 +63,12 @@ devices:
     driver: omnicoll
     address: 127.0.0.1:12349
 
+  mfc:
+    driver: bronkhorst_mfc
+    address: 127.0.0.1:12351
+    node: "03"                # muss zur Node-Adresse passen, die der Dummy zurueckechot (beliebig, Dummy ist node-agnostisch)
+    max_flow_ml_min: 100.0    # Platzhalter, an echtes Geraet anpassen (Typenschild/Kalibrierschein)
+
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
   # Reusing conditions is only problematic when nesting experiments.
@@ -191,3 +197,33 @@ experiments:
     observables:
     commands:
       - [psu, stop_current, [], {}]
+
+  # ---- new: exercise the simulated Bronkhorst MFC directly ----
+
+  test_mfc_setpoint:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+    observables:
+      - [mfc, flow, float, mL/min]
+    commands:
+      - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc, measure_flow, [], {}]
+
+  test_mfc_counter:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [mfc, counter, float, ""]
+    commands:
+      - [mfc, read_counter, [], {}]
+
+  stop_mfc:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [mfc, stop_flow, [], {}]
