@@ -1,7 +1,7 @@
-# config.yml — dies ist die Datei, die main.py tatsaechlich laedt. Aktuell aktiv ist die
-# REDUZIERTE Dummy-Konfiguration (Kopie von config.dummy.yml) zum Testen gegen LABS-DeviceDummys.
-# Die urspruengliche Konfiguration mit echter Hardware (u.a. COM11) liegt unveraendert in
-# config.yml.bak. Zurueckwechseln: copy config.yml.bak config.yml
+# config.dummy.yml — reduzierte Konfiguration ohne die Pumpen (eldex_optos: reagent_dosing_pump,
+# electrolysis_pump), nmr (spinsolve_80) und foxy (foxy_r2), da LABS-DeviceDummys dafuer keine
+# Simulation bereitstellt. Alle uebrigen Geraete zeigen auf 127.0.0.1:123xx (LABS-DeviceDummys).
+# Ist die Quelle, aus der die aktive config.yml ueberschrieben wurde, um mit dem Simulator zu testen.
 
 listen port: 11123
 destination port: 32111
