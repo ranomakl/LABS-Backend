@@ -77,6 +77,23 @@ devices:
     tubing_table:              # mL pro Umdrehung je Schlauch - Platzhalter, per Kalibrierung ermitteln
       LS16: 0.5
 
+  liquiline:
+    driver: endress_hauser_liquiline
+    address: 127.0.0.1:12353
+    bus_address: 1              # Modbus-Busadresse des Geraets (1-247, Werkseinstellung 247) - hier auf 1 gesetzt
+    byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung - muss zur echten Geraetekonfig passen
+    channels:                   # Kanalname: Register (0-basiert, = Beginn des AI-Blocks Value/Status/Unit)
+      ph: 0                     # z.B. AI1 am Geraetemenue auf Sensor-1-pH-Messwert gemappt
+      conductivity: 4           # AI2
+      temperature: 8            # AI3
+
+  microgc:
+    driver: inficon_microgc_fusion
+    address: 127.0.0.1:12354    # echtes Geraet: feste IP ohne Port (Port 80 impliziert), z.B. 10.10.0.1
+    connect_timeout: 5.0        # TCP-Verbindungsaufbau-Timeout in s
+    command_parameters:
+      timeout: 10.0             # Antwort-Timeout pro Anfrage in s (generischer Mechanismus, s. Treiber)
+
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
   # Reusing conditions is only problematic when nesting experiments.
@@ -258,3 +275,61 @@ experiments:
     observables:
     commands:
       - [dosing_pump, stop_pumping, [], {}]
+
+  # ---- new: exercise the simulated Endress+Hauser Liquiline CM44x directly ----
+
+  test_liquiline_ph:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [liquiline, ph_value, float, pH]
+      - [liquiline, ph_status, str, ""]
+      - [liquiline, ph_unit, str, ""]
+    commands:
+      - [liquiline, read_channel, [], { channel: "ph" }]
+
+  test_liquiline_all_channels:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [liquiline, ph_value, float, pH]
+      - [liquiline, conductivity_value, float, uS/cm]
+      - [liquiline, temperature_value, float, degC]
+    commands:
+      - [liquiline, read_all_channels, [], {}]
+
+  # ---- new: exercise the simulated Inficon Micro GC Fusion directly ----
+
+  test_microgc_status:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [microgc, system, str, ""]
+      - [microgc, sequence, str, ""]
+    commands:
+      - [microgc, get_status, [], {}]
+
+  test_microgc_bakeout:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [microgc, system, str, ""]
+    commands:
+      - [microgc, start_bakeout, [], { minutes: "{minutes}" }]
+
+  test_microgc_run:
+    conditions:
+    stopconditions:
+    parameters:
+      method: [str, ""]
+    observables:
+      - [microgc, system, str, ""]
+    commands:
+      - [microgc, load_method, [], { method_name: "{method}" }]
+      - [microgc, run_method, [], {}]
+      - [microgc, get_last_run_data, [], {}]
