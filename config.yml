@@ -94,6 +94,30 @@ devices:
     command_parameters:
       timeout: 10.0             # Antwort-Timeout pro Anfrage in s (generischer Mechanismus, s. Treiber)
 
+  # 16-Kanal-Relaisplatine (12V) an den GPIO-Pins eines Raspberry Pi, schaltet 3/2-Wege-Haehne.
+  # Kein Protokoll, keine Rueckmeldung vom Geraet - ein GPIO-Pin wird nur high/low gesetzt.
+  # Ein Geraeteeintrag = ein Relaiskanal = ein GPIO-Pin = ein Ventil (bis zu 16 pro Platine).
+  # Treiber: backend/drivers/raspi_gpio_relay_valve.py (Basis: relay_3_2_valve_base.py)
+  #
+  # KRITISCH - Signalinvertierung (siehe grosser Kommentar im Treiber fuer Details/Quelle):
+  #   inverted: true  => .off() schaltet Strom (so verifiziert an dieser Platine)
+  #   inverted: false => normale Platine, .on() schaltet Strom
+  #   Kein Default - vor dem ersten echten Betrieb gegen die tatsaechliche Platine pruefen!
+  #
+  # safe_state: Position ("A" oder "B"), die beim Start UND bei jedem stop()/shutdown() angefahren
+  # wird. Kein Default - haengt von der Verrohrung/Sicherheit des jeweiligen Ventils ab.
+  #
+  # simulate: true nutzt gpiozeros Mock-Pinfactory statt echter GPIO-Hardware (fuer Entwicklung
+  # ohne Pi, z.B. unter Windows). Fuer den echten Pi weglassen oder auf false setzen - sonst
+  # schaltet der Treiber KEIN echtes Relais, auch wenn er sich unauffaellig verhaelt!
+  demo_gpio_valve:
+    driver: raspi_gpio_relay_valve
+    address: "GPIO17"    # frei waehlbar, muss pro Ventil eindeutig sein (hier: Pin als Adresse)
+    pin: 17              # BCM-Pinnummer (gpiozero-Zaehlung) - ANNAHME, siehe Treiber-Docstring
+    inverted: true        # Platine wie im obigen Kommentar beschrieben
+    safe_state: "A"        # Ruheposition (spannungslos) beim Start/Stop
+    simulate: true         # Windows-Entwicklung ohne Pi - auf dem Pi entfernen!
+
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
   # Reusing conditions is only problematic when nesting experiments.
@@ -333,3 +357,23 @@ experiments:
       - [microgc, load_method, [], { method_name: "{method}" }]
       - [microgc, run_method, [], {}]
       - [microgc, get_last_run_data, [], {}]
+
+  # ---- new: exercise the simulated GPIO relay valve directly (no LABS-DeviceDummys needed) ----
+
+  test_gpio_valve_a:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [demo_gpio_valve, position, str, ""]
+    commands:
+      - [demo_gpio_valve, set_position, ["A"], {}]
+
+  test_gpio_valve_b:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [demo_gpio_valve, position, str, ""]
+    commands:
+      - [demo_gpio_valve, set_position, ["B"], {}]

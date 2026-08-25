@@ -3,3 +3,4 @@ PyYAML==6.0
 Twisted==22.10.0
 pyserial==3.5
 pywin32==306
+gpiozero==2.0.1.post3
