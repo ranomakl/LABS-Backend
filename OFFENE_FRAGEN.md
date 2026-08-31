@@ -15,14 +15,27 @@ ohne angeschlossenes Gas. Geraet antwortet auf alle Abfragen.
 \- Treiber-Frames READ_MEASURE (:06030401210120) und READ_COUNTER (:06030468416841) wurden vom
   Geraet beantwortet, beide Antwort-Regexes greifen. Counter stand bei 793.212.
 
-\### OFFEN, sicherheitsrelevant
+\### Schreibtest — ERLEDIGT, am Geraet geprueft (ohne Gas, Geraet nur unter Strom)
 
-\- Der gespeicherte Setpoint des Geraets steht auf 32000 = 100 % (= 50 mL/min), die Ventiloeffnung
+Erster Schreibzugriff (Befehl 01) auf das Geraet, gleichzeitig Entschaerfung des unten
+beschriebenen Sicherheitsproblems.
+
+\- Setpoint vorher gelesen: :06030201217D00 -> 32000 raw = 100 % = 50 mL/min (bestaetigt den
+  gefaehrlichen Ausgangszustand).
+\- Geschrieben: :06030101210000 (Treiber-Frame aus SET_SETPOINT + cmd_string(), Wert aus
+  _ml_min_to_raw(0) = 0).
+\- Geraeteantwort: :0403000005 — echte Statusmeldung, Status-Byte 00 = kein Fehler. Der
+  SET_SETPOINT-Parser des Treibers (Statusframe-Regex + expected_values status=00) greift.
+\- Rueckkontrolle: Setpoint jetzt :06030201210000 -> 0 raw = 0 mL/min. Messwert ebenfalls 0.
+
+\- Der gespeicherte Setpoint des Geraets stand auf 32000 = 100 % (= 50 mL/min), die Ventiloeffnung
   entsprechend am Anschlag (61,67 %, laut Handbuch der typische Maximalwert). Solange kein Gas
   anliegt, passiert nichts — sobald Gas aufgedreht wird, faehrt das Geraet aber sofort auf Vollausschlag.
-  Vor dem ersten Gasbetrieb Setpoint auf 0 schreiben (entspricht Device.stop_flow()).
-\- initial_commands() im Treiber ist leer, setzt den Setpoint beim Start also NICHT zurueck; nur
-  final_commands() ruft stop_flow(). Ueberlegen, ob der Start ebenfalls auf 0 fahren soll.
+  ERLEDIGT: Setpoint am Geraet auf 0 geschrieben (s. oben).
+\- initial_commands() im Treiber war leer, setzte den Setpoint beim Start also NICHT zurueck; nur
+  final_commands() rief stop_flow(). ERLEDIGT: initial_commands() ruft jetzt ebenfalls stop_flow().
+  Begruendung: final_commands() greift nur beim sauberen Beenden — nach Absturz, Stromausfall oder
+  gezogenem Kabel bleibt der alte Setpoint im Geraet stehen.
 
 
 

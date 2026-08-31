@@ -27,6 +27,9 @@
 #    Der Float-Typ-Code fuer den Counter ist jetzt durch Abschnitt 3.4.2 (Parametertypen-Tabelle)
 #    UND das Zaehlerwert-Beispiel (3.9.4) bestaetigt: TYPE_FLOAT = 2 (Byte 0x40), Big-Endian.
 #    read_counter() ist deshalb nicht mehr gesperrt.
+# 5. Schreibzugriff am Geraet verifiziert (SET_SETPOINT auf 0, Antwort :0403000005 = Status 00).
+#    initial_commands() setzt den Setpoint jetzt beim Verbindungsaufbau auf 0 - Begruendung
+#    siehe dort.
 #
 # Frameformat WRITE (Befehl 01, Abschnitt 3.7):
 #   ":" LEN NODE "01" PROZESS PARAMETER WERT "\r\n"
@@ -134,7 +137,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         return f":{length}{body}"
 
     def initial_commands(self):
-        pass
+        # Setpoint beim Verbindungsaufbau auf 0 fahren. Der Setpoint ist im Geraet gespeichert und
+        # ueberlebt einen Neustart: final_commands() greift nur beim sauberen Beenden, nach einem
+        # Absturz/Stromausfall/Kabelziehen bleibt der alte Wert stehen. Ohne dieses Zuruecksetzen
+        # wuerde das Ventil beim naechsten Start sofort auf den alten Wert oeffnen, sobald Gas
+        # anliegt (am Geraet vorgefunden: gespeicherter Setpoint 32000 = 100 % = Vollausschlag).
+        self.stop_flow()
 
     def final_commands(self):
         self.stop_flow()
