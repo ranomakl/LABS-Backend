@@ -2,18 +2,27 @@
 
 
 
-\## Bronkhorst FG-201CV
+\## Bronkhorst FG-201CV — ERLEDIGT, am Geraet geprueft
 
-\- Baudrate: 38400 angenommen, ungeprueft (Zeichen pro Sek. auf serieller Leitung)
-nachgucken ob Gerät/Treiber gleiche haben. (DIP Schalter am Gerät selbst, Kalibrierzertifikat oder 
-Brokhorstsoftware)
+Reiner Lesetest (nur Befehl 04) ueber /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B77U-if00-port0,
+ohne angeschlossenes Gas. Geraet antwortet auf alle Abfragen.
 
+\- Baudrate: 38400 — bestaetigt. Bei 187500 antwortet das Geraet nicht.
+\- Knotenadresse: "03" — bestaetigt (nicht 128).
+\- Maximalfluss: 50.0 mL/min — Typenschild sagt 50 mln/min N2, und das Geraet meldet selbst
+  Capacity100% (1/13) = 50 bei Capacity unit (1/31) = "mln/min", Fluid name (1/17) = "N2".
+\- Seriennummer laut Geraet: M18212352B
+\- Treiber-Frames READ_MEASURE (:06030401210120) und READ_COUNTER (:06030468416841) wurden vom
+  Geraet beantwortet, beide Antwort-Regexes greifen. Counter stand bei 793.212.
 
+\### OFFEN, sicherheitsrelevant
 
-\- Knotenadresse: 3 aus Handbuchbeispiel, real evtl. 128 (RS485 können mehrere Geräte an einer Leitung)
-auf typschild, über brokhorst software, kalibrierungszertifikat
-
-\- Maximalfluss in mL/min: vom Typenschild ablesen
+\- Der gespeicherte Setpoint des Geraets steht auf 32000 = 100 % (= 50 mL/min), die Ventiloeffnung
+  entsprechend am Anschlag (61,67 %, laut Handbuch der typische Maximalwert). Solange kein Gas
+  anliegt, passiert nichts — sobald Gas aufgedreht wird, faehrt das Geraet aber sofort auf Vollausschlag.
+  Vor dem ersten Gasbetrieb Setpoint auf 0 schreiben (entspricht Device.stop_flow()).
+\- initial_commands() im Treiber ist leer, setzt den Setpoint beim Start also NICHT zurueck; nur
+  final_commands() ruft stop_flow(). Ueberlegen, ob der Start ebenfalls auf 0 fahren soll.
 
 
 

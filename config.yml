@@ -67,7 +67,8 @@ devices:
     driver: bronkhorst_mfc
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B77U-if00-port0
     node: "03"                 # FLOW-BUS-Knotenadresse, ZWEI Hex-Zeichen (Werkseinstellung 3 = "03")
-    max_flow_ml_min: 50.0    # Platzhalter, an echtes Geraet anpassen (Typenschild/Kalibrierschein)
+    max_flow_ml_min: 50.0      # Typenschild: 50 mln/min N2. Vom Geraet bestaetigt: Capacity100%
+                               # (Prozess 1, Parameter 13) = 50, Capacity unit = "mln/min".
     serial_parameters:
       baudrate: 38400          # am Geraet verifiziert (bei 187500 antwortet es nicht)
   dosing_pump:

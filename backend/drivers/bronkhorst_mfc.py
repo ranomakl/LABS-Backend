@@ -85,7 +85,7 @@ def _hex_to_float32(hexvalue: str) -> float:
 
 class Device(BaseDevice, SinglechannelBaseDevice):
     delimiter = "\r\n"
-    serial_parameters = {"baudrate": 38400}  # Bronkhorst-Standard, im Handbuch/Geraet pruefen
+    serial_parameters = {"baudrate": 38400}  # am Geraet verifiziert (bei 187500 keine Antwort)
     command_parameter_factory = CommandParameterFactory(command_execution_time=.1)
     replies_commands = True  # alle Befehle bekommen jetzt eine echte Antwort (s. Historie oben)
     log_name = "Bronkhorst EL-FLOW Prestige FG-201CV"
