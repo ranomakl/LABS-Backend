@@ -66,10 +66,10 @@ devices:
   mfc:
     driver: bronkhorst_mfc
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B77U-if00-port0
-    node: "128"                # muss zur Node-Adresse passen, die der Dummy zurueckechot (beliebig, Dummy ist node-agnostisch)
+    node: "03"                 # FLOW-BUS-Knotenadresse, ZWEI Hex-Zeichen (Werkseinstellung 3 = "03")
     max_flow_ml_min: 50.0    # Platzhalter, an echtes Geraet anpassen (Typenschild/Kalibrierschein)
     serial_parameters:
-      baudrate: 187500
+      baudrate: 38400          # am Geraet verifiziert (bei 187500 antwortet es nicht)
   dosing_pump:
     driver: longer_wt600
     address: 127.0.0.1:12352
