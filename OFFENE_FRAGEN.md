@@ -39,19 +39,66 @@ beschriebenen Sicherheitsproblems.
 
 
 
-\## Longer WT600-2J
+\## Longer WT600-2J — Adress-/Baudratensuche OFFEN, Geraet antwortet nicht
+
+Stand 31.08.2026. Ziel war, Pumpenadresse und Baudrate per RID ("Read pump address") zu
+ermitteln, weil kein Display zugaenglich ist. Werkzeug: tools/scan_pumpe.py (reines Lesewerkzeug,
+sendet nur RID — Sperre siehe tools/README.md).
+
+\### Ergebnis: keine einzige Antwort, kein einziges empfangenes Byte
+
+Ausgeschlossen wurde (Adapter BG01XVQG an /dev/ttyUSB3, Pumpe eingeschaltet, RS485-Modul im
+DB15 gesteckt, A/B + GND am Adapter angeklemmt):
+
+\- Baudraten 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200 — je Paritaet gerade und keine
+\- Adressen 1-30 (Broadcast 31 bewusst nicht angefragt)
+\- beide RTS-Zustaende (manche RS485-Adapter schalten die Senderichtung darueber)
+\- Rohbytes ohne Echo-Filter: 0 Byte empfangen, auch kein eigenes Echo
+
+Insgesamt ueber 480 Frames, die Empfangsleitung hat nie ein Bit gesehen.
+
+\### Was bestaetigt ist
+
+\- Die Frame-/XOR-Logik des Treibers stimmt: der Selbsttest in tools/scan_pumpe.py rechnet alle
+  fuenf Beispielframes aus docs/protokoll_pumpe.md byte-genau nach (5/5).
+\- Der Adapter sendet tatsaechlich: beim Dauersenden (tools/dauersenden.py) blinkt die TXD-LED.
+  ACHTUNG — die LED haengt am UART-Signal, also vor der Leitung. Sie beweist nicht, dass das
+  Signal an der Pumpe ankommt; ein Kabelbruch saehe genauso aus.
+
+\### Naechste Schritte am Geraet
+
+\- A/B tauschen. Wahrscheinlichste Ursache. Die A/B-Beschriftung ist herstelleruebergreifend
+  uneinheitlich — beide Seiten koennen "richtig" verkabelt und trotzdem zueinander verpolt sein.
+  Man sieht es der Verkabelung nicht an, deshalb ist Tauschen der Standardtest.
+\- Durchgang beider Datenadern zwischen Adapterklemme und RS485-Modul messen (Kabelbruch).
+\- Klaeren, ob die Pumpe am Bedienfeld erst von lokaler Steuerung auf Fernsteuerung umgestellt
+  werden muss. Der Blogpost sagt dazu nichts — dafuer braeuchten wir ein Herstellerhandbuch.
+
+Nach jeder Aenderung: .venv/bin/python tools/schnelltest.py (~40 s)
+
+\### Weiterhin offen
 
 \- Ack-Frame beim Schreiben: geraten, Blogquelle zeigt es nicht
 -> über LABS Backend lösen?
 
-\- Pumpenadresse: 1 als Werkseinstellung angenommen
-
-Display? , Werkseinstellung 1 (?)
+\- Pumpenadresse: 1 als Werkseinstellung angenommen, am Geraet NICHT bestaetigt (s.o.)
 
 \- Schlauchfaktoren mL/Umdrehung: echte Werte fehlen
 welche Schläuche  tatsächlich verwenden? Für jeden einen Faktor, ab in die config.yml
 
-\- Baudrate 1200 / gerade Paritaet aus Blogquelle
+\- Baudrate 1200 / gerade Paritaet aus Blogquelle, am Geraet NICHT bestaetigt (s.o.)
+
+\## Drifton-Pumpe (zweites Geraet) — unidentifiziert
+
+Stand 31.08.2026. Adapter BG01X3TF an /dev/ttyUSB0. Drifton ist der europaeische Vertrieb fuer
+Longer-Pumpen, die Geraete sind oft baugleiche Longer unter anderem Label — deshalb wurde
+derselbe RID-Scan gefahren. Ergebnis ebenfalls: keine Antwort auf allen Kombinationen.
+
+Offen, bevor es weitergehen kann:
+
+\- Modellbezeichnung vom Typenschild. Danach richtet sich, ob das LONGER-Binaerprotokoll ueberhaupt
+  passt — kleinere Modelle sprechen teils Modbus RTU, dann braucht es einen anderen Scan.
+\- War die Pumpe beim Scan eingeschaltet und ueber RS485 mit dem Adapter verbunden? Nicht geprueft.
 
 \## Endress+Hauser Liquiline CM442/CM448 
 - Treiber spricht ASCII. Geraet muss auf ASCII stehen! Menu/Setup/General settings/Extended setup/Modbus/Transmission Mode 
