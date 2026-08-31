@@ -229,7 +229,7 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
                 elif parser_info.parserclass == parser.REParser:
                     parser_info.kwargs["pattern"] = re.compile(parser_info.kwargs["pattern"])
 
-    def __init__(self, address, *args, conditionhandler: ConditionHandler = ConditionHandler(), command_parameters: dict = None, parser_parameters: dict = None, **kwargs):
+    def __init__(self, address, *args, conditionhandler: ConditionHandler = ConditionHandler(), command_parameters: dict = None, parser_parameters: dict = None, serial_parameters: dict = None, **kwargs):
         self.conditionhandler = conditionhandler
         self.full_address = address
         self.log_name = f"{self.log_name} on {self.full_address}"
@@ -246,6 +246,9 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
         parser_parameters = parser_parameters if parser_parameters is not None else {}
         self.command_parameter_factory = self.command_parameter_factory(**command_parameters)
         self.parser_parameter_factory = self.parser_parameter_factory(**parser_parameters)
+        # config.yml may override single keys of the driver's serial_parameters class attribute
+        # (e.g. baudrate) without having to repeat the whole dict.
+        self.serial_parameters = {**self.serial_parameters, **(serial_parameters or {})}
 
     def connect(self) -> defer.Deferred:
         return self.connection_method()
@@ -261,6 +264,8 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
         if isIPAddress(self.address):
             return self._tcp
         elif re.match("COM[0-9]{1,3}", self.address.upper()):
+            return self._serial
+        elif self.address.startswith("/"):  # POSIX device path, e.g. /dev/ttyUSB0 or /dev/serial/by-id/...
             return self._serial
         else:
             raise UnknownConnectionTypeError(f"Could not recognize address: {self.full_address}")

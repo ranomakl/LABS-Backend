@@ -19,7 +19,12 @@ class DeviceFactory:
             self.log.error("Error while trying to import {devicename}! {error}", devicename=driver, error=e)
             return defer.fail(UnknownDeviceError())
         except KeyError:
-            device = device_module.Device(address, **kwargs)
+            try:
+                device = device_module.Device(address, **kwargs)
+            except TypeError as e:
+                self.log.error("Could not construct device with driver {driver} at {address}: {error}",
+                               driver=driver, address=address, error=e)
+                raise
             deferred_protocol = device.connect()
             deferred_device = self.deferred_devices[address] = defer.Deferred()
 

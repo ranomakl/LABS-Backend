@@ -9,6 +9,13 @@ class WrongStateError(Exception):
     """Raised when some Action is not possible in current State."""
 
 
+class UnexpectedInitArgumentsError(TypeError):
+    """Raised when constructor arguments were not consumed by any class of the MRO, e.g. because
+    config.yml contains a key that no device/driver accepts. Without this, such a key silently
+    travels down the whole cooperative super().__init__() chain and only fails in object.__init__()
+    with a message that names neither the key nor the class."""
+
+
 class IObserver(ABC):
     @abstractmethod
     def update(self, observable, observable_key, updated_value, timestamp):
@@ -57,7 +64,18 @@ class BaseObservable(IObservable, ABC):
         self._subscribers = []
         self.observables: dict[str, list[tuple[float, float | str]]] = None
         self.reset_observables()
-        super().__init__(*args, **kwargs)
+        # BaseObservable is the last link of the cooperative super().__init__() chain before object,
+        # so anything still left here was accepted by nobody.
+        try:
+            super().__init__(*args, **kwargs)
+        except TypeError as error:
+            if not args and not kwargs:
+                raise
+            leftovers = ", ".join([repr(arg) for arg in args] + [f"{key}={value!r}" for key, value in kwargs.items()])
+            raise UnexpectedInitArgumentsError(
+                f"{self.__class__.__name__} was given arguments that no class in its MRO accepts: {leftovers}. "
+                f"If this is a device, check its entry in config.yml for unknown keys."
+            ) from error
 
     def subscribe(self, observer: IObserver):
         self._subscribers.append(observer)
