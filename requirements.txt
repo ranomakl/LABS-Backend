@@ -1,6 +1,5 @@
 py_expression_eval==0.3.14
-PyYAML==6.0
+PyYAML==6.0.2
 Twisted==22.10.0
 pyserial==3.5
-pywin32==306
 gpiozero==2.0.1.post3
