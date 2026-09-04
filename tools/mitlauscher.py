@@ -47,35 +47,68 @@ if RX_PORT == TX_PORT:
 BAUDRATE, PARITAET = 1200, "E"
 ERWARTET = 30 * 7   # 30 Adressen a 7 Byte RID-Frame
 
-print(f"Senden auf   {TX_PORT}")
-print(f"Mithoeren auf {RX_PORT}")
-print(f"{BAUDRATE} Baud, Paritaet {PARITAET}, Adressen 1-30, nur RID.\n")
 
-with serial.Serial(RX_PORT, baudrate=BAUDRATE, bytesize=8, parity=PARITAET,
-                   stopbits=1, timeout=0.05) as rx, \
-     serial.Serial(TX_PORT, baudrate=BAUDRATE, bytesize=8, parity=PARITAET,
-                   stopbits=1, timeout=0.05) as tx:
-    time.sleep(0.2)
-    rx.reset_input_buffer()
+def _durchgang(sender, hoerer, name_sender, name_hoerer):
+    """Sendet 30 RID-Frames auf `sender` und sammelt alles, was auf `hoerer` ankommt."""
+    print(f"\n--- {name_sender}  ==>  {name_hoerer} ---")
+    hoerer.reset_input_buffer()
     empfangen = bytearray()
     for address in range(1, 31):
-        _guarded_write(tx, address, CMD_RID)
+        _guarded_write(sender, address, CMD_RID)
         ende = time.monotonic() + 0.25
         while time.monotonic() < ende:
-            brocken = rx.read(64)
+            brocken = hoerer.read(64)
             if brocken:
                 empfangen.extend(brocken)
+    print(f"{len(empfangen)} von ~{ERWARTET} erwarteten Bytes empfangen.")
+    if empfangen:
+        print(f"Erste 60 Bytes: {bytes(empfangen[:60]).hex(' ').upper()}")
+    return bytes(empfangen)
 
-print(f"Mitlauscher hat {len(empfangen)} von ~{ERWARTET} erwarteten Bytes empfangen.")
-if empfangen:
-    print(f"Erste 60 Bytes: {bytes(empfangen[:60]).hex(' ').upper()}")
-    if empfangen[0] == 0xE9 or 0xE9 in empfangen[:8]:
-        print("\n-> Startflag E9 ist dabei: Adapter 1 treibt den Bus korrekt.")
-        print("   Der Fehler sitzt hinter der Klemme (Pumpe, DB15-Modul, Verpolung dorthin).")
-    else:
-        print("\n-> Bytes kommen an, aber verzerrt. Typisch fuer vertauschte A/B oder eine")
-        print("   abweichende Baudrate zwischen den beiden Adaptern.")
+
+def _sauber(rohbytes):
+    """True, wenn erkennbar echte Frames ankamen (Startflag E9 im Datenstrom)."""
+    return 0xE9 in rohbytes[:16]
+
+
+print(f"Adapter 1 (an der Pumpe): {TX_PORT}")
+print(f"Adapter 2 (Mitlauscher):  {RX_PORT}")
+print(f"{BAUDRATE} Baud, Paritaet {PARITAET}, Adressen 1-30, nur RID.")
+
+with serial.Serial(TX_PORT, baudrate=BAUDRATE, bytesize=8, parity=PARITAET,
+                   stopbits=1, timeout=0.05) as a1, \
+     serial.Serial(RX_PORT, baudrate=BAUDRATE, bytesize=8, parity=PARITAET,
+                   stopbits=1, timeout=0.05) as a2:
+    time.sleep(0.2)
+    hin = _durchgang(a1, a2, "Adapter 1", "Adapter 2")
+    zurueck = _durchgang(a2, a1, "Adapter 2", "Adapter 1")
+
+# Beide Richtungen einzeln auszuwerten trennt Sende- von Empfangsfehler. Genau darauf kommt es
+# an: Adapter 1 hat in allen bisherigen Laeufen nie ein einziges Byte empfangen - ob sein
+# Empfangszweig ueberhaupt funktioniert, war nie gemessen.
+print("\n" + "=" * 70)
+if _sauber(hin) and _sauber(zurueck):
+    print("BEIDE RICHTUNGEN IN ORDNUNG.")
+    print("Beide Adapter senden und empfangen, die Leitung bis zur Klemme steht, A/B sind")
+    print("zueinander richtig herum. Der Fehler sitzt damit hinter der Klemme: Pumpe,")
+    print("DB15-Modul, Verpolung zur Pumpe hin, oder die Pumpe antwortet schlicht nicht.")
+    print("Naechster Schritt: A/B AN DER PUMPENSEITE tauschen, dann tools/schnelltest.py.")
+elif _sauber(hin) and not zurueck:
+    print("ADAPTER 1 SENDET, EMPFAENGT ABER NICHT.")
+    print("Das erklaert den bisherigen Befund vollstaendig - 0 Byte auf jeder Parameter-")
+    print("kombination, weil der Empfangszweig taub ist. Rollentausch pruefen: Adapter 2 an")
+    print("die Pumpe, dann tools/schnelltest.py --port <Adapter 2>.")
+elif zurueck and not hin:
+    print("ADAPTER 1 SENDET NICHT (empfaengt aber).")
+    print("Sendefreigabe oder Treiberbaustein defekt. Rollentausch wie oben.")
+elif hin or zurueck:
+    print("BYTES KOMMEN AN, ABER VERZERRT.")
+    print("Typisch fuer vertauschte A/B zwischen den Adaptern oder unterschiedliche Baudraten.")
+    print("A/B an Adapter 2 tauschen und noch einmal messen.")
 else:
-    print("\n-> Nichts empfangen. Entweder sendet Adapter 1 nicht auf die RS485-Leitung,")
-    print("   oder A/B sind zwischen den beiden Adaptern vertauscht. A/B am Mitlauscher")
-    print("   tauschen und noch einmal messen - erst dann ist die Aussage belastbar.")
+    print("IN KEINER RICHTUNG ETWAS.")
+    print("Erst pruefen: liegen A/B/GND beider Adapter wirklich auf DENSELBEN Klemmen?")
+    print("Dann A/B an Adapter 2 tauschen und wiederholen. Bleibt es dabei, sind beide")
+    print("Adapter zusammen nicht funktionsfaehig - dann die beiden Adapter direkt")
+    print("miteinander verbinden (A-A, B-B, GND-GND, nichts sonst) und erneut messen.")
+print("=" * 70)
