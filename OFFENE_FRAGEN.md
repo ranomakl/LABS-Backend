@@ -65,9 +65,28 @@ Insgesamt ueber 480 Frames, die Empfangsleitung hat nie ein Bit gesehen.
   ACHTUNG — die LED haengt am UART-Signal, also vor der Leitung. Sie beweist nicht, dass das
   Signal an der Pumpe ankommt; ein Kabelbruch saehe genauso aus.
 
-\### Naechste Schritte am Geraet
+\### Nachtest 04.09.2026 - unveraendert, zwei weitere Ursachen ausgeschlossen
 
-\- A/B tauschen. Wahrscheinlichste Ursache. Die A/B-Beschriftung ist herstelleruebergreifend
+Adapter BG01XVQG haengt jetzt an /dev/ttyUSB0 (vorher ttyUSB3); der by-id-Pfad in
+tools/scan_pumpe.py stimmt weiterhin. Am Aufbau wurde nichts geaendert.
+
+- tools/schnelltest.py (1200/E und 9600/E, Adressen 1-30): 0 Reaktionen.
+- tools/probe_rts_toggle.py (NEU): RTS pro Frame umgeschaltet - gesetzt vor dem Senden, geloest
+  nach dem letzten Bit -, beide Polaritaeten, 1200/E und 9600/E: 0 Reaktionen. Damit ist auch
+  eine RTS-gesteuerte Sendefreigabe ausgeschlossen; probe_rts.py hatte nur statische Pegel
+  geprueft, was bei so einem Adapter grundsaetzlich nie funktionieren wuerde.
+
+Die Parametersuche ist damit erschoepft: 8 Baudraten x 2 Paritaeten x 30 Adressen x 3 RTS-Varianten,
+kein einziges empfangenes Byte. Weiteres Scannen bringt nichts - der Fehler ist elektrisch.
+
+### Naechste Schritte am Geraet
+
+\- ZUERST: tools/mitlauscher.py (NEU) mit dem zweiten Adapter (BG01X3TF) parallel an dieselben
+  Klemmen. Sendet auf dem einen, hoert auf dem anderen mit, und trennt damit "Adapter sendet
+  nicht" von "Pumpe antwortet nicht" - das ist die Weggabelung, an der alle weiteren Schritte
+  haengen. Die TXD-LED kann das nicht: sie sitzt vor dem Treiberbaustein.
+  Aufruf: .venv/bin/python tools/mitlauscher.py --rx /dev/serial/by-id/<zweiter Adapter>
+- A/B tauschen. Wahrscheinlichste Ursache. Die A/B-Beschriftung ist herstelleruebergreifend
   uneinheitlich — beide Seiten koennen "richtig" verkabelt und trotzdem zueinander verpolt sein.
   Man sieht es der Verkabelung nicht an, deshalb ist Tauschen der Standardtest.
 \- Durchgang beider Datenadern zwischen Adapterklemme und RS485-Modul messen (Kabelbruch).

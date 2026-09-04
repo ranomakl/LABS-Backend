@@ -33,6 +33,8 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 | `scan_breit.py` | Breiterer Baudratenscan: 2400, 4800, 38400, 57600, 115200. |
 | `dauersenden.py` | Sendet 25 s durchgehend RID, damit man die TXD/RXD-LEDs am Adapter beobachten kann. Trennt "Adapter sendet nicht" von "Gegenstelle antwortet nicht". |
 | `probe_rts.py` | Testet beide RTS-Zustaende - manche RS485-Adapter schalten die Senderichtung darueber. |
+| `probe_rts_toggle.py` | Wie `probe_rts.py`, aber RTS wird pro Frame umgeschaltet (gesetzt vor dem Senden, geloest nach dem letzten Bit) - der Betriebsfall fuer Adapter mit RTS-gesteuerter Sendefreigabe. |
+| `mitlauscher.py` | Braucht einen ZWEITEN Adapter, parallel an dieselben Klemmen. Sendet auf dem einen, hoert auf dem anderen mit. Trennt "Adapter sendet nicht" von "Pumpe antwortet nicht" - die einzige Messung, die das rein in Software entscheidet. |
 | `probe_echo.py` | Gibt alle empfangenen Rohbytes aus, auch das eigene Echo (das der Scanner sonst herausfiltert). Zeigt, ob ueberhaupt irgendetwas zurueckkommt. |
 
 ## Selbsttest
