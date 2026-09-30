@@ -185,6 +185,11 @@ Scan 30.09.2026 (tools/scan_liquiline.py, nur FC03, Stufe 1 = Adressen 1 und 247
   Adapter in den Ruhezustand "0" (Break) -> der Vorspann der Modul-Terminierung kommt am Adapter an
   (Leitung ist also elektrisch verbunden), aber mit dieser Polung verkehrt herum. Die Polung vor dem
   Tausch war demnach die richtige; auch damit kam keine Antwort.
+- 15:00 A/B zurueckgetauscht (Adapter neu eingesteckt). 15:01 Dauertest (139 Anfragen) + voller
+  Stufe-1-Scan: 0 Reaktionen, auch die 00-Bytes sind wieder weg (bestaetigt die Deutung oben).
+  STAND: Hardwareseite weitgehend ausgeschlossen, COM am Modul blinkt nie. Naechster Schritt:
+  E+H-Service (Seriennr., Bestellcode CM448-AA36A11AABAA+AB) - welcher Feldbus ist aktiv
+  (RS485 vs. TCP/Ethernet), ist Modbus RS485 freigeschaltet?
 Naechster Schritt: am Geraet pruefen, ob Modbus ueberhaupt aktiviert ist (ab Werk AUS) und ob
 ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. Stufe 2 (Adressen
 1-247) laeuft pro Adapter ~25 min und hilft nichts, solange Modbus aus ist.
