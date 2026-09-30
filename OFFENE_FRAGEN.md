@@ -121,7 +121,9 @@ Offen, bevor es weitergehen kann:
 
 \## Endress+Hauser Liquiline CM442/CM448 
 - Treiber spricht ASCII. Geraet muss auf ASCII stehen! Menu/Setup/General settings/Extended setup/Modbus/Transmission Mode 
-- Modbus ist ab Werk AUSGESCHALTET. Unter "Enable" einschalten 
+- KORREKTUR 30.09.2026: Laut Handbuch SD01189C (Register 504 RS485_ENABLE) ist Modbus RS485 ab
+  Werk EINGESCHALTET (Default 1 = On). Im Menue Setup/General settings/Extended setup/Modbus/Settings
+  gibt es keinen "Enable"-Punkt, nur Adresse/Mode/Baudrate/Paritaet/Byte order/Watchdog.
 - Busadresse: per DIP-Schalter oder Software, pruefen 
 im Modbus Menü?
 - Registeradressen der tatsaechlich angeschlossenen Sensoren pruefen
@@ -129,6 +131,63 @@ welcher sensor an welchen gerät hängt und welches register dazu gehört. auf g
 Zuordnung zu Registern steht SD01189C Tabelle
 Notieren, welche Sensoren an welchen Kanälen hängen (pH auf Kanal 1, Leitfähigkeit auf Kanal 2 etc.).
 Die Registerzuordnung zuhause anhand der Tabelle.
+
+Scan 30.09.2026 (tools/scan_liquiline.py, nur FC03, Stufe 1 = Adressen 1 und 247, ASCII+RTU,
+1200-115200 Baud, Paritaet E/N/O) - Liquiline NICHT gefunden:
+- BG02Q3TM (ttyUSB5, heute 11:59 eingesteckt, alle anderen 09:42 - wahrscheinlichster Kandidat):
+  keinerlei Reaktion.
+- BG01W2OJ (ttyUSB0) und CH341-Adapter 1a86 (ttyUSB4): keinerlei Reaktion.
+- BG01B1W6 (ttyUSB1) und BG01B8RX (ttyUSB3): bei 38400 8N1 Antwort ":0104\r\n", unabhaengig
+  von der gefragten Adresse -> das ist kein Modbus, sondern eine Bronkhorst-ProPar-ASCII-
+  Fehlermeldung (38400 8N1 = Bronkhorst-Werkseinstellung). Dort haengen vermutlich weitere
+  Bronkhorst-Geraete, nicht der Liquiline. Zusaetzlich einmal Datenmuell bei 57600/E (Fehlrahmen).
+- BG01B77U (MFC laut config.yml) wurde bewusst nicht gescannt.
+- BESTAETIGT 30.09.2026 12:24 durch Abstecken: Der Liquiline haengt am Adapter BG02Q3TM
+  (/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q3TM-if00-port0). Er antwortet dort nicht,
+  also liegt das Problem am Geraet (Modbus aus?) oder an der Verkabelung, nicht am Anschluss.
+- Danach am Geraet auf ASCII umgestellt, Adresse 247 abgelesen, Baudrate/Paritaet laut Nutzer
+  passend -> erneuter Scan auf BG02Q3TM: weiterhin KEINE Reaktion. Verdacht: Verkabelung
+  (Handbuch Abschn. 2.1: bei Problemen A/B tauschen, schadet nicht) - LEDs am Modul 485 pruefen.
+- LEDs am Modul 485: nur EINE LED leuchtet, ROT (vom Nutzer als PWR abgelesen; laut Handbuch ist
+  PWR nur gruen definiert, rot nur BF/SF), alle anderen aus, COM blinkt nicht. Messwerte am Display
+  sind vorhanden -> Messung ok, Problem liegt bei Modul 485 / Kabel / Adapter.
+- 12:40 A/B getauscht, erneuter Scan auf BG02Q3TM: weiterhin KEINE Reaktion.
+- Hardware-Adressschalter am Modul 485 hat laut Handbuch Vorrang vor der Menue-Adresse. Deshalb
+  ASCII 19200/E ueber ALLE Adressen 1-247 gescannt: keine Reaktion. Eine abweichende
+  DIP-Adresse erklaert das Schweigen also nicht (sofern das Geraet wirklich auf 19200/E steht).
+- ~12:50 Liquiline neu gestartet, erneuter Scan (Stufe 1, alle Modi/Baud/Paritaet): weiterhin
+  KEINE Reaktion. Verdacht bleibt Modul 485 (rote LED) -> Diagnoseliste pruefen, ggf. E+H-Service.
+- Diagnoseliste: nur F100 "Sensor Kommunikation CH2" (Memosens-Sensor an Kanal 2 antwortet nicht,
+  eigenes Problem). KEIN S969 Modbus Watchdog, obwohl Watchdog = 5 s und Modbus aktiviert.
+- Bestellcode CM448-AA36A11AABAA+AB (nicht dekodiert -> E+H Device Viewer/Service). Klemmen 95/96/99
+  an Modul 485 und Menue (nur Modbus, kein PROFIBUS) laut Nutzer korrekt.
+- ~13:20 Terminierung am Modul eingeschaltet, Adapter unveraendert BG02Q3TM: keine Reaktion.
+  Adapter-LED TXD blinkt rot beim Scan -> Adapter sendet; RXD blinkt nicht -> nichts kommt zurueck.
+  Offen: ob die Anfragen am Modul ankommen (COM-LED beobachten) und Adapter gegen einen
+  nachweislich funktionierenden (BG01B1W6/BG01B8RX) tauschen.
+- 13:26 Dauertest: 186 FC03-Anfragen (ASCII, 19200/E, Adresse 247) in 40 s, 0 Antworten.
+  Nutzer beobachtet dabei: am Modul leuchtet GAR NICHTS (weder COM noch T, obwohl Terminierung an),
+  nur TXD am Adapter blinkt. -> Modul 485 zeigt kein Lebenszeichen (nicht versorgt / nicht
+  richtig gesteckt / defekt / Kabel an falschem Modul). Naechster Schritt: Modul pruefen, E+H-Service.
+- Danach am Modul: PWR gruen, T gelb (Modul laeuft, Terminierung aktiv). Dauertests 13:28/13:30 und
+  voller Stufe-1-Scan: 0 Antworten, COM blinkt NICHT.
+- GND (Klemme C) war nicht angeschlossen -> angeklemmt, Neustart. Dauertests 13:33 und 13:35 (je
+  278 Anfragen) + voller Scan: 0 Antworten. Am Modul jetzt SF (Systemfehler) rot.
+- SF kam vom fehlenden Sensor an Kanal 2 (F100); nach Anschluss des Sensors SF aus, Modul PWR gruen,
+  T gelb. 14:34 Dauertest + Scan auf BG02Q3TM: 0 Antworten.
+- 14:38 RS485-Adapter getauscht gegen neuen BG01XFU4 (ttyUSB5). 14:39 Dauertest (186 Anfragen) +
+  voller Stufe-1-Scan: 0 Antworten. Adapter BG02Q3TM als alleinige Ursache damit unwahrscheinlich.
+- Modul laut Beschriftung "Modbus RS485" (= 485MB, richtig). Klemmen laut KA01159C 5.4.2:
+  95 = B (Data+), 96 = A (Data-), 99 = C (DGND), 81/82 nur externe Terminierung. Adapter "USB TO RS485"
+  mit GND/A+/B-. 14:53 am Adapter A/B getauscht -> seitdem kommt nach JEDER Anfrage genau ein
+  Byte 00 zurueck, ~50 ms nach dem Senden, bei ALLEN Baudraten/Paritaeten/Modi, in Ruhe nichts.
+  Deutung: kein Geraete-Antwortrahmen, sondern die Leitung kippt nach dem Freigeben durch den
+  Adapter in den Ruhezustand "0" (Break) -> der Vorspann der Modul-Terminierung kommt am Adapter an
+  (Leitung ist also elektrisch verbunden), aber mit dieser Polung verkehrt herum. Die Polung vor dem
+  Tausch war demnach die richtige; auch damit kam keine Antwort.
+Naechster Schritt: am Geraet pruefen, ob Modbus ueberhaupt aktiviert ist (ab Werk AUS) und ob
+ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. Stufe 2 (Adressen
+1-247) laeuft pro Adapter ~25 min und hilft nichts, solange Modbus aus ist.
 
 
 

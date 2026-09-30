@@ -36,6 +36,8 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 | `probe_rts_toggle.py` | Wie `probe_rts.py`, aber RTS wird pro Frame umgeschaltet (gesetzt vor dem Senden, geloest nach dem letzten Bit) - der Betriebsfall fuer Adapter mit RTS-gesteuerter Sendefreigabe. |
 | `mitlauscher.py` | Braucht einen ZWEITEN Adapter, parallel an dieselben Klemmen. Sendet auf dem einen, hoert auf dem anderen mit. Trennt "Adapter sendet nicht" von "Pumpe antwortet nicht" - die einzige Messung, die das rein in Software entscheidet. |
 | `probe_echo.py` | Gibt alle empfangenen Rohbytes aus, auch das eigene Echo (das der Scanner sonst herausfiltert). Zeigt, ob ueberhaupt irgendetwas zurueckkommt. |
+| `scan_alle_ports.py` | Fuehrt die Matrix aus `scan_pumpe.py` auf ALLEN seriellen Anschluessen aus, wenn unklar ist, an welchem Adapter die Pumpe haengt. Nutzt dessen `_guarded_write()`. |
+| `scan_liquiline.py` | Endress+Hauser Liquiline CM44x: sendet ausschliesslich Modbus FC03 (Read Holding Registers, eigene Sperre `_guarded_write()` im Skript), ASCII und RTU, 1200-115200 Baud, Paritaet E/N/O, erst Adressen 1 und 247, dann 1-247. `--dry-run`, `--port <pfad>`, `--voll`. |
 
 ## Selbsttest
 
