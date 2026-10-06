@@ -11,11 +11,11 @@ Aufruf immer aus der Repo-Wurzel, z.B.:
 
 ## Sicherheit
 
-Alle Pumpenskripte sind **reine Lesewerkzeuge**. Gesendet wird ausschliesslich die PDU `RID`
-("Read pump address"). Durchgesetzt wird das von `_guarded_write()` in `scan_pumpe.py` - dem
+Alle Pumpenskripte sind **reine Lesewerkzeuge**. Gesendet wird ausschliesslich die PDU `RJ`
+("Read running parameter"; bis 06.10.2026 `RID`, das die WT600-2J aber NICHT beantwortet). Durchgesetzt wird das von `_guarded_write()` in `scan_pumpe.py` - dem
 einzigen Pfad, ueber den geschrieben wird - mit drei Sperren, die vor jedem `write()` greifen:
 
-1. PDU-Whitelist: nur `b"RID"`
+1. PDU-Whitelist: nur `b"RJ"` und `b"RID"`
 2. Adressbereich 1-30, Broadcast 31 gesperrt
 3. Byte-Muster-Kontrolle am fertigen Frame auf `WJ` und `WID`
 
@@ -44,3 +44,4 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 `scan_pumpe.py` rechnet beim Start die Frame- und XOR-Logik gegen alle fuenf Beispielframes aus
 `docs/protokoll_pumpe.md` nach, bevor Hardware angefasst wird. Schlaegt das fehl, stimmt etwas am
 Treiber nicht und der Scan bricht ab.
+| `lese_netzteil.py` | Joy-IT DPM86xx Spannungsquelle: sendet ausschliesslich Lesebefehle (`:01rNN=0,,`, Sperre `_guarded_write()` im Skript) und zeigt Messwerte, Sollwerte und Ausgangszustand. Ohne `--port` listet es die seriellen Anschluesse auf, `--dry-run` zeigt nur die Frames. |

@@ -314,6 +314,21 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         cmd.deferred_execution.addCallback(stop_measuring)
         return cmd
 
+    def set_voltage(self, voltage):
+        return self.write("SET_VOLTAGE", command_values={"value": voltage})
+
+    def set_current(self, current):
+        return self.write("SET_CURRENT", command_values={"value": current})
+
+    def set_output(self, on):
+        return self.write("SET_OUTPUT", command_values={"value": 1 if on else 0})
+
+    def measure_output(self):
+        with self.commandseries as series:
+            self.query("GET_MEASURE_VOLTAGE")
+            self.query("GET_MEASURE_CURRENT")
+        return series
+
     def query(self, command_name: str, **kwargs):
         return super().write(command_name, query=True, **kwargs)
 

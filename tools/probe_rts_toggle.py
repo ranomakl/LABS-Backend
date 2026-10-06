@@ -12,7 +12,7 @@ import os
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HIER)                    # Nachbarskripte (scan_pumpe)
 sys.path.insert(0, os.path.dirname(_HIER))   # Repo-Wurzel, fuer backend.*
-from scan_pumpe import PORT, CMD_RID, _guarded_write, _read_frames, _interpret
+from scan_pumpe import PORT, CMD_PROBE, _guarded_write, _read_frames, _interpret
 
 if "--port" in sys.argv:
     PORT = sys.argv[sys.argv.index("--port") + 1]
@@ -30,7 +30,7 @@ for rts_bei_tx in (True, False):
                 ser.rts = rts_bei_tx
                 # _guarded_write() ruft flush(), das unter POSIX auf tcdrain wartet - kehrt
                 # also erst zurueck, wenn das letzte Bit die Schnittstelle verlassen hat.
-                frame = _guarded_write(ser, address, CMD_RID)
+                frame = _guarded_write(ser, address, CMD_PROBE)
                 time.sleep(11.0 / baudrate)   # ein Zeichenrahmen Nachlauf (11 Bit bei 8E1)
                 ser.rts = not rts_bei_tx      # zurueck auf Empfang, bevor die Pumpe antwortet
                 frames, rest = _read_frames(ser, 0.6 if baudrate <= 1200 else 0.3, echo=frame)

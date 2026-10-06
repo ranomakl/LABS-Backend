@@ -39,7 +39,33 @@ beschriebenen Sicherheitsproblems.
 
 
 
-\## Longer WT600-2J — Adress-/Baudratensuche OFFEN, Geraet antwortet nicht
+\## Longer WT600-2J — ERLEDIGT 06.10.2026, am Geraet geprueft
+
+Aufloesung: Die Pumpe beantwortet den Lesebefehl RID ("Read pump address") NICHT. Alle Scans seit
+August haben ausschliesslich RID gesendet und deshalb nie eine Antwort gesehen. Verkabelung,
+Adapter und Werkseinstellungen waren die ganze Zeit in Ordnung.
+
+\- Bestaetigt: 1200 Baud, 8E1, Adresse 1 (Werkseinstellung). Adapter BG02Q0XU (FTDI).
+\- WJ (Start/Stop/Drehzahl) wird mit `E9 01 02 57 4A 1E` bestaetigt (das "geratene" Ack-Frame ist
+  damit real: Adresse + PDU "WJ" + XOR). RJ antwortet mit `E9 01 06 52 4A <speed:2> <state1> <state2> <fcs>`,
+  genau wie der Treiber annimmt.
+\- WJ-Frames mit Drehzahl 0 ignoriert die Pumpe VOLLSTAENDIG (keine Antwort). Bereich 60-600 rpm.
+  Treiber angepasst: Drehzahl nie unter 60, Stoppen nur ueber das Start/Stop-Bit (MIN_RPM).
+\- Treiber backend/drivers/longer_wt600.py am Geraet verifiziert: Init (Stopp), read_speed,
+  set_speed(100) + start_pumping (Kopf dreht, RJ meldet laeuft/100 rpm), stop_pumping. Mit
+  tubing 3,2x6,4 mm / 0,8883 mL/U meldet er flow_ml_min = 88,83 bei 100 rpm.
+\- tools/scan_pumpe.py und alle abgeleiteten Werkzeuge senden jetzt RJ statt RID; der Scan findet
+  die Pumpe sofort (1200/E, Adresse 1). `--port <pfad>` funktioniert jetzt wirklich.
+\- Zweite WT600-2J (Adapter BG01W2OJ): hat bei 1200/E Adresse 1 EINMAL auf WJ geantwortet und den
+  Kopf gedreht, danach keine Antworten mehr -> Befehle kommen an, Antworten gehen verloren.
+  Verdacht GND nicht angeklemmt. Fuer Stufe I nicht gebraucht.
+\- Drehrichtung: Treiber-Default clockwise=True (State2 = 1) dreht den Kopf laut Nutzer IM UHRZEIGERSINN
+  (06.10.2026 beobachtet). Offen: ob das in der Anlage zur Zelle foerdert - haengt von der Schlauchfuehrung
+  ab, bei Einbau pruefen; sonst in continuous_flow() das Vorzeichen drehen.
+
+\### Alte Befunde (ueberholt, Ursache s.o.)
+
+\## Longer WT600-2J — Adress-/Baudratensuche (Stand bis 04.09.2026, ueberholt)
 
 Stand 31.08.2026. Ziel war, Pumpenadresse und Baudrate per RID ("Read pump address") zu
 ermitteln, weil kein Display zugaenglich ist. Werkzeug: tools/scan_pumpe.py (reines Lesewerkzeug,
@@ -195,6 +221,26 @@ ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. St
 1-247) laeuft pro Adapter ~25 min und hilft nichts, solange Modbus aus ist.
 
 
+
+\## Spannungsquelle Joy-IT DPM86xx ("DC SOURCE 48V") — ERLEDIGT, am Geraet geprueft 06.10.2026
+
+Grauer Kasten ohne Display, Aufschrift "DC SOURCE 48V", Netzanschluss, USB-Kabel zum Pi, zwei
+Ausgangskabel zur Zelle. Der USB-Seriell-Wandler (CH340, 1a86, ohne Seriennummer) sitzt im Kasten.
+In config.yml stand faelschlich tdk_lambda_zplus.
+
+\- 05.10. und 06.10. vormittags: keine Antwort auf irgendein Protokoll (DPM simple, Modbus RTU, SCPI,
+  99 Adressen, 7 Baudraten, passiv). Ursache: der Kasten war AUS. Der Pi sieht den CH340 trotzdem,
+  weil USB ihn versorgt - /dev/ttyUSB0 ist also KEIN Lebenszeichen des Geraets.
+\- Eingeschaltet: tools/lese_netzteil.py 9/9 Antworten bei 9600 8N1, Adresse 01, Frame ":01r30=0,,\n"
+  (zwei Kommas + LF, wie in Matthias' Code). Geraet meldet max 60 V / 5 A -> 5-A-Modell (DPM8605-Klasse),
+  nicht 50 A wie ein DPM8650. Sollwerte vorgefunden: 5 V / 3 A, Ausgang aus, Modus 1 (Konstantstrom), 21 Grad.
+\- Treiber backend/drivers/joyit_dpm86.py am Geraet verifiziert: initial_commands (Ausgang aus),
+  measure_output, set_voltage(5.0) + Rueckkontrolle, stop().
+\- Ausgang ein/aus mit Freigabe getestet (ohne Zelle): 1 V / 0,1 A gesetzt, eingeschaltet -> Ausgang 1,
+  gemessen 1,0 V / 0,0 A, Modus 0 (Konstantspannung, da keine Last); stop_current() -> Ausgang 0, 0 V.
+  Sollwerte im Geraet stehen jetzt auf 1 V / 0,1 A.
+\- Grenzen laut Labor: 48 V (config.yml voltage_limit), Strom wird je Versuch eingetragen.
+\- Offen: welches Modell steckt genau im Kasten (Typenschild innen)? Nur fuer die Doku, nicht fuer den Betrieb.
 
 \## Inficon Micro GC Fusion
 

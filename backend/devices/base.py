@@ -255,7 +255,9 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
 
     def get_address(self):
         address, port = self.full_address, None
-        if ":" in self.full_address:
+        # POSIX-Geraetepfade nicht zerlegen: /dev/serial/by-path/...usb-0:2.2.2:1.0-port0 enthaelt
+        # Doppelpunkte, ist aber keine IP:Port-Adresse.
+        if ":" in self.full_address and not self.full_address.startswith("/"):
             address, port = self.full_address.split(":", 1)
             port = int(port)
         return address, port

@@ -56,8 +56,17 @@ devices:
     channel: 4
 
   psu:
-    driver: tdk_lambda_zplus
-    address: 127.0.0.1:12346
+    driver: joyit_dpm86        # Joy-IT DPM86xx im grauen Kasten "DC SOURCE 48V" (NICHT TDK Lambda wie vorher eingetragen)
+    # Der USB-Wandler (CH340) sitzt IM Kasten, kein RS485-Adapter dazwischen. CH340 hat keine Seriennummer,
+    # by-id ist deshalb mehrdeutig -> by-path. Der Pfad haengt am USB-Steckplatz: Kasten IMMER in denselben
+    # Port stecken (06.10.2026: xhci-hcd.0, Port 2.1). Aufruf ohne --port zeigt die Pfade:
+    #   .venv/bin/python tools/lese_netzteil.py
+    address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.1:1.0-port0
+    dpm_address: "01"          # am Geraet bestaetigt
+    voltage_limit: 48.0        # Obergrenze fuer Sollwerte in V (laut Labor: Geraet kann 48 V; es meldet selbst max 60 V)
+    current_limit: 5.0         # Obergrenze fuer Sollwerte in A (Geraetemaximum, 5-A-Modell). Der Strom pro Versuch
+                               # wird als Experimentparameter eingetragen, nicht hier.
+    # Alter Dummy-Eintrag (LABS-DeviceDummys): driver: tdk_lambda_zplus, address: 127.0.0.1:12346
 
   fractioncollector:
     driver: omnicoll
@@ -73,11 +82,15 @@ devices:
       baudrate: 38400          # am Geraet verifiziert (bei 187500 antwortet es nicht)
   dosing_pump:
     driver: longer_wt600
-    address: 127.0.0.1:12352
-    pump_address: 1           # WT600-Protokolladresse (1-30, ab Werk 1) - nicht die obige TCP-Adresse
-    tubing: "LS16"
-    tubing_table:              # mL pro Umdrehung je Schlauch - Platzhalter, per Kalibrierung ermitteln
-      LS16: 0.5
+    # Longer WT600-2J, AM GERAET VERIFIZIERT 06.10.2026: Werkseinstellungen 1200 Baud 8E1, Adresse 1.
+    # Start/Stopp/Drehzahl/Lesen ueber den Treiber geprueft. Adapter BG02Q0XU (FTDI, by-id ist eindeutig).
+    # Die zweite WT600-2J haengt an Adapter BG01W2OJ, antwortet dort aber nur sporadisch (GND pruefen).
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q0XU-if00-port0
+    pump_address: 1           # WT600-Protokolladresse (1-30, ab Werk 1), am Geraet bestaetigt
+    tubing: "3.2x6.4"
+    tubing_table:              # mL pro Umdrehung je Schlauch (Innen- x Aussendurchmesser in mm)
+      3.2x6.4: 0.8883          # Laborangabe: Standardschlauch, 60-600 rpm = 53,3-533 mL/min
+    # Alter Dummy-Eintrag (LABS-DeviceDummys): address: 127.0.0.1:12352
 
   liquiline:
     driver: endress_hauser_liquiline
