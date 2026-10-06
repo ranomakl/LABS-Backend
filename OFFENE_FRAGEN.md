@@ -250,16 +250,17 @@ In config.yml stand faelschlich tdk_lambda_zplus.
 \- Alle Lese-Endpunkte des Treibers antworten mit HTTP 200 und erwartetem JSON: Status `["public:sequence-not-loaded","public:standby"]`, /v1/lastRun `{"dataLocation":"/runData/<uuid>"}`, Laufdaten (~250 kB), /v1/methods/userMethods (18 Methoden). Wurzel `/` antwortet 200 (Verbindungstest des Treibers). `/v1/methods` ohne `userMethods` liefert nginx 500 - nicht benutzen.
 \- Peak-Tabellen-Schema: `detectors[<modul>:tcd].analysis.peaks[]` mit area/height/top/start/end/snr/tailing/baselinePoints, bei kalibrierten Peaks zusaetzlich label/concentration/normalizedConcentration, bei Gruppen inGroup/isGroup. Stimmt mit der Annahme in run_data_to_csv() ueberein - geprueft an testdata_microgc(1).fusion-data (25 benannte Peaks) und am letzten Lauf des Geraets vom 29.07.2026. Modul D hat nur unbenannte Peaks und faellt korrekt heraus. Weitere Felder im Lauf: methodName, runTimeStamp, frontInletTotalConcentration, annotations, softwareVersion.
 \- Treiberfehler behoben: dataLocation enthaelt bereits "/runData/", der Treiber stellte es nochmal voran (Geraet tolerierte das). Jetzt run_data_path().
-\- Methoden: microGC_Standard_Method_calibrated_0726 ist vorhanden. Daneben gibt es microGC_Standard_Method_calibrated_11_25 (neuer?) - mit dem Labor klaeren, welche gilt. Name bleibt Experimentparameter (test_microgc_run).
+\- Methoden: microGC_Standard_Method_calibrated_0726 ist vorhanden und laut Labor (06.10.2026) die aktuelle, zu verwendende Methode. microGC_Standard_Method_calibrated_11_25 liegt ebenfalls auf dem Geraet, wird nicht benutzt. Name bleibt Experimentparameter (test_microgc_run).
 \- BakeOut-Dauer 20 min laut Labor. Kein Timeout im Code noetig: _wait_until_ready() pollt den Status bis "ready", der 10-s-Timeout in config.yml gilt je Statusabfrage, nicht fuer den ganzen Vorgang.
 \- Lesewerkzeug tools/lese_microgc.py (nur GET auf Lesepfade, Steuerbefehle gesperrt).
+\- ECHTER LAUF 06.10.2026 15:05 (tools/starte_microgc_lauf.py, Methode ..._0726, Freigabe durch Rafael): loadMethod -> HTTP 200 mit `{"$public.currentMethodLocation": ".../microGC_Standard_Method_calibrated_0726"}`, run -> HTTP 200 `{"runWhenReady":"true"}`. Statusfolge: standby -> preparing (27 s) -> method-running (~5 min) -> loading-method -> preparing (~2 min) -> **ready**. Gesamt 454 s. Neue dataLocation, Laufdaten 525 kB abgeholt, CSV korrekt (Probe war Luft: O2/N2 ca. 21/78 % normiert, Rest 0). Das Geraet kehrt nach "public:ready" zurueck - genau der Zustand, auf den der Treiber wartet. Damit sind loadMethod, run, Statuspolling und Datenabholung komplett am Geraet bestaetigt.
+\- Geraeteuhr geht ca. 11 min nach (runTimeStamp 12:54:23Z bei tatsaechlichem Start 13:05:43Z). Fuer die Zuordnung Lauf <-> Experiment nicht die Geraetezeit, sondern die dataLocation/UUID verwenden (macht der Treiber so).
 
 \### Offen
 
-\- Geraet meldet im Leerlauf system = "public:standby", der Treiber wartet nach BakeOut/Lauf aber auf "public:ready". Beim ersten echten Lauf (Donnerstag) pruefen, in welchen Zustand das Geraet zurueckkehrt. Kehrt es nach standby zurueck, READY_STATE im Treiber um standby erweitern, sonst haengt run_method()/start_bakeout() endlos.
-\- Noch nicht am Geraet ausgeloest: BakeOut, loadMethod, run (Treiberpfade stammen aus dem Referenzcode, s. Treiberkopf). Erst nach Freigabe des Labors, kostet Traegergas und Zeit.
+\- Noch nicht am Geraet ausgeloest: BakeOut (20 min laut Labor). Pfad stammt aus dem Referenzcode; da loadMethod/run auf demselben Muster funktionieren, ist das Risiko gering. Ob das Geraet nach dem BakeOut ebenfalls auf ready geht, beim ersten BakeOut pruefen.
+\- Treiber im Backend-Verbund (Setup, Experiment test_microgc_run) noch nicht gegen das echte Geraet gefahren - bisher nur die HTTP-Ebene mit identischen Pfaden ueber tools/. Sobald die uebrigen Geraete in config.yml echt sind, test_microgc_status und test_microgc_run einmal ueber das Backend laufen lassen.
 \- Bleibt 169.254.1.1 nach Neustart des microGC stabil? Link-Local-Adressen koennen sich aendern. Beim naechsten Einschalten am Display kontrollieren; falls instabil, am Geraet eine feste Adresse vergeben und config.yml anpassen.
-\- Welche Standardmethode gilt: ..._0726 oder ..._11_25?
 
 
 \## Relais / 3-2-Wegehaehne

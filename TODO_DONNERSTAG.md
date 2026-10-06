@@ -46,17 +46,18 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [ ] /boot/firmware/config.txt: gpio=17,27,22,5,6,13,19,26=op,dh (aendert den Pi, braucht Neustart -
       nur nach Freigabe).
 
-### microGC — LESEND VERBUNDEN (06.10.2026 am Geraet verifiziert)
+### microGC — LAEUFT (06.10.2026 am Geraet verifiziert inkl. echtem Lauf)
 - [x] Geraet hat keinen DHCP-Server, sondern Link-Local 169.254.1.1 (nicht 10.10.0.1). eth0-Profil
       "Wired connection 1" auf link-local + never-default gestellt; config.yml: address 169.254.1.1.
 - [x] Methode bleibt Parameter von test_microgc_run (microGC_Standard_Method_calibrated_0726 ist auf dem
-      Geraet; daneben ..._11_25 - welche gilt?). Kein BakeOut-Timeout noetig, Treiber pollt bis "ready".
+      Geraet; ..._11_25 liegt auch dort, laut Labor 06.10. gilt aber die 0726). Kein BakeOut-Timeout noetig, Treiber pollt bis "ready".
 - [x] Beispieldaten testdata_microgc(1).fusion-data UND letzter Lauf vom Geraet gegen run_data_to_csv()
       geprueft: Struktur stimmt, CSV korrekt. Laufdaten-URL im Treiber korrigiert (run_data_path()).
 - [x] Lesewerkzeug tools/lese_microgc.py (Status, Methodenliste, letzter Lauf als CSV).
-- [ ] Donnerstag: ersten echten Lauf ausloesen (nach Freigabe) und pruefen, ob das Geraet danach auf
-      "public:ready" oder "public:standby" geht - im Leerlauf meldet es standby, der Treiber wartet
-      auf ready. Ggf. READY_STATE erweitern.
+- [x] 06.10. 15:05 echter Lauf mit ..._0726 (tools/starte_microgc_lauf.py): loadMethod/run HTTP 200,
+      454 s, Rueckkehr nach "public:ready" = Treiber passt. Neue Laufdaten als CSV korrekt.
+- [ ] Donnerstag: test_microgc_status / test_microgc_run einmal ueber das Backend (Setup) fahren, sobald
+      die anderen Geraete echt sind. BakeOut weiterhin ungetestet (20 min).
 - [ ] Nach Neustart des microGC kontrollieren, ob die Adresse 169.254.1.1 gleich bleibt.
 
 ### Aufraeumen

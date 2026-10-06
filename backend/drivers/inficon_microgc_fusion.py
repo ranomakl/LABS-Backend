@@ -61,8 +61,8 @@
 #
 # AM GERAET GEPRUEFT (06.10.2026, Pi per LAN direkt am microGC, Geraet unter 169.254.1.1): alle
 # oben genannten Lese-Endpunkte (STATUS, /v1/lastRun, Laufdaten, /v1/methods/userMethods) antworten
-# mit HTTP 200 und dem erwarteten JSON. Nicht ausgeloest wurden BakeOut, loadMethod und run.
-# Im Ruhezustand meldete das Geraet system = "public:standby" (nicht "public:ready").
+# mit HTTP 200 und dem erwarteten JSON. loadMethod und run ebenfalls am Geraet ausgefuehrt
+# (HTTP 200, Lauf durchgefuehrt, neue Laufdaten abgeholt, s. READY_STATE). BakeOut nicht ausgeloest.
 #
 # LANG LAUFENDE VORGAENGE (BakeOut, Methodenlauf - Minuten bis Stunden): werden NICHT durch
 # blockierendes Warten abgebildet, sondern wie beim Netzteil (tdk_lambda_zplus.py,
@@ -100,10 +100,11 @@ PATH_LAST_RUN_LOCATION = "/v1/lastRun"
 PATH_RUN_DATA_PREFIX = "/runData/"
 
 READY_STATE = "public:ready"
-# OFFEN (s. OFFENE_FRAGEN.md): das Geraet stand am 06.10.2026 im Leerlauf auf "public:standby".
-# Ob es nach BakeOut/Methodenlauf nach "public:ready" oder nach "public:standby" zurueckkehrt, ist
-# erst mit einem echten Lauf zu klaeren - kehrt es nach standby zurueck, wartet _wait_until_ready()
-# endlos und READY_STATE muss um standby erweitert werden.
+# AM GERAET BESTAETIGT (echter Lauf 06.10.2026, tools/starte_microgc_lauf.py): Statusfolge nach
+# loadMethod + run war preparing (27 s) -> method-running (~5 min) -> loading-method -> preparing
+# (~2 min) -> ready, insgesamt 454 s. Das Geraet kehrt also nach "public:ready" zurueck, auf das
+# _wait_until_ready() wartet. Im Leerlauf vor dem ersten Laden stand es auf "public:standby" -
+# das betrifft nur den Ausgangszustand, nicht das Warten. BakeOut noch nicht ausgeloest.
 
 
 def _extract_status(data) -> dict:
