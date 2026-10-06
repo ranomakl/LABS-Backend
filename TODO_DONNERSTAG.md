@@ -13,14 +13,15 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 
 ### Spannungsquelle Joy-IT DPM8650
 - [x] Treiber backend/drivers/joyit_dpm86.py nach Matthias' Protokoll (9600 8N1, `:01r30=0,,`),
-      ohne tkinter/Threads. Gegen simuliertes Geraet (pty) getestet, am echten Geraet NOCH NICHT.
+      ohne tkinter/Threads. 06.10. AM GERAET VERIFIZIERT: Init (Ausgang aus), Messen, Sollwert schreiben
+      und zuruecklesen, stop(). Ausgang EINSCHALTEN noch nicht getestet (ohne Zelle, mit Freigabe).
 - [x] Gemeinsame Schnittstelle in psu_base.py: set_voltage, set_current, set_output, measure_output,
       output_constant_current/-voltage, stop_current. TDK-Treiber angepasst.
-- [x] config.yml: psu auf joyit_dpm86 umgestellt (by-path-Adresse am Donnerstag pruefen).
+- [x] config.yml: psu auf joyit_dpm86 umgestellt, by-path-Adresse eingetragen (Kasten immer in denselben USB-Port).
 - [x] Lesewerkzeug tools/lese_netzteil.py (nur Lesebefehle).
 - [x] base.py: by-path-Adressen mit Doppelpunkt wurden als IP:Port zerlegt - behoben.
 - [ ] voltage_limit / current_limit in config.yml auf die Werte des Versuchs setzen (stehen auf
-      Geraetemaximum 60 V / 50 A).
+      Geraetemaximum 60 V / 5 A).
 - [ ] Keithley 2230-30-1 Treiber auf derselben Schnittstelle (spaeter, Vorlage von Matthias liegt vor).
 - [ ] Optional: externer Sensor ueber Spannungseingang (Anforderung, noch nicht beruecksichtigt).
 
@@ -56,8 +57,7 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 
 ## Labor (Verkabelung, vor Donnerstag)
 
-- [ ] Netzteil: Leistungseingang mit Strom versorgen; GND Netzteil mit GND RS485-Adapter verbinden;
-      "simple protocol" eingestellt (Werkseinstellung).
+- [x] Netzteil: antwortet, sobald der graue Kasten eingeschaltet ist. Kein RS485-Adapter, USB direkt.
 - [ ] Pumpe: beide Pumpen-Adapter (BG01XVQG, BG01X3TF) einstecken; am Bedienfeld pruefen, ob
       Fernsteuerung eingeschaltet werden muss; zweiten Adapter parallel fuer tools/mitlauscher.py.
 - [ ] Relais: 12-V-Versorgung, Platine an die vorgeschlagenen GPIO-Pins.

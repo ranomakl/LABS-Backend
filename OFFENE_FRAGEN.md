@@ -196,6 +196,23 @@ ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. St
 
 
 
+\## Spannungsquelle Joy-IT DPM86xx ("DC SOURCE 48V") — ERLEDIGT, am Geraet geprueft 06.10.2026
+
+Grauer Kasten ohne Display, Aufschrift "DC SOURCE 48V", Netzanschluss, USB-Kabel zum Pi, zwei
+Ausgangskabel zur Zelle. Der USB-Seriell-Wandler (CH340, 1a86, ohne Seriennummer) sitzt im Kasten.
+In config.yml stand faelschlich tdk_lambda_zplus.
+
+\- 05.10. und 06.10. vormittags: keine Antwort auf irgendein Protokoll (DPM simple, Modbus RTU, SCPI,
+  99 Adressen, 7 Baudraten, passiv). Ursache: der Kasten war AUS. Der Pi sieht den CH340 trotzdem,
+  weil USB ihn versorgt - /dev/ttyUSB0 ist also KEIN Lebenszeichen des Geraets.
+\- Eingeschaltet: tools/lese_netzteil.py 9/9 Antworten bei 9600 8N1, Adresse 01, Frame ":01r30=0,,\n"
+  (zwei Kommas + LF, wie in Matthias' Code). Geraet meldet max 60 V / 5 A -> 5-A-Modell (DPM8605-Klasse),
+  nicht 50 A wie ein DPM8650. Sollwerte vorgefunden: 5 V / 3 A, Ausgang aus, Modus 1 (Konstantstrom), 21 Grad.
+\- Treiber backend/drivers/joyit_dpm86.py am Geraet verifiziert: initial_commands (Ausgang aus),
+  measure_output, set_voltage(5.0) + Rueckkontrolle, stop(). Ausgang einschalten noch nicht getestet.
+\- Offen: welche Spannungs-/Stromgrenzen gelten fuer den Versuch (config.yml voltage_limit/current_limit)?
+  Welches Modell steckt genau im Kasten (Typenschild innen)?
+
 \## Inficon Micro GC Fusion
 
 \- Welche IP-Adresse hat das Gerät? (Im Screenshot war 169.254.1.1 zu sehen — das ist eine Selbstvergabe-Adresse, was auf Direktverbindung ohne DHCP hindeutet. Im Institutsnetz vermutlich eine andere.)

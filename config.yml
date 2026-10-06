@@ -56,13 +56,15 @@ devices:
     channel: 4
 
   psu:
-    driver: joyit_dpm86        # Joy-IT JT-DPM8650 (Aufschrift "DC SOURCE 48V"), NICHT TDK Lambda wie vorher eingetragen
-    # CH340-Adapter an USB-Steckplatz 2.2.2. by-path statt by-id, weil by-id bei drei CH340 mehrdeutig ist.
-    # PFAD AM DONNERSTAG PRUEFEN: .venv/bin/python tools/lese_netzteil.py listet die Anschluesse auf.
-    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.2.2:1.0-port0
-    dpm_address: "01"          # Werkseinstellung
-    voltage_limit: 60.0        # Obergrenze fuer Sollwerte in V - Geraetemaximum, an den Versuch anpassen
-    current_limit: 50.0        # Obergrenze fuer Sollwerte in A - Geraetemaximum, an den Versuch anpassen
+    driver: joyit_dpm86        # Joy-IT DPM86xx im grauen Kasten "DC SOURCE 48V" (NICHT TDK Lambda wie vorher eingetragen)
+    # Der USB-Wandler (CH340) sitzt IM Kasten, kein RS485-Adapter dazwischen. CH340 hat keine Seriennummer,
+    # by-id ist deshalb mehrdeutig -> by-path. Der Pfad haengt am USB-Steckplatz: Kasten IMMER in denselben
+    # Port stecken (06.10.2026: xhci-hcd.0, Port 2.1). Aufruf ohne --port zeigt die Pfade:
+    #   .venv/bin/python tools/lese_netzteil.py
+    address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.1:1.0-port0
+    dpm_address: "01"          # am Geraet bestaetigt
+    voltage_limit: 60.0        # Obergrenze fuer Sollwerte in V. Geraet meldet max 60 V - an den Versuch anpassen
+    current_limit: 5.0         # Obergrenze fuer Sollwerte in A. Geraet meldet max 5 A (=> 5-A-Modell, kein 50-A-DPM8650)
     # Alter Dummy-Eintrag (LABS-DeviceDummys): driver: tdk_lambda_zplus, address: 127.0.0.1:12346
 
   fractioncollector:
