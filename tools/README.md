@@ -44,3 +44,4 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 `scan_pumpe.py` rechnet beim Start die Frame- und XOR-Logik gegen alle fuenf Beispielframes aus
 `docs/protokoll_pumpe.md` nach, bevor Hardware angefasst wird. Schlaegt das fehl, stimmt etwas am
 Treiber nicht und der Scan bricht ab.
+| `lese_netzteil.py` | Joy-IT DPM86xx Spannungsquelle: sendet ausschliesslich Lesebefehle (`:01rNN=0,,`, Sperre `_guarded_write()` im Skript) und zeigt Messwerte, Sollwerte und Ausgangszustand. Ohne `--port` listet es die seriellen Anschluesse auf, `--dry-run` zeigt nur die Frames. |

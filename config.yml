@@ -56,8 +56,14 @@ devices:
     channel: 4
 
   psu:
-    driver: tdk_lambda_zplus
-    address: 127.0.0.1:12346
+    driver: joyit_dpm86        # Joy-IT JT-DPM8650 (Aufschrift "DC SOURCE 48V"), NICHT TDK Lambda wie vorher eingetragen
+    # CH340-Adapter an USB-Steckplatz 2.2.2. by-path statt by-id, weil by-id bei drei CH340 mehrdeutig ist.
+    # PFAD AM DONNERSTAG PRUEFEN: .venv/bin/python tools/lese_netzteil.py listet die Anschluesse auf.
+    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.2.2:1.0-port0
+    dpm_address: "01"          # Werkseinstellung
+    voltage_limit: 60.0        # Obergrenze fuer Sollwerte in V - Geraetemaximum, an den Versuch anpassen
+    current_limit: 50.0        # Obergrenze fuer Sollwerte in A - Geraetemaximum, an den Versuch anpassen
+    # Alter Dummy-Eintrag (LABS-DeviceDummys): driver: tdk_lambda_zplus, address: 127.0.0.1:12346
 
   fractioncollector:
     driver: omnicoll
