@@ -57,7 +57,7 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [x] 06.10. 15:05 echter Lauf mit ..._0726 (tools/starte_microgc_lauf.py): loadMethod/run HTTP 200,
       454 s, Rueckkehr nach "public:ready" = Treiber passt. Neue Laufdaten als CSV korrekt.
 - [ ] Donnerstag: test_microgc_status / test_microgc_run einmal ueber das Backend (Setup) fahren, sobald
-      die anderen Geraete echt sind. BakeOut weiterhin ungetestet (20 min).
+      die anderen Geraete echt sind. BakeOut muss laut Rafael nicht getestet werden.
 - [ ] Nach Neustart des microGC kontrollieren, ob die Adresse 169.254.1.1 gleich bleibt.
 
 ### Aufraeumen

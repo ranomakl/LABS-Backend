@@ -258,7 +258,7 @@ In config.yml stand faelschlich tdk_lambda_zplus.
 
 \### Offen
 
-\- Noch nicht am Geraet ausgeloest: BakeOut (20 min laut Labor). Pfad stammt aus dem Referenzcode; da loadMethod/run auf demselben Muster funktionieren, ist das Risiko gering. Ob das Geraet nach dem BakeOut ebenfalls auf ready geht, beim ersten BakeOut pruefen.
+\- BakeOut wurde nicht ausgeloest und muss laut Rafael (06.10.2026) auch nicht getestet werden. Pfad stammt aus dem Referenzcode, gleiches Muster wie loadMethod/run.
 \- Treiber im Backend-Verbund (Setup, Experiment test_microgc_run) noch nicht gegen das echte Geraet gefahren - bisher nur die HTTP-Ebene mit identischen Pfaden ueber tools/. Sobald die uebrigen Geraete in config.yml echt sind, test_microgc_status und test_microgc_run einmal ueber das Backend laufen lassen.
 \- Bleibt 169.254.1.1 nach Neustart des microGC stabil? Link-Local-Adressen koennen sich aendern. Beim naechsten Einschalten am Display kontrollieren; falls instabil, am Geraet eine feste Adresse vergeben und config.yml anpassen.
 
