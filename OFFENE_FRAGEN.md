@@ -244,10 +244,22 @@ In config.yml stand faelschlich tdk_lambda_zplus.
 
 \## Inficon Micro GC Fusion
 
-\- Welche IP-Adresse hat das Gerät? (Im Screenshot war 169.254.1.1 zu sehen — das ist eine Selbstvergabe-Adresse, was auf Direktverbindung ohne DHCP hindeutet. Im Institutsnetz vermutlich eine andere.)
-\- Wie ist das Peak-Tabellen-Schema im JSON eines echten Laufs aufgebaut? Ein Lauf ausgeben lassen und die Struktur mit der Annahme im Code vergleichen.
-\- Welche Methoden sind auf dem Gerät hinterlegt, und wie lauten ihre Namen? (Für test_microgc_run als Parameter.)
-\- Wie lange dauert ein BakeOut typischerweise? (Relevant für die Timeout-Einstellung.)
+\### ERLEDIGT, am Geraet geprueft (06.10.2026, Pi per LAN direkt am microGC)
+
+\- Netz: der microGC hat KEINEN DHCP-Server. Er zeigt am Display "automatic IP address" 169.254.1.1 (Link-Local/Selbstvergabe). Die in OFFENE_FRAGEN_teilsbeantwirtet.txt genannte 10.10.0.1 antwortet nicht (Ping/HTTP ohne Antwort). eth0 des Pi wartete auf DHCP und bekam nichts; Profil "Wired connection 1" im NetworkManager umgestellt auf ipv4.method link-local und ipv4.never-default yes (ohne sudo moeglich). Pi bekam 169.254.230.104, Ping 0,2 ms, HTTP 200. WLAN (ufz-m2m) bleibt parallel die Standardroute, SSH/Internet laufen weiter.
+\- Alle Lese-Endpunkte des Treibers antworten mit HTTP 200 und erwartetem JSON: Status `["public:sequence-not-loaded","public:standby"]`, /v1/lastRun `{"dataLocation":"/runData/<uuid>"}`, Laufdaten (~250 kB), /v1/methods/userMethods (18 Methoden). Wurzel `/` antwortet 200 (Verbindungstest des Treibers). `/v1/methods` ohne `userMethods` liefert nginx 500 - nicht benutzen.
+\- Peak-Tabellen-Schema: `detectors[<modul>:tcd].analysis.peaks[]` mit area/height/top/start/end/snr/tailing/baselinePoints, bei kalibrierten Peaks zusaetzlich label/concentration/normalizedConcentration, bei Gruppen inGroup/isGroup. Stimmt mit der Annahme in run_data_to_csv() ueberein - geprueft an testdata_microgc(1).fusion-data (25 benannte Peaks) und am letzten Lauf des Geraets vom 29.07.2026. Modul D hat nur unbenannte Peaks und faellt korrekt heraus. Weitere Felder im Lauf: methodName, runTimeStamp, frontInletTotalConcentration, annotations, softwareVersion.
+\- Treiberfehler behoben: dataLocation enthaelt bereits "/runData/", der Treiber stellte es nochmal voran (Geraet tolerierte das). Jetzt run_data_path().
+\- Methoden: microGC_Standard_Method_calibrated_0726 ist vorhanden. Daneben gibt es microGC_Standard_Method_calibrated_11_25 (neuer?) - mit dem Labor klaeren, welche gilt. Name bleibt Experimentparameter (test_microgc_run).
+\- BakeOut-Dauer 20 min laut Labor. Kein Timeout im Code noetig: _wait_until_ready() pollt den Status bis "ready", der 10-s-Timeout in config.yml gilt je Statusabfrage, nicht fuer den ganzen Vorgang.
+\- Lesewerkzeug tools/lese_microgc.py (nur GET auf Lesepfade, Steuerbefehle gesperrt).
+
+\### Offen
+
+\- Geraet meldet im Leerlauf system = "public:standby", der Treiber wartet nach BakeOut/Lauf aber auf "public:ready". Beim ersten echten Lauf (Donnerstag) pruefen, in welchen Zustand das Geraet zurueckkehrt. Kehrt es nach standby zurueck, READY_STATE im Treiber um standby erweitern, sonst haengt run_method()/start_bakeout() endlos.
+\- Noch nicht am Geraet ausgeloest: BakeOut, loadMethod, run (Treiberpfade stammen aus dem Referenzcode, s. Treiberkopf). Erst nach Freigabe des Labors, kostet Traegergas und Zeit.
+\- Bleibt 169.254.1.1 nach Neustart des microGC stabil? Link-Local-Adressen koennen sich aendern. Beim naechsten Einschalten am Display kontrollieren; falls instabil, am Geraet eine feste Adresse vergeben und config.yml anpassen.
+\- Welche Standardmethode gilt: ..._0726 oder ..._11_25?
 
 
 \## Relais / 3-2-Wegehaehne

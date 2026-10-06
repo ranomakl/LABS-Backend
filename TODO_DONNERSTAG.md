@@ -46,11 +46,18 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [ ] /boot/firmware/config.txt: gpio=17,27,22,5,6,13,19,26=op,dh (aendert den Pi, braucht Neustart -
       nur nach Freigabe).
 
-### microGC (optional)
-- [ ] config.yml: Adresse 10.10.0.1, Methode microGC_Standard_Method_calibrated_0726 als Parameter,
-      Timeout fuer BakeOut > 20 min.
-- [ ] Beispieldaten testdata_microgc.fusion-data mit der JSON->CSV-Annahme im Code vergleichen
-      (Datei liegt noch nicht im Repo - wo ist sie?).
+### microGC — LESEND VERBUNDEN (06.10.2026 am Geraet verifiziert)
+- [x] Geraet hat keinen DHCP-Server, sondern Link-Local 169.254.1.1 (nicht 10.10.0.1). eth0-Profil
+      "Wired connection 1" auf link-local + never-default gestellt; config.yml: address 169.254.1.1.
+- [x] Methode bleibt Parameter von test_microgc_run (microGC_Standard_Method_calibrated_0726 ist auf dem
+      Geraet; daneben ..._11_25 - welche gilt?). Kein BakeOut-Timeout noetig, Treiber pollt bis "ready".
+- [x] Beispieldaten testdata_microgc(1).fusion-data UND letzter Lauf vom Geraet gegen run_data_to_csv()
+      geprueft: Struktur stimmt, CSV korrekt. Laufdaten-URL im Treiber korrigiert (run_data_path()).
+- [x] Lesewerkzeug tools/lese_microgc.py (Status, Methodenliste, letzter Lauf als CSV).
+- [ ] Donnerstag: ersten echten Lauf ausloesen (nach Freigabe) und pruefen, ob das Geraet danach auf
+      "public:ready" oder "public:standby" geht - im Leerlauf meldet es standby, der Treiber wartet
+      auf ready. Ggf. READY_STATE erweitern.
+- [ ] Nach Neustart des microGC kontrollieren, ob die Adresse 169.254.1.1 gleich bleibt.
 
 ### Aufraeumen
 - [ ] Dateien von origin/main (ANFORDERUNGEN.txt, OFFENE_FRAGEN_teilsbeantwirtet.txt, download.zip mit
@@ -63,7 +70,7 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [x] Netzteil: antwortet, sobald der graue Kasten eingeschaltet ist. Kein RS485-Adapter, USB direkt.
 - [x] Pumpe: laeuft an Adapter BG02Q0XU, keine Einstellung am Geraet noetig.
 - [ ] Relais: 12-V-Versorgung, Platine an die vorgeschlagenen GPIO-Pins.
-- [ ] microGC: LAN-Kabel Pi <-> microGC.
+- [x] microGC: LAN-Kabel Pi <-> microGC steckt, Geraet antwortet (06.10.2026).
 
 ## Reihenfolge am Donnerstag
 
@@ -71,4 +78,4 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 2. Netzteil: zuerst `.venv/bin/python tools/lese_netzteil.py` (listet Ports), dann mit `--port ...`
 3. Pumpe: tools/scan_pumpe.py --port <BG02Q0XU> (Kontrolle, ~1 min)
 4. Relais
-5. microGC
+5. microGC: `.venv/bin/python tools/lese_microgc.py` (Kontrolle, nur lesend), dann erster Lauf nach Freigabe

@@ -45,3 +45,4 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 `docs/protokoll_pumpe.md` nach, bevor Hardware angefasst wird. Schlaegt das fehl, stimmt etwas am
 Treiber nicht und der Scan bricht ab.
 | `lese_netzteil.py` | Joy-IT DPM86xx Spannungsquelle: sendet ausschliesslich Lesebefehle (`:01rNN=0,,`, Sperre `_guarded_write()` im Skript) und zeigt Messwerte, Sollwerte und Ausgangszustand. Ohne `--port` listet es die seriellen Anschluesse auf, `--dry-run` zeigt nur die Frames. |
+| `lese_microgc.py` | Inficon Micro GC Fusion ueber LAN: sendet ausschliesslich HTTP-GET auf Lese-Endpunkte (Status, Methodenliste, letzter Lauf; Whitelist in `_guarded_get()`, Pfade mit `!cmd.` sind gesperrt - kein BakeOut, kein Methodenstart). Zeigt die Peak-Tabelle des letzten Laufs als CSV, `--csv`/`--json` schreiben sie in Dateien. Standardadresse 169.254.1.1. |

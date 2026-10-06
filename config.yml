@@ -104,7 +104,12 @@ devices:
 
   microgc:
     driver: inficon_microgc_fusion
-    address: 127.0.0.1:12354    # echtes Geraet: feste IP ohne Port (Port 80 impliziert), z.B. 10.10.0.1
+    # Echtes Geraet, am 06.10.2026 geprueft: Pi per LAN direkt am microGC. Das Geraet hat KEINEN
+    # DHCP-Server, sondern eine Selbstvergabe-Adresse (Link-Local) 169.254.1.1; eth0 des Pi steht
+    # deshalb im NetworkManager-Profil "Wired connection 1" auf ipv4.method link-local und
+    # ipv4.never-default yes (Standardroute bleibt beim WLAN). Kein Port (80 impliziert).
+    # Dummy-Umgebung (LABS-DeviceDummys): 127.0.0.1:12354
+    address: 169.254.1.1
     connect_timeout: 5.0        # TCP-Verbindungsaufbau-Timeout in s
     command_parameters:
       timeout: 10.0             # Antwort-Timeout pro Anfrage in s (generischer Mechanismus, s. Treiber)

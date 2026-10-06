@@ -42,19 +42,27 @@
 #                         /v1/methods/userMethods/{methodName} (Fusion.control.loadMethod())
 #   - Methode ausfuehren: GET /v1/scm/sessions/system-manager!cmd.run?runWhenReady=true
 #                         (Fusion.control.run(), die parameterlose Variante - NICHT runWithName())
-#   - Letzter Lauf:       GET /v1/lastRun -> {'dataLocation': ...}, danach
-#                         GET /runData/{dataLocation} -> vollstaendiges Laufdatenfile
-#                         (Fusion.data.lastRun(), zwei Anfragen nacheinander)
+#   - Letzter Lauf:       GET /v1/lastRun -> {'dataLocation': '/runData/<uuid>'}, danach
+#                         GET {dataLocation} -> vollstaendiges Laufdatenfile
+#                         (Fusion.data.lastRun(), zwei Anfragen nacheinander). dataLocation ist
+#                         bereits ein vollstaendiger Pfad inkl. "/runData/" - am Geraet geprueft
+#                         06.10.2026; bis dahin wurde hier faelschlich nochmal "/runData/"
+#                         vorangestellt, was das Geraet zwar tolerierte, aber nicht korrekt war.
 # Diese sechs Endpunkte/Pfade sind damit VERIFIZIERT gegen eine tatsaechliche, oeffentlich
 # einsehbare Referenzimplementierung - NICHT gegen docs/microgc_api.md selbst (das nur die
 # Python-Methodennamen zeigt) und NICHT gegen ein offizielles INFICON-API-Dokument (liegt hier
 # nicht vor). Das "!" im Pfad ist Teil des echten Pfads (Sling-Servlet-Aufrufkonvention des
 # Geraets), kein Tippfehler, und wird nicht URL-kodiert (in Pfadsegmenten laut RFC 3986 zulaessig).
 #
-# ANNAHME (nicht aus Doku oder Referenzcode ableitbar, s.u. run_data_to_csv): die JSON-Struktur
-# der Laufdaten (data['detectors'][name]['analysis']['peaks'][...]) ist aus
-# Fusion.data.compoundResults() im selben Referenzquellcode uebernommen, aber dort nur informell,
-# nicht durch ein Schema abgesichert.
+# JSON-Struktur der Laufdaten (data['detectors'][name]['analysis']['peaks'][...]): urspruenglich
+# aus Fusion.data.compoundResults() im Referenzquellcode uebernommen; am 06.10.2026 gegen die
+# Beispieldatei testdata_microgc(1).fusion-data UND gegen den letzten Lauf am echten Geraet geprueft -
+# stimmt (s. run_data_to_csv, tools/lese_microgc.py).
+#
+# AM GERAET GEPRUEFT (06.10.2026, Pi per LAN direkt am microGC, Geraet unter 169.254.1.1): alle
+# oben genannten Lese-Endpunkte (STATUS, /v1/lastRun, Laufdaten, /v1/methods/userMethods) antworten
+# mit HTTP 200 und dem erwarteten JSON. Nicht ausgeloest wurden BakeOut, loadMethod und run.
+# Im Ruhezustand meldete das Geraet system = "public:standby" (nicht "public:ready").
 #
 # LANG LAUFENDE VORGAENGE (BakeOut, Methodenlauf - Minuten bis Stunden): werden NICHT durch
 # blockierendes Warten abgebildet, sondern wie beim Netzteil (tdk_lambda_zplus.py,
@@ -92,6 +100,10 @@ PATH_LAST_RUN_LOCATION = "/v1/lastRun"
 PATH_RUN_DATA_PREFIX = "/runData/"
 
 READY_STATE = "public:ready"
+# OFFEN (s. OFFENE_FRAGEN.md): das Geraet stand am 06.10.2026 im Leerlauf auf "public:standby".
+# Ob es nach BakeOut/Methodenlauf nach "public:ready" oder nach "public:standby" zurueckkehrt, ist
+# erst mit einem echten Lauf zu klaeren - kehrt es nach standby zurueck, wartet _wait_until_ready()
+# endlos und READY_STATE muss um standby erweitert werden.
 
 
 def _extract_status(data) -> dict:
@@ -102,6 +114,15 @@ def _extract_status(data) -> dict:
 
 def _extract_last_run_location(data) -> dict:
     return {"last_run_location": data["dataLocation"]}
+
+
+def run_data_path(location: str) -> str:
+    """Pfad zum Laufdatenfile aus dem 'dataLocation'-Wert von /v1/lastRun. Das Geraet liefert
+    ihn bereits vollstaendig ("/runData/<uuid>", am Geraet geprueft 06.10.2026); nur eine nackte
+    UUID wird noch mit dem Prefix versehen."""
+    if location.startswith(PATH_RUN_DATA_PREFIX):
+        return PATH_RUN_DATA_PREFIX + quote(location[len(PATH_RUN_DATA_PREFIX):], safe="")
+    return PATH_RUN_DATA_PREFIX + quote(location.lstrip("/"), safe="")
 
 
 class HTTPJSONParser(BaseParser):
@@ -255,7 +276,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         if path == PATH_RUN:
             return f"{path}?runWhenReady=true"
         if path == PATH_RUN_DATA_PREFIX:
-            return f"{path}{quote(str(values['location']), safe='')}"
+            return run_data_path(str(values["location"]))
         return path
 
     def initial_commands(self):

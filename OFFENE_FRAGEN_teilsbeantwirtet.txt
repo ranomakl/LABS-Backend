@@ -53,6 +53,9 @@ Antworten aus dem Labor (eingetragen 06.10.2026)
 --------------------------
 [x] Eigenes Netz oder Institutsnetz?
     -> Muss über LAN angeschlossen werden (Direktverbindung, 10.10.0.1).
+    -> KORREKTUR 06.10.2026: Gerät hat keinen DHCP-Server, Adresse am Display
+       ist 169.254.1.1 (Link-Local). 10.10.0.1 antwortet nicht. Pi-eth0 auf
+       link-local gestellt, Verbindung steht. Siehe OFFENE_FRAGEN.md.
 [x] Hinterlegte Methoden?
     -> Aktuelle Standardmethode: microGC_Standard_Method_calibrated_0726
     -> Etwa jedes halbe Jahr ändert sich nur die Endung "0726" auf den
@@ -63,8 +66,11 @@ Antworten aus dem Labor (eingetragen 06.10.2026)
     -> 20 Minuten. Den Timeout im Treiber entsprechend wählen.
 [x] Rohdaten eines echten Laufs?
     -> Sind hochgeladen als Beispieldaten: "testdata_microgc.fusion-data"
-[ ] Das Peak-Tabellen-Schema der Beispieldaten mit der Annahme im Code
+[x] Das Peak-Tabellen-Schema der Beispieldaten mit der Annahme im Code
     vergleichen.
+    -> 06.10.2026: stimmt überein, geprüft an der Beispieldatei und am
+       letzten Lauf des Geräts. JSON -> CSV ist in run_data_to_csv()
+       vorhanden (Treiber) und in tools/lese_microgc.py nutzbar.
 
 
 5. Ventile und Relais
