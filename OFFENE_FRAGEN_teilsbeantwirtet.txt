@@ -1,0 +1,127 @@
+LABS - Gerätefragen und Antworten
+=================================
+Quellen: LABS_Fragen_Geraete.pdf (Stand 12.09.2026),
+Doc "LABS - Betriebswissen" (Stand 05.10.2026),
+Antworten aus dem Labor (eingetragen 06.10.2026)
+
+[x] = beantwortet
+[~] = teilweise beantwortet
+[ ] = noch offen
+
+
+1. Pumpe Longer WT600-2J
+------------------------
+[x] RS485-Adresse und Baudrate geändert?
+    -> Werkseinstellung (Adresse 1, 1200 Baud, 8E1).
+[x] Welcher Schlauch, wie viel mL pro Umdrehung?
+    -> Standardmäßig Schlauch 3,2 x 6,4 mm (Innen- x Außendurchmesser).
+    -> Faktor 0,8883 mL pro Umdrehung.
+       Flussrate [mL/min] = Drehzahl [rpm] x 0,8883
+    -> Bereich 60 bis 600 rpm, also 53,3 bis 533 mL/min.
+[ ] Muss die Pumpe am Bedienfeld von lokal auf Fernsteuerung
+    umgestellt werden?
+    Grund: Die Pumpe hat auf über 480 Testframes kein Byte geantwortet.
+    Wurde im Labor nicht gefragt. Selbst am Gerät prüfen.
+[ ] Lesescan zur Bestätigung von Adresse und Baudrate steht aus.
+[ ] Ack-Frame beim Schreiben ist geraten, die Blogquelle zeigt ihn nicht.
+
+
+2. Zweite Pumpe Longer BT100-1F
+-------------------------------
+[x] Wird sie für die Anlage gebraucht?
+    -> Dosierpumpe für Stufe II. Jetzt noch kein Treiber nötig.
+[ ] Später: Modellbezeichnung auf dem Typenschild prüfen. Davon hängt ab,
+    ob das Longer-Binärprotokoll passt oder ob sie Modbus RTU spricht.
+
+
+3. Endress+Hauser Liquiline CM44x
+---------------------------------
+[x] Ist eine RS485-Erweiterungskarte verbaut?
+    -> Ja. Im Messstand I geht zusätzlich ein USB-Anschluss raus.
+[~] Wurde Modbus schon genutzt?
+    -> Unsicher. Wurde vermutlich einmal kurz getestet, die Kommunikation
+       hat funktioniert.
+[x] Sensoren und Kanäle (laut Betriebswissen)
+    -> Zwei pH-Glaselektroden auf Kanal 1 und 2.
+    -> Busadresse 247, 19200 Baud, Modbus ASCII.
+[ ] Die Rückfrage beim Hersteller läuft, bis dahin ist die Anbindung pausiert.
+[ ] Danach den Anschlusspfad ermitteln und in die config.yml eintragen.
+    Klären: Läuft die Anbindung über die RS485-Karte oder über den USB-Ausgang?
+
+
+4. Inficon micro GC Fusion
+--------------------------
+[x] Eigenes Netz oder Institutsnetz?
+    -> Muss über LAN angeschlossen werden (Direktverbindung, 10.10.0.1).
+[x] Hinterlegte Methoden?
+    -> Aktuelle Standardmethode: microGC_Standard_Method_calibrated_0726
+    -> Etwa jedes halbe Jahr ändert sich nur die Endung "0726" auf den
+       Monat und das Jahr der neuen Kalibrierung (MMJJ).
+    -> Folgerung für den Treiber: Den Methodennamen nicht fest im Code
+       hinterlegen, sondern über die config.yml oder als Parameter setzen.
+[x] Dauer eines BakeOut?
+    -> 20 Minuten. Den Timeout im Treiber entsprechend wählen.
+[x] Rohdaten eines echten Laufs?
+    -> Sind hochgeladen als Beispieldaten: "testdata_microgc.fusion-data"
+[ ] Das Peak-Tabellen-Schema der Beispieldaten mit der Annahme im Code
+    vergleichen.
+
+
+5. Ventile und Relais
+---------------------
+[~] Welches Ventil hängt an welchem Kanal?
+    -> Noch nicht festgelegt. Wir dürfen eine Belegung vorschlagen, sie
+       kann später angepasst werden.
+    -> Vorschlag GPIO: 17, 27, 22, 5, 6, 13, 19, 26
+[ ] Belegungsliste (Ventil -> Relaiskanal -> GPIO) schreiben und dem
+    Labor geben.
+[x] Sicherer Zustand bei Start und Ende?
+    -> Aus, für alle Ventile.
+[x] Eigene 12-V-Versorgung?
+    -> Ja, ist vorhanden.
+[ ] Wie viele der 16 Relaiskanäle werden tatsächlich gebraucht?
+[ ] GPIO-Startzustand beim Booten festlegen, damit beim Hochfahren kein
+    Ventil kurz schaltet:
+    /boot/firmware/config.txt -> gpio=17,27,22,5,6,13,19,26=op,dh
+
+
+6. Spannungsquellen
+-------------------
+[x] Gibt es das Programm des Kollegen für die Joy-it-Netzteile?
+    -> Ja, online abgelegt unter Documentation / Matthias...
+[x] Welches Gerät wird eingesetzt?
+    -> Erst einmal Joy-it. Ein späterer Wechsel zum Keithley soll möglich
+       bleiben.
+    -> Folgerung für den Treiber: Gemeinsame Schnittstelle für
+       Spannungsquellen (Spannung/Strom setzen, messen, Ausgang an/aus),
+       darunter je ein Treiber für Joy-it und Keithley.
+[ ] Treiber für Joy-it bauen, auf Basis von Matthias' Code.
+
+
+7. Bronkhorst EL-FLOW
+---------------------
+[x] Welches Gas?
+    -> N2, 50 mL/min. Knoten 03, 38400 Baud, 8N1.
+[ ] config.yml: max_flow_ml_min steht als Platzhalter auf 100.0, das Gerät
+    meldet 50 mL/min. Ohne Korrektur ist jeder Sollwert um den Faktor 2
+    falsch. -> Prüfen, ob das schon korrigiert ist.
+
+
+8. Allgemein
+------------
+[x] Darf der Pi dauerhaft ins Institutsnetz?
+    -> Ja.
+[~] Feste IP-Adresse?
+    -> Dazu gab es eine Kommunikation (als Bild). Inhalt hier noch nachtragen.
+
+
+9. Aus dem Bau der Demo, noch nicht gefragt
+-------------------------------------------
+[ ] Stimmen die Ventilbelegungen in der Konfiguration noch?
+    Reagenzventil 1-7: MeOH, MeOH+NH4Cl, Nitrobenzol, DMSO, SE,
+    Referenz, Acetonitril.
+    Kreislaufventil 1-4: Reservoir, Fraktionssammler, Abfall, NMR.
+[ ] Woher kommen die festen Volumina in den bestehenden Abläufen
+    (10, 20, 25, 55 und 320 mL)? Noch richtig oder aus älterem Aufbau?
+[ ] Welche Größen sollen pro Versuch einstellbar sein, welche fest?
+    (Was gehört in die Excel-Tabelle, was bleibt Anlagenkonfiguration?)
