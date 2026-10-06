@@ -30,7 +30,7 @@ import serial
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HIER)                    # Nachbarskripte (scan_pumpe)
 sys.path.insert(0, os.path.dirname(_HIER))   # Repo-Wurzel, fuer backend.*
-from scan_pumpe import (CMD_RID, ADDRESSES, BAUDRATES, PARITIES,      # noqa: E402
+from scan_pumpe import (CMD_PROBE, ADDRESSES, BAUDRATES, PARITIES,      # noqa: E402
                         _guarded_write, _read_frames, _interpret, selftest)
 
 
@@ -75,7 +75,7 @@ def scan_port(port):
             with ser:
                 time.sleep(ANLAUF)
                 for address in ADDRESSES:
-                    frame = _guarded_write(ser, address, CMD_RID)
+                    frame = _guarded_write(ser, address, CMD_PROBE)
                     frames, rest = _read_frames(ser, window, echo=frame)
                     for reply in frames:
                         ok, text = _interpret(reply)

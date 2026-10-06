@@ -23,7 +23,7 @@ import os
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HIER)                    # Nachbarskripte (scan_pumpe)
 sys.path.insert(0, os.path.dirname(_HIER))   # Repo-Wurzel, fuer backend.*
-from scan_pumpe import PORT, CMD_RID, _guarded_write
+from scan_pumpe import PORT, CMD_PROBE, _guarded_write
 
 TX_PORT = PORT   # Adapter an der Pumpe
 RX_PORT = None   # Mitlauscher, per --rx zu setzen
@@ -54,7 +54,7 @@ def _durchgang(sender, hoerer, name_sender, name_hoerer):
     hoerer.reset_input_buffer()
     empfangen = bytearray()
     for address in range(1, 31):
-        _guarded_write(sender, address, CMD_RID)
+        _guarded_write(sender, address, CMD_PROBE)
         ende = time.monotonic() + 0.25
         while time.monotonic() < ende:
             brocken = hoerer.read(64)

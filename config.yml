@@ -82,11 +82,15 @@ devices:
       baudrate: 38400          # am Geraet verifiziert (bei 187500 antwortet es nicht)
   dosing_pump:
     driver: longer_wt600
-    address: 127.0.0.1:12352
-    pump_address: 1           # WT600-Protokolladresse (1-30, ab Werk 1) - nicht die obige TCP-Adresse
-    tubing: "LS16"
-    tubing_table:              # mL pro Umdrehung je Schlauch - Platzhalter, per Kalibrierung ermitteln
-      LS16: 0.5
+    # Longer WT600-2J, AM GERAET VERIFIZIERT 06.10.2026: Werkseinstellungen 1200 Baud 8E1, Adresse 1.
+    # Start/Stopp/Drehzahl/Lesen ueber den Treiber geprueft. Adapter BG02Q0XU (FTDI, by-id ist eindeutig).
+    # Die zweite WT600-2J haengt an Adapter BG01W2OJ, antwortet dort aber nur sporadisch (GND pruefen).
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q0XU-if00-port0
+    pump_address: 1           # WT600-Protokolladresse (1-30, ab Werk 1), am Geraet bestaetigt
+    tubing: "3.2x6.4"
+    tubing_table:              # mL pro Umdrehung je Schlauch (Innen- x Aussendurchmesser in mm)
+      3.2x6.4: 0.8883          # Laborangabe: Standardschlauch, 60-600 rpm = 53,3-533 mL/min
+    # Alter Dummy-Eintrag (LABS-DeviceDummys): address: 127.0.0.1:12352
 
   liquiline:
     driver: endress_hauser_liquiline

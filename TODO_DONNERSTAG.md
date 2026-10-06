@@ -26,10 +26,12 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [ ] Keithley 2230-30-1 Treiber auf derselben Schnittstelle (spaeter, Vorlage von Matthias liegt vor).
 - [ ] Optional: externer Sensor ueber Spannungseingang (Anforderung, noch nicht beruecksichtigt).
 
-### Pumpe Longer WT600-2J
-- [ ] config.yml: echten Adapter BG01XVQG statt 127.0.0.1 eintragen.
-- [ ] Schlauch 3,2 x 6,4 mm mit 0,8883 mL/Umdrehung eintragen (steht noch Platzhalter LS16: 0.5;
-      ANFORDERUNGEN.txt hakt das faelschlich als erledigt ab).
+### Pumpe Longer WT600-2J — LAEUFT (06.10.2026 am Geraet verifiziert)
+- [x] config.yml: Adapter BG02Q0XU, Adresse 1, 1200/8E1, Schlauch 3,2x6,4 mm = 0,8883 mL/U.
+- [x] Ursache fuer "keine Antwort" seit August: Pumpe beantwortet RID nicht. Scanner auf RJ umgestellt.
+- [x] Treiber: Drehzahl 0 wird von der Pumpe ignoriert -> MIN_RPM 60, Stopp ueber Start/Stop-Bit.
+- [ ] Drehrichtung klaeren: welche Richtung foerdert zur Zelle? (clockwise=True -> State2 = 1)
+- [ ] Zweite Pumpe (BG01W2OJ) antwortet nur sporadisch - GND am Adapter pruefen. Nicht fuer Stufe I.
 
 ### MFC Bronkhorst
 - [ ] Counter zuruecksetzen ergaenzen (gefordert, bisher nur read_counter).
@@ -59,8 +61,7 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 ## Labor (Verkabelung, vor Donnerstag)
 
 - [x] Netzteil: antwortet, sobald der graue Kasten eingeschaltet ist. Kein RS485-Adapter, USB direkt.
-- [ ] Pumpe: beide Pumpen-Adapter (BG01XVQG, BG01X3TF) einstecken; am Bedienfeld pruefen, ob
-      Fernsteuerung eingeschaltet werden muss; zweiten Adapter parallel fuer tools/mitlauscher.py.
+- [x] Pumpe: laeuft an Adapter BG02Q0XU, keine Einstellung am Geraet noetig.
 - [ ] Relais: 12-V-Versorgung, Platine an die vorgeschlagenen GPIO-Pins.
 - [ ] microGC: LAN-Kabel Pi <-> microGC.
 
@@ -68,6 +69,6 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 
 1. MFC (Kontrolle, laeuft bereits)
 2. Netzteil: zuerst `.venv/bin/python tools/lese_netzteil.py` (listet Ports), dann mit `--port ...`
-3. Pumpe: tools/mitlauscher.py, dann tools/schnelltest.py
+3. Pumpe: tools/scan_pumpe.py --port <BG02Q0XU> (Kontrolle, ~1 min)
 4. Relais
 5. microGC

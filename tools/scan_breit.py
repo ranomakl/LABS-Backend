@@ -4,7 +4,7 @@ import os
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HIER)                    # Nachbarskripte (scan_pumpe)
 sys.path.insert(0, os.path.dirname(_HIER))   # Repo-Wurzel, fuer backend.*
-from scan_pumpe import PORT, CMD_RID, _guarded_write, _read_frames, _interpret
+from scan_pumpe import PORT, CMD_PROBE, _guarded_write, _read_frames, _interpret
 
 treffer = 0
 for baudrate in (2400, 4800, 38400, 57600, 115200):
@@ -18,7 +18,7 @@ for baudrate in (2400, 4800, 38400, 57600, 115200):
         with ser:
             time.sleep(0.1)
             for address in range(1, 31):
-                frame = _guarded_write(ser, address, CMD_RID)
+                frame = _guarded_write(ser, address, CMD_PROBE)
                 frames, rest = _read_frames(ser, 0.5 if baudrate < 9600 else 0.3, echo=frame)
                 for reply in frames:
                     ok, text = _interpret(reply)

@@ -11,11 +11,11 @@ Aufruf immer aus der Repo-Wurzel, z.B.:
 
 ## Sicherheit
 
-Alle Pumpenskripte sind **reine Lesewerkzeuge**. Gesendet wird ausschliesslich die PDU `RID`
-("Read pump address"). Durchgesetzt wird das von `_guarded_write()` in `scan_pumpe.py` - dem
+Alle Pumpenskripte sind **reine Lesewerkzeuge**. Gesendet wird ausschliesslich die PDU `RJ`
+("Read running parameter"; bis 06.10.2026 `RID`, das die WT600-2J aber NICHT beantwortet). Durchgesetzt wird das von `_guarded_write()` in `scan_pumpe.py` - dem
 einzigen Pfad, ueber den geschrieben wird - mit drei Sperren, die vor jedem `write()` greifen:
 
-1. PDU-Whitelist: nur `b"RID"`
+1. PDU-Whitelist: nur `b"RJ"` und `b"RID"`
 2. Adressbereich 1-30, Broadcast 31 gesperrt
 3. Byte-Muster-Kontrolle am fertigen Frame auf `WJ` und `WID`
 

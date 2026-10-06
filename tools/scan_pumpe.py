@@ -34,11 +34,15 @@ PARITIES = [serial.PARITY_EVEN, serial.PARITY_NONE]
 ADDRESSES = range(1, 31)  # 1-30; 31 = Broadcast ist bewusst NICHT dabei (siehe _guarded_write)
 
 CMD_RID = b"RID"  # 52 49 44 - "Read pump address", reiner Lesebefehl
+CMD_RJ = b"RJ"    # 52 4A - "Read running parameter", reiner Lesebefehl
+# AM GERAET 06.10.2026: Die WT600-2J beantwortet RID NICHT (deshalb seit August "keine Antwort"),
+# RJ dagegen immer (Antwort E9 adr 06 52 4A speed(2) state1 state2 fcs). Der Scan sendet deshalb RJ.
+CMD_PROBE = CMD_RJ
 
 
 # --------------------------------------------------------------------------- Sperre
 
-ALLOWED_PDUS = frozenset({CMD_RID})
+ALLOWED_PDUS = frozenset({CMD_RID, CMD_RJ})
 FORBIDDEN_MARKERS = (b"WJ", b"WID")  # Start/Stop-Drehzahlbefehl bzw. Adresse-Ueberschreiben
 
 
@@ -59,8 +63,8 @@ def _guarded_write(ser, address: int, pdu: bytes) -> bytes:
     for marker in FORBIDDEN_MARKERS:
         if marker in frame:
             raise SafetyViolation(f"Schreibbefehl {marker!r} im Frame {frame.hex(' ').upper()}.")
-    if frame[3:3 + len(pdu)] != CMD_RID:
-        raise SafetyViolation(f"Frame enthaelt nicht RID: {frame.hex(' ').upper()}.")
+    if frame[3:3 + len(pdu)] not in ALLOWED_PDUS:
+        raise SafetyViolation(f"Frame enthaelt keinen erlaubten Lesebefehl: {frame.hex(' ').upper()}.")
 
     ser.reset_input_buffer()
     ser.write(frame)
@@ -102,9 +106,13 @@ def _interpret(frame: bytes):
     expected = _xor(frame[1:-1])
     if fcs != expected:
         return False, f"Pruefsumme falsch (ist {fcs:02X}, erwartet {expected:02X})"
-    if pdu[:3] != CMD_RID:
-        return False, f"kein RID-Echo, PDU = {pdu!r}"
-    return True, f"RID bestaetigt, Geraet meldet Adresse {address}"
+    if pdu[:2] == CMD_RJ and length >= 6:
+        speed = (pdu[2] << 8) | pdu[3]
+        return True, (f"RJ bestaetigt, Adresse {address}, Drehzahl {speed} rpm, "
+                      f"{'laeuft' if pdu[4] & 1 else 'steht'}, Richtung {pdu[5] & 1}")
+    if pdu[:3] == CMD_RID:
+        return True, f"RID bestaetigt, Geraet meldet Adresse {address}"
+    return False, f"kein RJ/RID-Echo, PDU = {pdu!r}"
 
 
 # --------------------------------------------------------------------------- Selbsttest
@@ -125,7 +133,7 @@ def selftest():
         assert got == expected, f"Selbsttest fehlgeschlagen: {got} != {expected}"
     print(f"Selbsttest: {len(known)}/{len(known)} Referenzframes aus docs/protokoll_pumpe.md "
           f"stimmen byte-genau.")
-    print(f"RID-Frame an Adresse 1: {_build_frame(1, CMD_RID).hex(' ').upper()}")
+    print(f"RJ-Frame an Adresse 1: {_build_frame(1, CMD_PROBE).hex(' ').upper()}")
 
 
 # --------------------------------------------------------------------------- Scan
@@ -149,7 +157,7 @@ def scan():
             with ser:
                 time.sleep(0.1)  # Adapter/Leitung beruhigen lassen
                 for address in ADDRESSES:
-                    frame = _guarded_write(ser, address, CMD_RID)
+                    frame = _guarded_write(ser, address, CMD_PROBE)
                     frames, rest = _read_frames(ser, window, echo=frame)
                     for reply in frames:
                         ok, text = _interpret(reply)
@@ -189,12 +197,14 @@ def scan():
 
 if __name__ == "__main__":
     selftest()
+    if "--port" in sys.argv:  # README: --port <pfad> waehlt die Schnittstelle
+        PORT = sys.argv[sys.argv.index("--port") + 1]
     if "--dry-run" in sys.argv:
         print("\n--dry-run: Es wurde nichts gesendet.")
         print("RID-Frames, die der Scan senden wuerde:")
         for address in ADDRESSES:
-            print(f"  Adresse {address:>2}: {_build_frame(address, CMD_RID).hex(' ').upper()}")
+            print(f"  Adresse {address:>2}: {_build_frame(address, CMD_PROBE).hex(' ').upper()}")
         sys.exit(0)
     print(f"\nPort: {PORT}")
-    print(f"Gesendet wird ausschliesslich RID (Lesebefehl). Kein WJ, kein WID, kein Start.\n")
+    print(f"Gesendet wird ausschliesslich RJ (Lesebefehl). Kein WJ, kein WID, kein Start.\n")
     scan()

@@ -39,7 +39,32 @@ beschriebenen Sicherheitsproblems.
 
 
 
-\## Longer WT600-2J — Adress-/Baudratensuche OFFEN, Geraet antwortet nicht
+\## Longer WT600-2J — ERLEDIGT 06.10.2026, am Geraet geprueft
+
+Aufloesung: Die Pumpe beantwortet den Lesebefehl RID ("Read pump address") NICHT. Alle Scans seit
+August haben ausschliesslich RID gesendet und deshalb nie eine Antwort gesehen. Verkabelung,
+Adapter und Werkseinstellungen waren die ganze Zeit in Ordnung.
+
+\- Bestaetigt: 1200 Baud, 8E1, Adresse 1 (Werkseinstellung). Adapter BG02Q0XU (FTDI).
+\- WJ (Start/Stop/Drehzahl) wird mit `E9 01 02 57 4A 1E` bestaetigt (das "geratene" Ack-Frame ist
+  damit real: Adresse + PDU "WJ" + XOR). RJ antwortet mit `E9 01 06 52 4A <speed:2> <state1> <state2> <fcs>`,
+  genau wie der Treiber annimmt.
+\- WJ-Frames mit Drehzahl 0 ignoriert die Pumpe VOLLSTAENDIG (keine Antwort). Bereich 60-600 rpm.
+  Treiber angepasst: Drehzahl nie unter 60, Stoppen nur ueber das Start/Stop-Bit (MIN_RPM).
+\- Treiber backend/drivers/longer_wt600.py am Geraet verifiziert: Init (Stopp), read_speed,
+  set_speed(100) + start_pumping (Kopf dreht, RJ meldet laeuft/100 rpm), stop_pumping. Mit
+  tubing 3,2x6,4 mm / 0,8883 mL/U meldet er flow_ml_min = 88,83 bei 100 rpm.
+\- tools/scan_pumpe.py und alle abgeleiteten Werkzeuge senden jetzt RJ statt RID; der Scan findet
+  die Pumpe sofort (1200/E, Adresse 1). `--port <pfad>` funktioniert jetzt wirklich.
+\- Zweite WT600-2J (Adapter BG01W2OJ): hat bei 1200/E Adresse 1 EINMAL auf WJ geantwortet und den
+  Kopf gedreht, danach keine Antworten mehr -> Befehle kommen an, Antworten gehen verloren.
+  Verdacht GND nicht angeklemmt. Fuer Stufe I nicht gebraucht.
+\- Offen: Drehrichtung. Treiber: clockwise=True -> State2 = 1. Welche Richtung foerdert in der Anlage
+  "vorwaerts"? Am Kopf beobachten und ggf. in continuous_flow() das Vorzeichen anpassen.
+
+\### Alte Befunde (ueberholt, Ursache s.o.)
+
+\## Longer WT600-2J — Adress-/Baudratensuche (Stand bis 04.09.2026, ueberholt)
 
 Stand 31.08.2026. Ziel war, Pumpenadresse und Baudrate per RID ("Read pump address") zu
 ermitteln, weil kein Display zugaenglich ist. Werkzeug: tools/scan_pumpe.py (reines Lesewerkzeug,

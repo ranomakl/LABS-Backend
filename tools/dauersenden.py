@@ -6,7 +6,7 @@ import os
 _HIER = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HIER)                    # Nachbarskripte (scan_pumpe)
 sys.path.insert(0, os.path.dirname(_HIER))   # Repo-Wurzel, fuer backend.*
-from scan_pumpe import PORT, CMD_RID, _guarded_write
+from scan_pumpe import PORT, CMD_PROBE, _guarded_write
 
 print("25 Sekunden Dauersenden auf 1200 Baud, gerade Paritaet, an Adresse 1.")
 print("Schau auf die LEDs am Adapter:")
@@ -19,7 +19,7 @@ with serial.Serial(PORT, baudrate=1200, bytesize=8, parity="E", stopbits=1, time
     ende = time.monotonic() + 25
     n = 0
     while time.monotonic() < ende:
-        _guarded_write(ser, 1, CMD_RID)
+        _guarded_write(ser, 1, CMD_PROBE)
         n += 1
         time.sleep(0.2)
         raw = ser.read(256)

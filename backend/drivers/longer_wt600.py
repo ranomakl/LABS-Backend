@@ -65,6 +65,10 @@ from .pump_base import BaseDevice, SinglechannelBaseDevice, CommandParameterFact
 
 FLAG = 0xE9
 MAX_RPM = 600  # Herstellerangabe im Blogpost: "a maximum speed of 600 rpm"
+MIN_RPM = 60   # Laborangabe: Bereich 60-600 rpm. AM GERAET VERIFIZIERT 06.10.2026: WJ-Frames mit
+               # Drehzahl 0 werden von der Pumpe KOMPLETT IGNORIERT (keine Antwort -> Timeout), mit
+               # Drehzahl >= 60 bestaetigt sie jeden Frame. Stoppen laeuft ueber das Start/Stop-Bit in
+               # State1, nicht ueber die Drehzahl - deshalb wird die Drehzahl hier nie unter MIN_RPM gesetzt.
 
 CMD_SET = "WJ"   # 57 4A - "Set running parameter" (Drehzahl/Start/Stop/Richtung in einem Frame)
 CMD_READ = "RJ"  # 52 4A - "Read running parameter"
@@ -93,7 +97,7 @@ def _state2(clockwise: bool) -> int:
 
 
 def _clamp_rpm(rpm) -> int:
-    return max(0, min(MAX_RPM, int(round(float(rpm)))))
+    return max(MIN_RPM, min(MAX_RPM, int(round(float(rpm)))))
 
 
 class _RawFrame(str):
@@ -245,7 +249,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self.pump_address = int(pump_address)
         self.tubing = tubing
         self.tubing_table = {key: float(value) for key, value in (tubing_table or {}).items()}
-        self._speed_rpm = 0
+        self._speed_rpm = MIN_RPM  # nie 0: Frames mit Drehzahl 0 ignoriert die Pumpe (s. MIN_RPM)
         self._running = False
         self._clockwise = True
         super().__init__(address, *args, **kwargs)
@@ -312,7 +316,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                 "clockwise": bool(int(result.parameters["clockwise"])),
             }
             try:
-                observables["flow_ml_min"] = speed * self._ml_min_per_rpm()
+                # Fluss nur bei laufender Pumpe, sonst 0 (die Pumpe meldet die eingestellte Drehzahl auch im Stand)
+                observables["flow_ml_min"] = speed * self._ml_min_per_rpm() if observables["running"] else 0.0
             except ValueError:
                 pass  # keine Schlauchkalibrierung konfiguriert - Drehzahl-Observablen trotzdem melden.
             self.update_observables(observables)
