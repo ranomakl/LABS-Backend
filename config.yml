@@ -63,8 +63,9 @@ devices:
     #   .venv/bin/python tools/lese_netzteil.py
     address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.1:1.0-port0
     dpm_address: "01"          # am Geraet bestaetigt
-    voltage_limit: 60.0        # Obergrenze fuer Sollwerte in V. Geraet meldet max 60 V - an den Versuch anpassen
-    current_limit: 5.0         # Obergrenze fuer Sollwerte in A. Geraet meldet max 5 A (=> 5-A-Modell, kein 50-A-DPM8650)
+    voltage_limit: 48.0        # Obergrenze fuer Sollwerte in V (laut Labor: Geraet kann 48 V; es meldet selbst max 60 V)
+    current_limit: 5.0         # Obergrenze fuer Sollwerte in A (Geraetemaximum, 5-A-Modell). Der Strom pro Versuch
+                               # wird als Experimentparameter eingetragen, nicht hier.
     # Alter Dummy-Eintrag (LABS-DeviceDummys): driver: tdk_lambda_zplus, address: 127.0.0.1:12346
 
   fractioncollector:

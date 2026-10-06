@@ -209,9 +209,12 @@ In config.yml stand faelschlich tdk_lambda_zplus.
   (zwei Kommas + LF, wie in Matthias' Code). Geraet meldet max 60 V / 5 A -> 5-A-Modell (DPM8605-Klasse),
   nicht 50 A wie ein DPM8650. Sollwerte vorgefunden: 5 V / 3 A, Ausgang aus, Modus 1 (Konstantstrom), 21 Grad.
 \- Treiber backend/drivers/joyit_dpm86.py am Geraet verifiziert: initial_commands (Ausgang aus),
-  measure_output, set_voltage(5.0) + Rueckkontrolle, stop(). Ausgang einschalten noch nicht getestet.
-\- Offen: welche Spannungs-/Stromgrenzen gelten fuer den Versuch (config.yml voltage_limit/current_limit)?
-  Welches Modell steckt genau im Kasten (Typenschild innen)?
+  measure_output, set_voltage(5.0) + Rueckkontrolle, stop().
+\- Ausgang ein/aus mit Freigabe getestet (ohne Zelle): 1 V / 0,1 A gesetzt, eingeschaltet -> Ausgang 1,
+  gemessen 1,0 V / 0,0 A, Modus 0 (Konstantspannung, da keine Last); stop_current() -> Ausgang 0, 0 V.
+  Sollwerte im Geraet stehen jetzt auf 1 V / 0,1 A.
+\- Grenzen laut Labor: 48 V (config.yml voltage_limit), Strom wird je Versuch eingetragen.
+\- Offen: welches Modell steckt genau im Kasten (Typenschild innen)? Nur fuer die Doku, nicht fuer den Betrieb.
 
 \## Inficon Micro GC Fusion
 

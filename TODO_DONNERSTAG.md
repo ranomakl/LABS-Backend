@@ -14,14 +14,15 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 ### Spannungsquelle Joy-IT DPM8650
 - [x] Treiber backend/drivers/joyit_dpm86.py nach Matthias' Protokoll (9600 8N1, `:01r30=0,,`),
       ohne tkinter/Threads. 06.10. AM GERAET VERIFIZIERT: Init (Ausgang aus), Messen, Sollwert schreiben
-      und zuruecklesen, stop(). Ausgang EINSCHALTEN noch nicht getestet (ohne Zelle, mit Freigabe).
+      und zuruecklesen, stop(). Ausgang EIN/AUS ebenfalls getestet (1 V / 0,1 A ohne Last: Ausgang an,
+      1,0 V gemessen, danach aus, 0 V).
 - [x] Gemeinsame Schnittstelle in psu_base.py: set_voltage, set_current, set_output, measure_output,
       output_constant_current/-voltage, stop_current. TDK-Treiber angepasst.
 - [x] config.yml: psu auf joyit_dpm86 umgestellt, by-path-Adresse eingetragen (Kasten immer in denselben USB-Port).
 - [x] Lesewerkzeug tools/lese_netzteil.py (nur Lesebefehle).
 - [x] base.py: by-path-Adressen mit Doppelpunkt wurden als IP:Port zerlegt - behoben.
-- [ ] voltage_limit / current_limit in config.yml auf die Werte des Versuchs setzen (stehen auf
-      Geraetemaximum 60 V / 5 A).
+- [x] voltage_limit 48 V (Vorgabe Labor), current_limit 5 A (Geraetemaximum); Strom je Versuch als
+      Experimentparameter.
 - [ ] Keithley 2230-30-1 Treiber auf derselben Schnittstelle (spaeter, Vorlage von Matthias liegt vor).
 - [ ] Optional: externer Sensor ueber Spannungseingang (Anforderung, noch nicht beruecksichtigt).
 
