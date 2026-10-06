@@ -30,7 +30,7 @@ auf 127.0.0.1 (LABS-DeviceDummys).
 - [x] config.yml: Adapter BG02Q0XU, Adresse 1, 1200/8E1, Schlauch 3,2x6,4 mm = 0,8883 mL/U.
 - [x] Ursache fuer "keine Antwort" seit August: Pumpe beantwortet RID nicht. Scanner auf RJ umgestellt.
 - [x] Treiber: Drehzahl 0 wird von der Pumpe ignoriert -> MIN_RPM 60, Stopp ueber Start/Stop-Bit.
-- [ ] Drehrichtung klaeren: welche Richtung foerdert zur Zelle? (clockwise=True -> State2 = 1)
+- [~] Drehrichtung: clockwise=True = im Uhrzeigersinn (beobachtet). Ob das zur Zelle foerdert, beim Einbau pruefen.
 - [ ] Zweite Pumpe (BG01W2OJ) antwortet nur sporadisch - GND am Adapter pruefen. Nicht fuer Stufe I.
 
 ### MFC Bronkhorst

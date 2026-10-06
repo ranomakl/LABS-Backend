@@ -59,8 +59,9 @@ Adapter und Werkseinstellungen waren die ganze Zeit in Ordnung.
 \- Zweite WT600-2J (Adapter BG01W2OJ): hat bei 1200/E Adresse 1 EINMAL auf WJ geantwortet und den
   Kopf gedreht, danach keine Antworten mehr -> Befehle kommen an, Antworten gehen verloren.
   Verdacht GND nicht angeklemmt. Fuer Stufe I nicht gebraucht.
-\- Offen: Drehrichtung. Treiber: clockwise=True -> State2 = 1. Welche Richtung foerdert in der Anlage
-  "vorwaerts"? Am Kopf beobachten und ggf. in continuous_flow() das Vorzeichen anpassen.
+\- Drehrichtung: Treiber-Default clockwise=True (State2 = 1) dreht den Kopf laut Nutzer IM UHRZEIGERSINN
+  (06.10.2026 beobachtet). Offen: ob das in der Anlage zur Zelle foerdert - haengt von der Schlauchfuehrung
+  ab, bei Einbau pruefen; sonst in continuous_flow() das Vorzeichen drehen.
 
 \### Alte Befunde (ueberholt, Ursache s.o.)
 
