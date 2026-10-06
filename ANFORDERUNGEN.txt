@@ -1,0 +1,77 @@
+LABS - Treiberbedarf (Anforderungen aus dem Labor)
+==================================================
+Ursprüngliche Anforderungsliste. Antworten und aktueller Stand siehe
+OFFENE_FRAGEN.txt und Doc "LABS - Betriebswissen".
+
+
+STUFE I
+-------
+
+1. Standard-Pumpe
+   Komponente:    Longer LP-WT600-2J Peristaltikpumpe
+   Dokumentation: RS485 Protocol for WT600-1J(2J)(3J) (gut dokumentiert)
+   Funktionen:    An / Aus / Flussgeschwindigkeit in RPM
+   Anmerkung:     Die Pumpe wird in RPM eingestellt. Relevant ist aber der
+                  Fluss in mL/min, und der hängt vom montierten Schlauch ab.
+                  Wunsch: Umrechnung in einer Config-Datei hinterlegen, damit
+                  man den Schlauch leicht ändern kann.
+
+2. pH-/Leitfähigkeitssensor (noch nicht verkabelt)
+   Komponente:    Endress+Hauser Liquiline CM442 / CM448
+   Dokumentation: RS485 Modbus-Protokoll (ausführlich dokumentiert)
+   Funktionen:    Lesen. Bis zu 6 verschiedene Sensoren mit verschiedenen
+                  Aufgaben und Experimentzuordnungen.
+
+3. Spannungsquelle / DC-Source
+   Komponenten:   Joy-it JT-DPM8650 / JT-DPM8624 (vermutlich gleiche
+                  Programmierung), Keithley 2230-30-1
+   Dokumentation: Ausführliches Programm eines Kollegen (Matthias).
+                  Hauptaufgabe wahrscheinlich: verschlanken.
+                  Für genauere Doku bei Matthias nachfragen.
+   Funktionen:    An / Aus / maximaler Strom / maximale Spannung /
+                  angelegter Strom / angelegte Spannung /
+                  Strom lesen / Spannung lesen
+   Optional:      Spannung eines externen Sensors zum Messen nutzen
+
+4. Massendurchflussmesser/-regler (MFM/MFC)
+   Komponente:    Bronkhorst EL-FLOW Prestige FG-201CV
+   Dokumentation: API-Doku: https://pypi.org/project/bronkhorst-propar/
+   Funktionen:    Maximalen Fluss einstellen / Counter zurücksetzen /
+                  Counter lesen / aktuellen Fluss lesen
+
+5. Relais für 3/2-Wegehähne (optional)
+   Komponente:    Entwicklerboard Relais-Modul, 16 Kanäle, 12 V (Reichelt)
+   Anschluss:     vermutlich direkt über GPIO-Pins
+   Funktionen:    Weg A / Weg B
+
+
+NOCH ANSCHLIESSEN
+-----------------
+
+6. microGC (optional)
+   Komponente:    Inficon micro GC Fusion
+   Dokumentation: API vorhanden
+   Funktionen:    BakeOut / Methode laden / Methode starten /
+                  Abfrage, ob Gerät bereit ist / Daten des letzten Laufs
+                  holen / Daten von JSON in CSV umwandeln
+   Netzwerk:      Pi und microGC müssen im selben Netz sein.
+                  microGC hängt im Netz ufz-m2m, der Laptop im eduroam.
+                  Variante: Pi per LAN direkt an den microGC. Dann ist der
+                  Pi aber nur noch über einen Institutsrechner erreichbar.
+
+
+ABGLEICH MIT DEM AKTUELLEN STAND (06.10.2026)
+---------------------------------------------
+[ ] MFC: Counter zurücksetzen und Counter lesen sind gefordert.
+    Prüfen, ob der Treiber das schon kann.
+[ ] MFC: Die Library bronkhorst-propar wird bewusst NICHT genutzt, weil sie
+    den Twisted-Reaktor blockiert. Das Protokoll ist direkt nachgebaut.
+[ ] Liquiline: Gefordert sind bis zu 6 Sensoren. Der Treiber ist bisher
+    auf 2 pH-Elektroden (Kanal 1 und 2) ausgelegt. Prüfen, ob er auf
+    weitere Kanäle erweiterbar ist.
+[ ] Spannungsquelle: Optionaler Eingang für externen Sensor noch nicht
+    berücksichtigt.
+[ ] microGC: Umwandlung JSON -> CSV gefordert. Prüfen, ob vorhanden.
+[ ] microGC: Netzfrage klären (ufz-m2m vs. eduroam vs. LAN-Direkt).
+[x] Pumpe: Schlauch-Umrechnung in der Config ist umgesetzt
+    (tube_factor, 0,8883 mL pro Umdrehung).
