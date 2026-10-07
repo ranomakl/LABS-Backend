@@ -216,6 +216,17 @@ Scan 30.09.2026 (tools/scan_liquiline.py, nur FC03, Stufe 1 = Adressen 1 und 247
   STAND: Hardwareseite weitgehend ausgeschlossen, COM am Modul blinkt nie. Naechster Schritt:
   E+H-Service (Seriennr., Bestellcode CM448-AA36A11AABAA+AB) - welcher Feldbus ist aktiv
   (RS485 vs. TCP/Ethernet), ist Modbus RS485 freigeschaltet?
+- 07.10.2026 ~14:45, vor dem Telefonat mit E+H: Liquiline eingeschaltet, Adapter BG01XFU4 am
+  Hub (/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01XFU4-if00-port0, heute ttyUSB3).
+  tools/scan_liquiline.py Stufe 1 komplett + Stufe 2 ASCII 19200 E/N ueber alle 247 Adressen:
+  0 Reaktionen. tools/dauertest_liquiline.py (NEU): passiv 8 s = 0 Byte (keine Stoerung auf der
+  Leitung); ASCII 19200/E Adr 247: 139 Anfragen, 0 Byte; RTU 19200/E Adr 247: 97 Anfragen,
+  0 Byte; ASCII 19200/E Adr 1: 70 Anfragen, 0 Byte. Befund identisch zum 30.09. Der namenlose
+  CH340 am Hub (heute ttyUSB2) wurde vorsichtshalber ebenfalls gescannt: 0 Reaktionen.
+  Zusammenfassung fuer den E+H-Service: docs/liquiline_telefonat_eh.txt.
+- ACHTUNG 07.10.2026: Der USB-Hub steckt seit 14:35 in einer anderen Pi-Buchse (xhci-hcd.1 statt
+  hcd.0). Der by-path des Netzteils in config.yml (platform-xhci-hcd.0-usb-0:2.1:1.0-port0) ist
+  damit falsch, bis der Hub zurueckgesteckt oder der Pfad angepasst ist.
 Naechster Schritt: am Geraet pruefen, ob Modbus ueberhaupt aktiviert ist (ab Werk AUS) und ob
 ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. Stufe 2 (Adressen
 1-247) laeuft pro Adapter ~25 min und hilft nichts, solange Modbus aus ist.
