@@ -1,59 +1,22 @@
-# config.yml — dies ist die Datei, die main.py tatsaechlich laedt. Aktuell aktiv ist die
-# REDUZIERTE Dummy-Konfiguration (Kopie von config.dummy.yml) zum Testen gegen LABS-DeviceDummys.
-# Die urspruengliche Konfiguration mit echter Hardware (u.a. COM11) liegt unveraendert in
-# config.yml.bak. Zurueckwechseln: copy config.yml.bak config.yml
+# config.yml — dies ist die Datei, die main.py tatsaechlich laedt.
+#
+# STAND 07.10.2026: Konfiguration fuer den Laborversuch am 08.10.2026 (Stufe I) auf dem Pi.
+# Enthalten sind nur Geraete, die wirklich angeschlossen sind oder keine Hardware brauchen:
+#   psu (Joy-IT Netzteil), mfc (Bronkhorst), dosing_pump (Longer WT600-2J), microgc (Inficon),
+#   demo_gpio_valve (Relais, noch simulate: true).
+# Entfernt wurden alle Dummy-Geraete, die auf 127.0.0.1 (LABS-DeviceDummys) zeigten, samt der
+# Experimente, die sie benutzen: reagent_valve, electrolysis_loop_valve, pump_valve, purge_pump,
+# fractioncollector, liquiline (pausiert bis Antwort von E+H). Grund: ohne laufenden Simulator
+# schlaegt deren Initialisierung beim Start fehl. Die Dummy-Konfiguration steht weiter in
+# config.dummy.yml, der Liquiline-Block und seine Testexperimente in der Git-Historie (Commit vor
+# "config.yml fuer Laborversuch 08.10.").
+# Die urspruengliche Windows-Konfiguration (u.a. COM11) liegt unveraendert in config.yml.bak.
 
 listen port: 11123
 destination port: 32111
 log_level: info
 
-##### Valve positions #####
-
-## reagent_valve ##
-# 1: MeOH           Compressability: 6
-# 2: MeOH+NH4Cl     Compressability: 6
-# 3: Nitrobenzene   Compressability: 6
-# 4: DMSO           Compressability: 6
-# 5: SE             Compressability: 6
-# 6: Reference      Compressability: 6
-# 7: Acetonitrile   Compressability: 6
-
-## electrolysis_loop_valve ##
-# 1: reservoir
-# 2: fraction_collector
-# 3: waste
-# 4: NMR
-
-## pump_valve ##
-# 1: electrolysis_pump
-# 2: purge_pump
-
-##### REDUCED CONFIG FOR LABS-DeviceDummys #####
-# Only devices that have a simulated counterpart in ..\LABS-DeviceDummys are declared here.
-# Not simulated / omitted: reagent_dosing_pump, electrolysis_pump (driver eldex_optos),
-# nmr (spinsolve_80), foxy (foxy_r2) - LABS-DeviceDummys ships no dummy module for these.
-# Start the dummy server first:
-#   cd ..\LABS-DeviceDummys
-#   python main.py
-
 devices:
-
-  reagent_valve:
-    driver: knauer_azura_vu_4_1
-    address: 127.0.0.1:12344
-
-  electrolysis_loop_valve:
-    driver: knauer_azura_vu_4_1
-    address: 127.0.0.1:12345
-
-  pump_valve:
-    driver: knauer_azura_vu_4_1
-    address: 127.0.0.1:12344   # shares the dummy instance with reagent_valve
-
-  purge_pump:
-    driver: ismatec_reglo_icc
-    address: 127.0.0.1:12347
-    channel: 4
 
   psu:
     driver: joyit_dpm86        # Joy-IT DPM86xx im grauen Kasten "DC SOURCE 48V" (NICHT TDK Lambda wie vorher eingetragen)
@@ -67,10 +30,6 @@ devices:
     current_limit: 5.0         # Obergrenze fuer Sollwerte in A (Geraetemaximum, 5-A-Modell). Der Strom pro Versuch
                                # wird als Experimentparameter eingetragen, nicht hier.
     # Alter Dummy-Eintrag (LABS-DeviceDummys): driver: tdk_lambda_zplus, address: 127.0.0.1:12346
-
-  fractioncollector:
-    driver: omnicoll
-    address: 127.0.0.1:12349
 
   mfc:
     driver: bronkhorst_mfc
@@ -91,16 +50,6 @@ devices:
     tubing_table:              # mL pro Umdrehung je Schlauch (Innen- x Aussendurchmesser in mm)
       3.2x6.4: 0.8883          # Laborangabe: Standardschlauch, 60-600 rpm = 53,3-533 mL/min
     # Alter Dummy-Eintrag (LABS-DeviceDummys): address: 127.0.0.1:12352
-
-  liquiline:
-    driver: endress_hauser_liquiline
-    address: 127.0.0.1:12353
-    bus_address: 1              # Modbus-Busadresse des Geraets (1-247, Werkseinstellung 247) - hier auf 1 gesetzt
-    byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung - muss zur echten Geraetekonfig passen
-    channels:                   # Kanalname: Register (0-basiert, = Beginn des AI-Blocks Value/Status/Unit)
-      ph: 0                     # z.B. AI1 am Geraetemenue auf Sensor-1-pH-Messwert gemappt
-      conductivity: 4           # AI2
-      temperature: 8            # AI3
 
   microgc:
     driver: inficon_microgc_fusion
@@ -159,93 +108,7 @@ experiments:
   #     - other_experiment_inside_this_one
   #     - ...
 
-  # ---- experiments kept from config.yml (only use devices declared above) ----
-
-  empty_valve_reservoir_tube:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [1], {}]
-      - [purge_pump, dispense, [], { rate: "15.0", volume: "10.0" }]
-
-  empty_reservoir_filling_tube:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [1], {}]
-      - [purge_pump, dispense, [], { rate: "15.0", volume: "20.0" }]
-
-  empty_nmr_cell:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [4], {}]
-      - [purge_pump, dispense, [], { rate: "15.0", volume: "25.0" }]
-
-  collect_solution:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [2], {}]
-      - [purge_pump, dispense, [], { rate: "-15.0", volume: "55.0" }]
-
-  purge_reservoir_and_temper:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [3], {}]
-      - [purge_pump, dispense, [], { rate: "-15.0", volume: "10.0" }]
-
-  next_fraction:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-    commands:
-      - [fractioncollector, next_fraction, [], {}]
-
-  fc_test_1:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-    commands:
-      - [fractioncollector, next_fraction, [], {}]
-      - [fractioncollector, next_fraction, [], {}]
-      - [fractioncollector, next_fraction, [], {}]
-
-  large_cell_collect_solution:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [purge_pump, remaining_time, int, s]
-    commands:
-      - [pump_valve, set_position, [2], {}]
-      - [electrolysis_loop_valve, set_position, [2], {}]
-      - [purge_pump, dispense, [], { rate: "-15.0", volume: "320.0" }]
-
-  # ---- new: exercise the simulated PSU directly (nothing in config.yml used psu without electrolysis_pump) ----
+  # ---- Netzteil (Joy-IT DPM86xx) ----
 
   test_psu_output:
     conditions:
@@ -267,7 +130,7 @@ experiments:
     commands:
       - [psu, stop_current, [], {}]
 
-  # ---- new: exercise the simulated Bronkhorst MFC directly ----
+  # ---- MFC (Bronkhorst) ----
 
   test_mfc_setpoint:
     conditions:
@@ -297,7 +160,7 @@ experiments:
     commands:
       - [mfc, stop_flow, [], {}]
 
-  # ---- new: exercise the simulated Longer WT600-2J directly ----
+  # ---- Pumpe (Longer WT600-2J) ----
 
   test_wt600_speed:
     conditions:
@@ -320,31 +183,7 @@ experiments:
     commands:
       - [dosing_pump, stop_pumping, [], {}]
 
-  # ---- new: exercise the simulated Endress+Hauser Liquiline CM44x directly ----
-
-  test_liquiline_ph:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, ph_status, str, ""]
-      - [liquiline, ph_unit, str, ""]
-    commands:
-      - [liquiline, read_channel, [], { channel: "ph" }]
-
-  test_liquiline_all_channels:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, conductivity_value, float, uS/cm]
-      - [liquiline, temperature_value, float, degC]
-    commands:
-      - [liquiline, read_all_channels, [], {}]
-
-  # ---- new: exercise the simulated Inficon Micro GC Fusion directly ----
+  # ---- microGC (Inficon Fusion) ----
 
   test_microgc_status:
     conditions:
@@ -378,7 +217,7 @@ experiments:
       - [microgc, run_method, [], {}]
       - [microgc, get_last_run_data, [], {}]
 
-  # ---- new: exercise the simulated GPIO relay valve directly (no LABS-DeviceDummys needed) ----
+  # ---- Relais-Ventile (GPIO) ----
 
   test_gpio_valve_a:
     conditions:
