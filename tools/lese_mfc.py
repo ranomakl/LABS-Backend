@@ -67,9 +67,9 @@ def decode(reply: str, data_type: int):
         return _hex_to_int16(wert[:4])
     if data_type == TYPE_FLOAT:
         return _hex_to_float32(wert[:8])
-    raw = bytes.fromhex(wert)
-    if raw and raw[0] == len(raw) - 1:   # fuehrendes Laengenbyte
-        raw = raw[1:]
+    # Stringantwort am Geraet beobachtet: nach dem Echo-Paar ein Laengenbyte (00 = bis Nullzeichen),
+    # dann die Zeichen, dann 00. Beispiel: :0D03020161 00 6D6C6E2F6D696E 00 -> "mln/min"
+    raw = bytes.fromhex(wert)[1:]
     return raw.split(b"\x00")[0].decode("ascii", "replace")
 
 
@@ -83,7 +83,9 @@ def frage(ser, node, name, process, parameter, data_type, wartezeit=0.4):
         if b"\r\n" in puffer:
             break
     antwort = puffer.decode("ascii", "replace").strip()
-    if not antwort.startswith(":"):
+    # Nur eine echte Leseantwort (Befehl 02 vom gefragten Knoten) zaehlt; ":0105" o.ae. ist eine
+    # Fehler-/Statusmeldung (z.B. falscher Knoten) und gilt beim Knotenscan nicht als Treffer.
+    if not antwort.startswith(":") or len(antwort) < 11 or antwort[3:7] != f"{node:02X}02":
         return frame, antwort, None
     try:
         return frame, antwort, decode(antwort[1:], data_type)
