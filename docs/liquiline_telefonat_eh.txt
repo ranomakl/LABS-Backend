@@ -1,0 +1,57 @@
+Endress+Hauser Liquiline CM448 - Zusammenfassung fuer das Telefonat mit dem E+H-Service
+Stand: 07.10.2026 (Befunde vom 30.09.2026, Details in OFFENE_FRAGEN.md)
+
+Geraet: Liquiline CM448, Bestellcode CM448-AA36A11AABAA+AB
+Seriennummer: ______________________ (vom Typenschild ablesen, E+H fragt danach)
+Modul: "Modbus RS485" (485MB), Klemmen 95/96/99
+Anbindung: Raspberry Pi -> USB-RS485-Adapter (FTDI) -> Modul 485
+
+
+DAS PROBLEM
+
+Der Liquiline antwortet ueber Modbus RS485 auf gar nichts. Ueber einen ganzen Tag hinweg
+wurden weit ueber tausend Leseanfragen (Funktionscode 03) geschickt, es kam nie ein einziger
+Antwortrahmen zurueck. Die COM-LED am Modul 485 hat dabei nie geblinkt.
+Messung und Display am Geraet funktionieren einwandfrei.
+
+
+GERAETEEINSTELLUNGEN (am Menue abgelesen)
+
+- Setup/General settings/Extended setup/Modbus: Modus ASCII, Adresse 247, 19200 Baud,
+  Paritaet gerade (E), Watchdog 5 s.
+- Laut Handbuch SD01189C (Register 504 RS485_ENABLE) ist Modbus RS485 ab Werk eingeschaltet.
+  Im Menue gibt es keinen Ein/Aus-Punkt dafuer.
+- Diagnoseliste: nur F100 "Sensor Kommunikation CH2" (Sensor war zwischenzeitlich abgesteckt,
+  eigenes Thema). KEIN S969 Modbus-Watchdog-Fehler, obwohl der Watchdog auf 5 s steht und
+  nie eine Anfrage ankommt. Das ist auffaellig.
+
+
+WAS WIR AUF UNSERER SEITE AUSGESCHLOSSEN HABEN
+
+- Protokollparameter: ASCII und RTU, 1200 bis 115200 Baud, Paritaet E/N/O, Adressen 1 und
+  247. Bei 19200/E zusaetzlich alle Adressen 1 bis 247 (falls ein DIP-Schalter am Modul
+  Vorrang vor der Menue-Adresse hat).
+- Verkabelung laut KA01159C Abschnitt 5.4.2: Klemme 95 = B (Data+), 96 = A (Data-),
+  99 = C (DGND). GND war anfangs nicht angeklemmt, wurde nachgeholt - keine Aenderung.
+- A/B zweimal getauscht. Mit vertauschter Polung kommt nach jeder Anfrage genau ein Byte 00
+  zurueck (Leitung kippt in den Ruhezustand), die Leitung ist also elektrisch verbunden.
+  Mit richtiger Polung kommt gar nichts.
+- Terminierung am Modul eingeschaltet (T-LED gelb) - keine Aenderung.
+- Zwei verschiedene USB-RS485-Adapter (FTDI BG02Q3TM und BG01XFU4), beide senden
+  nachweislich (TXD-LED blinkt). Beide ohne Antwort.
+- Geraet neu gestartet - keine Aenderung.
+- Modul-LEDs: PWR gruen, T gelb, COM nie. SF rot kam nur vom fehlenden Sensor an Kanal 2
+  und ging nach Anstecken wieder weg.
+
+
+FRAGEN AN E+H
+
+1. Ist bei diesem Bestellcode ueberhaupt Modbus RS485 freigeschaltet, oder ist das Geraet
+   auf Modbus TCP/Ethernet konfiguriert? Welcher Feldbus ist aktiv?
+2. Warum meldet das Geraet keinen S969 Watchdog-Fehler, obwohl nie eine Modbus-Anfrage
+   ankommt? Deutet das darauf hin, dass die Modbus-Schnittstelle gar nicht aktiv laeuft?
+3. Gibt es ausser dem Menuepunkt Setup/General settings/Extended setup/Modbus noch eine
+   Freischaltung oder einen Aktivierungscode?
+4. Hat das Modul 485 einen Hardware-Adressschalter, der das Menue ueberstimmt, und wo sitzt er?
+5. Kann das Modul 485 defekt sein, wenn PWR gruen leuchtet, aber COM bei eingehenden
+   Anfragen nie reagiert?
