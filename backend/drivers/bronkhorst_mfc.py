@@ -108,12 +108,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         "READ_MEASURE": [
             f"{CMD_READ}{_rw_pair(PROCESS_MEASURE, TYPE_MEASURE, READ_ECHO_INDEX)}"
             f"{_rw_pair(PROCESS_MEASURE, TYPE_MEASURE, PARAMETER_MEASURE)}",
-            r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})02[0-9A-F]{4}(?P<value>[0-9A-F]{4})",
+            r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})02[0-9A-F]{4}(?P<measure_raw>[0-9A-F]{4})",
         ],
         "READ_COUNTER": [
             f"{CMD_READ}{_rw_pair(PROCESS_COUNTER, TYPE_COUNTER, READ_ECHO_INDEX)}"
             f"{_rw_pair(PROCESS_COUNTER, TYPE_COUNTER, PARAMETER_COUNTER)}",
-            r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})02[0-9A-F]{4}(?P<value>[0-9A-F]{8})",
+            r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})02[0-9A-F]{4}(?P<counter_raw>[0-9A-F]{8})",
         ],
     }
 
@@ -127,6 +127,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self.node = node
         self.max_flow_ml_min = max_flow_ml_min
         super().__init__(address, *args, **kwargs)
+        self._flow_measuring = None
+        self._counter_measuring = None
 
     def cmd_string(self, command_parameters: CommandParameterFactory) -> str:
         data = ""
@@ -150,6 +152,43 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def handle_event(self, match: re.Match) -> None:
         pass
 
+    def update_observables(self, observables: dict, timestamp: float = None):
+        # Der gemeinsame Unterbau (backend/devices/base.py) reicht nach jedem geparsten Frame die
+        # Regex-Rohgruppen hierher durch. Wie beim Joy-IT-Netzteil (joyit_dpm86.py) werden sie
+        # zentral in physikalische Observables uebersetzt - dadurch aktualisiert auch
+        # repeated_query() (ohne Callback am Einzelbefehl) die Observables 'flow' und 'counter'.
+        if "measure_raw" in observables:
+            raw = _hex_to_int16(observables["measure_raw"])
+            observables = {"flow": self._percent_to_ml_min(raw / 32000 * 100)}
+        elif "counter_raw" in observables:
+            observables = {"counter": _hex_to_float32(observables["counter_raw"])}
+        else:
+            # Statusmeldungen (SET_SETPOINT) und sonstige Rohgruppen sind keine Observables.
+            observables = {key: value for key, value in observables.items()
+                           if key not in ("len", "node", "status", "statusindex")}
+        if observables:
+            if timestamp is None:
+                super().update_observables(observables)
+            else:
+                super().update_observables(observables, timestamp)
+
+    def start_measuring(self, interval: float = 1.0, condition=None):
+        """Fluss und Zaehler periodisch abfragen (Observables 'flow'/'counter'; Vorlage:
+        joyit_dpm86.start_measuring_output()). Wird von set_setpoint(>0) automatisch gestartet,
+        kann aber auch als Experimentbefehl aufgerufen werden (z.B. Basislinie ohne Setpoint)."""
+        self._flow_measuring = self.repeated_query("READ_MEASURE", interval, condition, inter_command_time=.001)
+        self._counter_measuring = self.repeated_query("READ_COUNTER", interval, condition, inter_command_time=.001)
+
+    def stop_measuring(self):
+        try:
+            self._flow_measuring.stop_running()
+            self._counter_measuring.stop_running()
+        except AttributeError:
+            pass
+        else:
+            self._flow_measuring = None
+            self._counter_measuring = None
+
     def _percent_to_ml_min(self, percent: float) -> float:
         return percent / 100 * self.max_flow_ml_min
 
@@ -162,30 +201,24 @@ class Device(BaseDevice, SinglechannelBaseDevice):
 
     def set_setpoint(self, flow_ml_min: float):
         """Setpoint in mL/min setzen (wird intern in 0-32000 = 0-100% des Messbereichs umgerechnet).
-        Die Geraeteantwort (Statusmeldung) wird geprueft; Status != 0 fuehrt zu einem Retry/Fehler."""
+        Die Geraeteantwort (Statusmeldung) wird geprueft; Status != 0 fuehrt zu einem Retry/Fehler.
+        Bei Setpoint > 0 startet automatisch das periodische Messen (Live-Werte im Monitoring)."""
         raw_value = self._ml_min_to_raw(flow_ml_min)
-        return self.write("SET_SETPOINT", command_values={"value": raw_value})
+        cmd = self.write("SET_SETPOINT", command_values={"value": raw_value})
+        if raw_value > 0:
+            self.start_measuring()
+        return cmd
 
     def measure_flow(self):
-        """Momentanen Messwert abfragen, Ergebnis in mL/min ueber die 'flow' Observable."""
-        def to_ml_min(result):
-            raw = _hex_to_int16(result.parameters["value"])
-            flow = self._percent_to_ml_min(raw / 32000 * 100)
-            self.update_observables({"flow": flow})
-            return result
-        cmd = self.query("READ_MEASURE")
-        cmd.deferred_result.addCallback(to_ml_min)
-        return cmd
+        """Momentanen Messwert abfragen, Ergebnis in mL/min ueber die 'flow' Observable
+        (Umrechnung zentral in update_observables(), damit auch repeated_query sie durchlaeuft)."""
+        return self.query("READ_MEASURE")
 
     def read_counter(self):
-        """Counter/Totalizer abfragen (IEEE754-Float, Big-Endian, Einheit laut Geraetekonfiguration)."""
-        def to_float(result):
-            value = _hex_to_float32(result.parameters["value"])
-            self.update_observables({"counter": value})
-            return result
-        cmd = self.query("READ_COUNTER")
-        cmd.deferred_result.addCallback(to_float)
-        return cmd
+        """Counter/Totalizer abfragen (IEEE754-Float, Big-Endian, Einheit laut Geraetekonfiguration),
+        Ergebnis ueber die 'counter' Observable (Umrechnung zentral in update_observables())."""
+        return self.query("READ_COUNTER")
 
     def stop_flow(self):
+        self.stop_measuring()
         return self.set_setpoint(0)

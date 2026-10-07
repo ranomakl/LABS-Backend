@@ -69,6 +69,14 @@ devices:
     node: "03"                # muss zur Node-Adresse passen, die der Dummy zurueckechot (beliebig, Dummy ist node-agnostisch)
     max_flow_ml_min: 100.0    # Platzhalter, an echtes Geraet anpassen (Typenschild/Kalibrierschein)
 
+  dosing_pump:
+    driver: longer_wt600
+    address: 127.0.0.1:12352   # LABS-DeviceDummys longer_wt600-Dummy
+    pump_address: 1
+    tubing: "3.2x6.4"
+    tubing_table:
+      3.2x6.4: 0.8883
+
   # 07.10.2026 aus config.yml hierher verschoben (Liquiline pausiert bis Antwort von E+H)
   liquiline:
     driver: endress_hauser_liquiline
@@ -211,6 +219,46 @@ experiments:
 
   # ---- new: exercise the simulated Bronkhorst MFC directly ----
 
+  demo_live_monitoring:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+      rate: [float, mL/min]
+      volume: [float, mL]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, ""]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      # KEIN stop_flow am Ende: dispense blockiert nur das Pumpen-Geraet, nicht die Befehlsliste -
+      # ein nachfolgender stop_flow liefe sofort und setzte den Setpoint zurueck auf 0.
+      # Das Aufraeumen (Setpoint 0, Pumpenstopp) erledigt das Experimentende selbst.
+      - [dosing_pump, dispense, [], { rate: "{rate}", volume: "{volume}" }]
+
+  test_wt600_speed:
+    conditions:
+    stopconditions:
+    parameters:
+      rpm: [float, rpm]
+    observables:
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [dosing_pump, set_speed, [], { rpm: "{rpm}" }]
+      - [dosing_pump, start_pumping, [], {}]
+      - [dosing_pump, read_speed, [], {}]
+
+  stop_wt600:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [dosing_pump, stop_pumping, [], {}]
+
   test_mfc_setpoint:
     conditions:
     stopconditions:
@@ -218,6 +266,7 @@ experiments:
       flow: [float, mL/min]
     observables:
       - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, ""]
     commands:
       - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
       - [mfc, measure_flow, [], {}]

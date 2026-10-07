@@ -253,6 +253,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self._running = False
         self._clockwise = True
         super().__init__(address, *args, **kwargs)
+        self._speed_measuring = None
 
     def _ml_min_per_rpm(self) -> float:
         try:
@@ -284,6 +285,49 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def handle_event(self, match: re.Match) -> None:
         pass
 
+    def update_observables(self, observables: dict, timestamp: float = None):
+        # Der gemeinsame Unterbau (backend/devices/base.py) reicht nach jedem geparsten Frame die
+        # Parser-Rohgruppen (Strings, s. WT600Parser) hierher durch. Wie beim Joy-IT-Netzteil
+        # werden sie zentral in typisierte Observables uebersetzt - dadurch aktualisiert auch
+        # repeated_query() (ohne Callback am Einzelbefehl) 'speed_rpm'/'running'/'clockwise'/
+        # 'flow_ml_min'.
+        if "speed" in observables:
+            speed = int(observables["speed"])
+            converted = {
+                "speed_rpm": speed,
+                "running": bool(int(observables["running"])),
+                "clockwise": bool(int(observables["clockwise"])),
+            }
+            try:
+                # Fluss nur bei laufender Pumpe, sonst 0 (die Pumpe meldet die eingestellte Drehzahl auch im Stand)
+                converted["flow_ml_min"] = speed * self._ml_min_per_rpm() if converted["running"] else 0.0
+            except ValueError:
+                pass  # keine Schlauchkalibrierung konfiguriert - Drehzahl-Observablen trotzdem melden.
+            observables = converted
+        else:
+            # WJ-Acks liefern nur pump_address - keine Observable.
+            observables = {key: value for key, value in observables.items() if key != "pump_address"}
+        if observables:
+            if timestamp is None:
+                super().update_observables(observables)
+            else:
+                super().update_observables(observables, timestamp)
+
+    def start_measuring(self, interval: float = 1.0, condition=None):
+        """Drehzahl/Zustand periodisch abfragen (Observables wie read_speed; Vorlage:
+        joyit_dpm86.start_measuring_output()). Wird von start_pumping() automatisch gestartet.
+        Bei 1200 Baud dauert ein RJ-Anfrage/Antwort-Paar ~150 ms - Intervalle unter 0,5 s
+        wuerden die Leitung verstopfen."""
+        self._speed_measuring = self.repeated_query("READ", interval, condition, inter_command_time=.001)
+
+    def stop_measuring(self):
+        try:
+            self._speed_measuring.stop_running()
+        except AttributeError:
+            pass
+        else:
+            self._speed_measuring = None
+
     def _send_state(self, **kwargs):
         """Sendet Drehzahl+Start/Stop+Richtung als ein WJ-Frame (das Protokoll erlaubt kein
         Aendern nur eines der drei Felder - jeder Frame traegt immer den vollstaendigen Zustand,
@@ -300,31 +344,18 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         return self._send_state(**kwargs)
 
     def start_pumping(self, **kwargs):
-        """Start: laeuft mit der zuletzt per set_speed() gesetzten (oder Default-)Drehzahl."""
+        """Start: laeuft mit der zuletzt per set_speed() gesetzten (oder Default-)Drehzahl.
+        Startet automatisch das periodische Auslesen (Live-Werte im Monitoring)."""
         self._running = True
-        return self._send_state(**kwargs)
+        cmd = self._send_state(**kwargs)
+        self.start_measuring()
+        return cmd
 
     def read_speed(self, **kwargs):
-        """Drehzahl lesen: fragt die tatsaechlich laufende Drehzahl/Zustand ab und aktualisiert
+        """Drehzahl lesen: fragt die tatsaechlich laufende Drehzahl/Zustand ab. Die Umrechnung in
         die Observablen 'speed_rpm', 'running', 'clockwise' (und 'flow_ml_min', falls tubing/
-        tubing_table konfiguriert sind)."""
-        def to_observables(result):
-            speed = int(result.parameters["speed"])
-            observables = {
-                "speed_rpm": speed,
-                "running": bool(int(result.parameters["running"])),
-                "clockwise": bool(int(result.parameters["clockwise"])),
-            }
-            try:
-                # Fluss nur bei laufender Pumpe, sonst 0 (die Pumpe meldet die eingestellte Drehzahl auch im Stand)
-                observables["flow_ml_min"] = speed * self._ml_min_per_rpm() if observables["running"] else 0.0
-            except ValueError:
-                pass  # keine Schlauchkalibrierung konfiguriert - Drehzahl-Observablen trotzdem melden.
-            self.update_observables(observables)
-            return result
-        cmd = self.query("READ")
-        cmd.deferred_result.addCallback(to_observables)
-        return cmd
+        tubing_table konfiguriert sind) geschieht zentral in update_observables()."""
+        return self.query("READ")
 
     def continuous_flow(self, rate, **kwargs):
         rate = float(rate)
@@ -344,6 +375,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self.busy(TimeCondition("dispense finished", time_to_pump)).deferred_result.addBoth(stop)
 
     def stop_pumping(self, **kwargs):
-        """Stop."""
+        """Stop. Beendet auch das periodische Auslesen."""
+        self.stop_measuring()
         self._running = False
         return self._send_state(**kwargs)
