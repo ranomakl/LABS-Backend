@@ -252,6 +252,10 @@ In config.yml stand faelschlich tdk_lambda_zplus.
   Sollwerte im Geraet stehen jetzt auf 1 V / 0,1 A.
 \- Grenzen laut Labor: 48 V (config.yml voltage_limit), Strom wird je Versuch eingetragen.
 \- Offen: welches Modell steckt genau im Kasten (Typenschild innen)? Nur fuer die Doku, nicht fuer den Betrieb.
+\- 07.10.2026: Es gibt DREI graue Kaesten. Der erste (06.10. verifiziert, Sollwerte 1 V / 0,1 A hinterlassen) wurde
+  abgesteckt; seit 16:05 haengt ein zweiter an Hub-Buchse 2.4.2 (config.yml angepasst): max 60 V / 5 A,
+  Adresse 01, 9600 Baud, Ausgang aus, Sollwerte 5 V / 3 A, 25 Grad. Ein dritter Wandler an Buchse 2.4.4
+  antwortet nicht (Kasten vermutlich aus). Der dritte Kasten ist nicht per USB am Pi.
 
 \## Inficon Micro GC Fusion
 

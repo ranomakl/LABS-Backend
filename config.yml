@@ -21,9 +21,12 @@ devices:
     driver: joyit_dpm86        # Joy-IT DPM86xx im grauen Kasten "DC SOURCE 48V" (NICHT TDK Lambda wie vorher eingetragen)
     # Der USB-Wandler (CH340) sitzt IM Kasten, kein RS485-Adapter dazwischen. CH340 hat keine Seriennummer,
     # by-id ist deshalb mehrdeutig -> by-path. Der Pfad haengt am USB-Steckplatz: Kasten IMMER in denselben
-    # Port stecken (06.10.2026: xhci-hcd.0, Port 2.1). Aufruf ohne --port zeigt die Pfade:
+    # Port stecken. Es gibt DREI solche Kaesten; angeschlossen ist seit 07.10.2026 16:05 ein zweiter
+    # (meldet max 60 V / 5 A, Adresse 01, 9600 Baud - gleiches Modell wie der erste) an Hub-Buchse 2.4.2.
+    # Vorher (06.10.): erster Kasten an Hub-Buchse 2.1. Aufruf ohne --port zeigt die Pfade:
     #   .venv/bin/python tools/lese_netzteil.py
-    address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.1:1.0-port0
+    # ACHTUNG: Ein Kasten, dessen Wandler am Pi auftaucht, aber nicht antwortet, ist AUSGESCHALTET.
+    address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.4.2:1.0-port0
     dpm_address: "01"          # am Geraet bestaetigt
     voltage_limit: 48.0        # Obergrenze fuer Sollwerte in V (laut Labor: Geraet kann 48 V; es meldet selbst max 60 V)
     current_limit: 5.0         # Obergrenze fuer Sollwerte in A (Geraetemaximum, 5-A-Modell). Der Strom pro Versuch
