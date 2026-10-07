@@ -7,9 +7,8 @@
 # Entfernt wurden alle Dummy-Geraete, die auf 127.0.0.1 (LABS-DeviceDummys) zeigten, samt der
 # Experimente, die sie benutzen: reagent_valve, electrolysis_loop_valve, pump_valve, purge_pump,
 # fractioncollector, liquiline (pausiert bis Antwort von E+H). Grund: ohne laufenden Simulator
-# schlaegt deren Initialisierung beim Start fehl. Die Dummy-Konfiguration steht weiter in
-# config.dummy.yml, der Liquiline-Block und seine Testexperimente in der Git-Historie (Commit vor
-# "config.yml fuer Laborversuch 08.10.").
+# schlaegt deren Initialisierung beim Start fehl. Alles Entfernte steht weiter in config.dummy.yml
+# (Liquiline-Block und seine Testexperimente wurden dorthin verschoben).
 # Die urspruengliche Windows-Konfiguration (u.a. COM11) liegt unveraendert in config.yml.bak.
 
 listen port: 11123
