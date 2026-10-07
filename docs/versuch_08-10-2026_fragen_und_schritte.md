@@ -88,6 +88,12 @@ Ja, moeglich - mit zwei Einschraenkungen:
   (start_measuring_output). Bronkhorst und Pumpe messen bisher nur auf Anfrage (einmal pro
   Befehl). Fuer die Live-Kurven von Gasfluss/Zaehler/Drehzahl muss im Treiber ein periodisches
   Abfragen ergaenzt werden (repeated_query, wie beim Netzteil) - TODO vor dem Versuch.
+  -> ERLEDIGT 08.10. frueh (Commit 300542f, am PC gegen LABS-DeviceDummys getestet, NICHT am
+     Geraet): MFC pollt flow+counter 1x/s ab set_setpoint(>0) bis stop_flow, Pumpe pollt
+     Drehzahl/Zustand 1x/s ab start_pumping bis stop_pumping. Zusaetzlich zeigt das Frontend
+     jetzt eine Zahlentabelle "Current values" mit Versuchszeit ueber den Kurven
+     (LABS-User-Interface Commit 738bdca). Details und offene Pruefpunkte:
+     docs/uebergabe_live_monitoring_08-10-2026.md
 
 Vor dem Versuch: Frontend starten (flask run in LABS-User-Interface) und die Station mit der
 Backend-Adresse (Pi, Port 11123) eintragen.
