@@ -48,11 +48,21 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         self.listenTCP(int(self.config["listen port"]), self._frontend_server)
         self.devices_and_channels = ChainMap(self._devices, self._channels)
         self._device_factory = DeviceFactory()
+        # Geraete mit `enabled: false` in config.yml bleiben eingetragen, werden aber nicht verbunden;
+        # Experimente, die sie benutzen, werden in _get_experimentfactories uebersprungen.
+        self.disabled_devices = []
         deferred_devices = []
         for name, parameters in self.config["devices"].items():
+            parameters = dict(parameters)
+            if not parameters.pop("enabled", True):
+                self.disabled_devices.append(name)
+                self.log.info("Geraet {name} ist deaktiviert (enabled: false) und wird nicht verbunden.", name=name)
+                continue
             deferred_devices.append(self.get_device_or_channel(name, parameters))
 
-        deferred_devices = defer.DeferredList(deferred_devices)
+        # consumeErrors: ein Geraet, das nicht verbindet, darf den Start der uebrigen nicht blockieren.
+        # Der Fehler ist in get_device_or_channel bereits protokolliert.
+        deferred_devices = defer.DeferredList(deferred_devices, consumeErrors=True)
         deferred_devices.addCallback(self._get_experimentfactories)
         deferred_devices.addCallback(self.set_state, Paused)
 
@@ -175,8 +185,13 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         return components_list
 
     def get_device_or_channel(self, name, parameters):
-        deferred_device_or_channel = self._device_factory.construct_device(conditionhandler=self.conditionhandler,
-                                                                           **parameters)
+        try:
+            deferred_device_or_channel = self._device_factory.construct_device(conditionhandler=self.conditionhandler,
+                                                                               **parameters)
+        except Exception:
+            # z.B. serieller Pfad existiert nicht (Adapter nicht eingesteckt) - SerialPort() wirft sofort.
+            self.log.failure("Geraet {name} konnte nicht angelegt werden und wird uebersprungen.", name=name)
+            return defer.fail()
 
         def observe_and_add(device_or_channel, name):
             device_or_channel.subscribe(self)
@@ -191,10 +206,37 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
                 device.subscribe(self)
             self._devices[name] = device
             return device_or_channel
-        return deferred_device_or_channel.addCallback(observe_and_add, name)
+
+        def log_unavailable(reason, name):
+            self.log.error("Geraet {name} nicht verfuegbar, wird uebersprungen: {reason}",
+                           name=name, reason=reason.getErrorMessage())
+            return reason
+        return deferred_device_or_channel.addCallback(observe_and_add, name).addErrback(log_unavailable, name)
+
+    def _missing_references(self, experimentconfig: dict) -> list[str]:
+        """Geraete/Teilexperimente, die ein Experiment braucht, aber die beim Start nicht verfuegbar sind
+        (deaktiviert, nicht verbunden oder selbst uebersprungen)."""
+        missing = set()
+        for item in experimentconfig["commands"] or []:
+            if len(item) == 4:
+                if item[0] not in self.devices_and_channels:
+                    missing.add(f"Geraet {item[0]}")
+            elif item[0] not in self.experimentfactories:
+                missing.add(f"Experiment {item[0]}")
+        for details in experimentconfig["observables"] or []:
+            if details[0] not in self.devices_and_channels:
+                missing.add(f"Geraet {details[0]}")
+        return sorted(missing)
 
     def _get_experimentfactories(self, result):
+        self.skipped_experiments = {}
         for name, experimentconfig in self.config["experiments"].items():
+            missing = self._missing_references(experimentconfig)
+            if missing:
+                self.skipped_experiments[name] = missing
+                self.log.warn("Experiment {name} wird uebersprungen, nicht verfuegbar: {missing}",
+                              name=name, missing=", ".join(missing))
+                continue
             self.experimentfactories[name] = ExperimentFactory(self, experimentconfig, name)
         return result
 

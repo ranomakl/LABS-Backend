@@ -33,8 +33,11 @@ class DeviceFactory:
                 return protocol
 
             def remove_device(reason):
+                # Verbindung fehlgeschlagen: Fehler an den Aufrufer (Setup) weiterreichen. Vorher wurde
+                # deferred_device hier nie ausgeloest, Setup wartete dann ewig in Initializing.
                 self.deferred_devices.pop(address)
-                return reason
+                deferred_device.errback(reason)
+                return None   # auf deferred_protocol ist der Fehler damit behandelt
 
             deferred_protocol.addCallbacks(callback_device, remove_device, [device])
         else:
@@ -46,7 +49,7 @@ class DeviceFactory:
                 else:
                     checked_device.callback(device)
                 return device
-            deferred_device.addCallback(check_device)
+            deferred_device.addCallbacks(check_device, lambda reason: checked_device.errback(reason))
             deferred_device, _ = checked_device, deferred_device
 
         if channel is None:
@@ -65,5 +68,6 @@ class DeviceFactory:
                     deferred_channel.callback(channel_proxy)
                 finally:
                     return connected_device
-            deferred_device.addCallback(callback_channel, channel)
+            deferred_device.addCallbacks(callback_channel, lambda reason: deferred_channel.errback(reason),
+                                         callbackArgs=[channel])
             return deferred_channel
