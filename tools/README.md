@@ -39,6 +39,7 @@ aus `scan_pumpe.py`, statt selbst zu schreiben - die Sperre gilt also fuer alle.
 | `scan_alle_ports.py` | Fuehrt die Matrix aus `scan_pumpe.py` auf ALLEN seriellen Anschluessen aus, wenn unklar ist, an welchem Adapter die Pumpe haengt. Nutzt dessen `_guarded_write()`. |
 | `scan_liquiline.py` | Endress+Hauser Liquiline CM44x: sendet ausschliesslich Modbus FC03 (Read Holding Registers, eigene Sperre `_guarded_write()` im Skript), ASCII und RTU, 1200-115200 Baud, Paritaet E/N/O, erst Adressen 1 und 247, dann 1-247. `--dry-run`, `--port <pfad>`, `--voll`. |
 | `dauertest_liquiline.py` | Liquiline: sendet N Sekunden lang FC03 an EINE feste Einstellung (Standard ASCII 19200/E Adresse 247) und zaehlt Antworten und Rohbytes; `--passiv` lauscht nur. Fuer die Fehlersuche mit dem Techniker am Geraet. Schreibt nur ueber `_guarded_write()` aus `scan_liquiline.py`. |
+| `lese_mfc.py` | Bronkhorst FLOW-BUS/ProPar: Typenschild (Seriennummer, Messbereich, Einheit, Fluid), Messwert, Sollwert, Zaehler lesen. Sendet ausschliesslich Lesebefehl 04 (Sperre `_guarded_write()`), probiert Knoten 1-10 oder `--node 03`. |
 
 ## Selbsttest
 
