@@ -20,6 +20,11 @@ microgc soll immer werte auslesen, messen wenn sie wieder Ready ist.
 
 Monitoring
 x achse soll immer zeitstempel sein; was ist überhaupt x Achse
+  -> ERLEDIGT 08.10.: X-Achse war eine Kategorie-Achse mit rohen Unix-Sekunden als Beschriftung
+     (gleichmaessig verteilt, nach 600 Punkten abgeschnitten). Jetzt echte Zeitachse mit Uhrzeit
+     HH:MM:SS, ganze Laufzeit sichtbar (Ausduennung per Chart.js-Decimation). Nebenbei behoben:
+     Kurven begannen erst beim Seitenaufruf statt beim Experimentstart, Linie war grau statt rot.
+     (LABS-User-Interface plots.js, am PC mit Dummys im Browser geprueft.)
 observable Datei max mal geben für korrekte bezeichnungen
 
 nächsten Dienstag Testlauf (wie heute nur optimal) 
