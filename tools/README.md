@@ -49,3 +49,16 @@ Treiber nicht und der Scan bricht ab.
 | `lese_netzteil.py` | Joy-IT DPM86xx Spannungsquelle: sendet ausschliesslich Lesebefehle (`:01rNN=0,,`, Sperre `_guarded_write()` im Skript) und zeigt Messwerte, Sollwerte und Ausgangszustand. Ohne `--port` listet es die seriellen Anschluesse auf, `--dry-run` zeigt nur die Frames. |
 | `lese_microgc.py` | Inficon Micro GC Fusion ueber LAN: sendet ausschliesslich HTTP-GET auf Lese-Endpunkte (Status, Methodenliste, letzter Lauf; Whitelist in `_guarded_get()`, Pfade mit `!cmd.` sind gesperrt - kein BakeOut, kein Methodenstart). Zeigt die Peak-Tabelle des letzten Laufs als CSV, `--csv`/`--json` schreiben sie in Dateien. Standardadresse 169.254.1.1. |
 | `starte_microgc_lauf.py` | **Steuert den microGC** (Gegenstueck zu `lese_microgc.py`): laedt eine Methode (Standard: `microGC_Standard_Method_calibrated_0726`, laut Labor die aktuelle), startet einen Lauf mit denselben Pfaden wie der Treiber, protokolliert jeden Statuswechsel mit Zeitstempel und speichert die neuen Laufdaten als JSON+CSV unter `logs/microgc_test/`. Ohne `--ja` nur Anzeige. Kein BakeOut. Verbraucht Traegergas - nur nach Freigabe. |
+
+## Auswertung im Nachhinein: `auswertung.py`
+
+Kein Diagnosewerkzeug, sondern liest die Versuchslogs `logs/<Jahr>/<Monat>/<Tag>/<Experiment-ID>/values.json`
+und greift auf kein Geraet zu. Nur Standardbibliothek.
+
+    .venv/bin/python tools/auswertung.py --liste                 # alle Laeufe (Datum, Dauer, Observablen)
+    .venv/bin/python tools/auswertung.py                         # neuester Lauf: Uebersicht + Tabelle alle 10 s
+    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --takt 600 --csv werte.csv   # 10-Minuten-Tabelle als CSV
+    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --roh # jeden Messwert einzeln
+
+Die Experiment-ID ist der Verzeichnisname unter logs/, so wie das Frontend ihn vergibt
+(z.B. `test_0810-Polling test-3`), in Anfuehrungszeichen wegen der Leerzeichen.
