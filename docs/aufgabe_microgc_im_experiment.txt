@@ -1,0 +1,126 @@
+AUFGABE: microGC-Messungen INS Elektrolyse-Experiment und live ins LABS-Monitoring
+=================================================================================
+Stand 08.10.2026, 12:50, geschrieben waehrend Versuch 26174 laeuft. Zum Weiterbauen daheim
+(Dummy-Umgebung, docs/daheim_entwickeln_ohne_pi.md) oder auf dem Pi nach dem Versuch.
+
+ZIEL
+----
+Bei der naechsten Wiederholung (26175) soll kolbe_elektrolyse die microGC-Messungen SELBST zu den
+Zeitpunkten des Versuchsplans ausloesen (0,10,20,30,40,50,60,80,100,...,200,219 min), mit Namen
+"<Versuch>_<t> min" und Tags, und die Konzentrationen (H2, O2, N2, CO2, C2-C7) als Observablen
+melden, damit sie
+  - im Frontend-Monitoring (Kurven + Tabelle "Current values") live erscheinen,
+  - in values.json des Laufs landen und damit automatisch im Bericht (tools/auswertung.py) sind.
+Dann entfaellt das zweite Terminal mit tools/kolbe_gc_messplan.py.
+
+WARUM ES HEUTE NICHT GEHT
+-------------------------
+1. backend/setup/setup.py fuehrt immer nur EIN Experiment aus (experiment_id_order, Ready.enter()
+   nimmt das naechste erst nach Finished). Eine GC-Messung als eigenes Experiment waehrend der
+   219-min-Elektrolyse ist deshalb unmoeglich.
+2. Innerhalb eines Experiments laufen die Befehle einer Geraetequeue SEQUENTIELL. Ein
+   WaitCommand/busy() (backend/commands/commands.py, Klasse WaitCommand, Zeile ~366) blockiert
+   die Queue des Geraets, bis seine Condition feuert. Befehle, die spaeter (z.B. per
+   reactor.callLater) in die Queue gelegt werden, stehen HINTER dem blockierenden Befehl.
+   Ausnahme: RepeatedCommand mit run_while_device_busy=True (backend/devices/base.py Zeile ~169,
+   commands.py Zeile ~24/38) - so laeuft das Polling (repeated_query) auch im Busy-Zustand.
+   => Der Mechanismus fuer "Befehl laeuft, obwohl das Geraet busy ist" EXISTIERT schon
+      (run_while_device_busy). Darauf aufbauen.
+
+WAS SCHON DA IST (alles auf main)
+---------------------------------
+- backend/drivers/inficon_microgc_fusion.py:
+  - run_method_named(name, tags="", poll_interval=5): POST cmd.run mit JSON
+    {"runWhenReady": true, "annotations": {"name": ..., "tags": [...]}} - AM GERAET VERIFIZIERT
+    08.10. (Name erscheint im Geraet, HTTP 200, Antwort {"runWhenReady": true}).
+    Tags als Semikolon-Liste ("Kolbe;MP"), weil das Frontend Kommas in Parametern zu Punkten macht.
+  - HTTPCommandTransport.post_json() + _BytesProducer (IBodyProducer) fuer POST.
+  - _wait_until_ready(): pollt STATUS bis system == 'public:ready' (busy + RepeatedCommand).
+  - get_last_run_data(): holt /v1/lastRun -> dataLocation -> Laufdaten-JSON, Observable
+    'last_run_data' (das ganze JSON, ~500 kB - NICHT fuers Monitoring geeignet).
+  - run_data_to_csv(run_data): reine Funktion, macht aus dem JSON die Peak-Tabelle
+    (detector,label,height,area,retention_time,concentration,normalized_concentration).
+- tools/kolbe_gc_messplan.py: die heutige Loesung ausserhalb des Backends (blocking, urllib).
+  Enthaelt den Messplan PLAN_STANDARD und die Namenslogik.
+- tools/auswertung.py: liest GC-Dateien aus logs/<Tag>/microgc/ in den Bericht (gc_messungen()).
+  Wenn die Konzentrationen kuenftig als Observablen in values.json stehen, kann dieser Umweg
+  entfallen bzw. bleibt als Fallback.
+- LABS-DeviceDummys/inficon_microgc_fusion.py: HTTP-Dummy (Port 12354, config.dummy.yml).
+  PRUEFEN, ob er POST auf cmd.run mit JSON-Koerper annimmt und ob /v1/lastRun + runData eine
+  Peak-Tabelle liefern - sonst Dummy erweitern (annotations speichern, Dummy-Peaks mit
+  plausiblen Zahlen zurueckgeben, Laufdauer einstellbar, z.B. 10 s statt 456 s).
+
+AM GERAET GELERNT (08.10.2026)
+------------------------------
+- Laufdauer microGC_Standard_Method_calibrated_0726: 456 s (7,6 min), Statusfolge
+  public:preparing -> public:method-running -> public:ready. Rueckkehrzustand 'public:ready'
+  passt zu READY_STATE im Treiber.
+- Methodenname auf dem Geraet: microGC_Standard_Method_calibrated_0726 (Gross-/Kleinschreibung
+  anders als im Excel-Versuchsplan "MicroGC_standard_method_calibrated_0726").
+- Geraeteuhr geht ~11,5 min NACH (runTimeStamp 08:44:58Z bei realem Start 08:56:xxZ).
+  Zeitzuordnung immer ueber die Pi-Uhr machen, nie ueber runTimeStamp.
+- Laufdaten-JSON: Schluessel annotations{name,tags}, detectors{moduleA:tcd|moduleB:tcd|moduleC:tcd
+  -> analysis.peaks[label,height,area,top,concentration,normalizedConcentration]}, methodName,
+  runTimeStamp. Stoffe: H2,O2,N2,CH4,CO (A); CO2,Ethylene,Acetylene,Ethane,Propylene,Propane (B);
+  C4-C7 inkl. n Hexane, n Heptane (C). Labels mit Leerzeichen/Komma ("1, 3 Butadien").
+- BakeOut-Status: 'public:bakeout'. initial_commands() liest nur STATUS - stoert BakeOut nicht.
+- Backend hat beim Start 5 s connect_timeout; ist das Geraet aus, wird es uebersprungen und die
+  microgc-Experimente fehlen, bis das Backend neu gestartet wird.
+
+VORSCHLAG UMSETZUNG (Reihenfolge)
+---------------------------------
+1. Treiber: Konzentrations-Observablen.
+   In get_last_run_data() (oder einer neuen Methode fetch_concentrations()) nach dem Holen der
+   Laufdaten die Peaks durchgehen und update_observables({"gc_H2": 6.0, "gc_CO2": 2.19, ...,
+   "gc_run_name": "26174_10 min"}) aufrufen - Schluessel aus dem Label ableiten
+   (nicht-alphanumerisch -> "_", z.B. gc_1_Penten, gc_n_Hexane). Einheit %.
+   Dann in config.yml unter observables: z.B. [microgc, gc_H2, float, "%"], [microgc, gc_CO2, ...].
+   Nur die Stoffe deklarieren, die man sehen will (die Tabelle im Frontend zeigt alle deklarierten).
+   Test: test_microgc_run am Dummy -> Observablen in values.json + Frontend-Tabelle.
+
+2. Treiber: Zeitplan INNERHALB eines Experiments.
+   Neue Methode run_schedule_named(method_name, prefix, minutes="0,10,20,...", tags="Kolbe;MP",
+   poll_interval=5):
+   - t0 = jetzt. Fuer jeden Zeitpunkt m: reactor.callLater(60*m, self._scheduled_run, ...).
+   - _scheduled_run(): load_method() + run_method_named(f"{prefix}_{m} min", tags), danach
+     get_last_run_data() (-> Observablen). Diese Befehle muessen laufen, OBWOHL das Geraet busy
+     ist: entweder (a) das Geraet gar nicht busy machen (kein busy()/WaitCommand fuer den Plan,
+     Befehle laufen normal durch die Queue, weil nichts blockiert) und das Experimentende anders
+     festhalten, oder (b) die Befehle mit run_while_device_busy=True kennzeichnen (Command-
+     Parameter, s. commands.py Zeile 24) und das Geraet mit busy(TimeCondition(letzter Zeitpunkt
+     + 8 min)) bis zum Planende Busy halten.
+     Empfehlung: (b), weil das Experiment dann sauber erst endet, wenn der letzte GC-Lauf fertig
+     ist (DevicesWaitingCondition in backend/experiments/experiment.py wartet auf alle Geraete).
+     Vorher PRUEFEN, wie write()/query() den Parameter run_while_device_busy durchreichen
+     (CommandParameterFactory in backend/commands/commands.py) - evtl. muss ein kwarg ergaenzt werden.
+   - Wichtig: _wait_until_ready() benutzt busy() -> wuerde die Queue blockieren. Innerhalb des
+     Plans stattdessen nur den STATUS-RepeatedCommand bis 'public:ready' laufen lassen und dann
+     get_last_run_data() per Callback anstossen, OHNE busy().
+   - Stop/Abbruch: stop() des Geraets muss die callLater-Timer canceln (self._schedule_timers)
+     - sonst feuern sie nach "Stop Experiments" weiter. Ein laufender GC-Lauf laeuft am Geraet
+     zu Ende (es gibt cmd.abort, s. MicroGCFusionAPI abortCurrentRun - bewusst nicht benutzen).
+   - Ueberfaellig (voriger Lauf dauert laenger als der Abstand): einfach sofort starten,
+     runWhenReady=true erledigt die Warteschlange am Geraet.
+
+3. config.yml: kolbe_elektrolyse um microgc erweitern:
+     parameters: + versuch [str, ""], gc_method [str, ""], gc_minutes [str, ""]
+     observables: + [microgc, gc_H2, float, "%"], [microgc, gc_O2, ...], [microgc, gc_CO2, ...],
+                  [microgc, gc_1_Penten, ...], [microgc, gc_n_Pentan, ...], [microgc, gc_n_Hexane, ...],
+                  [microgc, gc_n_Heptane, ...]
+     commands: + [microgc, run_schedule_named, [], {method_name: "{gc_method}", prefix: "{versuch}",
+                  minutes: "{gc_minutes}", tags: "Kolbe;MP"}]
+   Das Frontend uebernimmt neue Parameter NICHT in bereits heruntergeladene Routinen
+   (views.py get_available_experiments_for_station ergaenzt nur neue Routinen) -> entweder neuen
+   Namen (kolbe_elektrolyse_gc) oder die Routine im Frontend loeschen und neu laden.
+
+4. tools/auswertung.py: gc_messungen() bleibt als Fallback; wenn gc_*-Observablen in values.json
+   sind, diese bevorzugen (sind dann normale Kurven/Spalten, nichts zu tun).
+
+5. Test-Reihenfolge: Dummy (Laufdauer kurz stellen, Plan "0,1,2" min) -> am Pi mit echtem Geraet
+   EIN Plan "0,10" min bei laufender Pumpe ohne Netzteil (kolbe_pumpe_zeit + GC) -> dann 26175.
+
+AUFWAND (Schaetzung)
+--------------------
+Am Pi nach der Elektrolyse, mit echtem Geraet: ca. 1,5-2 h inkl. zwei echten GC-Laeufen (je 7,6 min)
+zum Testen. Daheim am Dummy: 2-4 h, weil der Dummy wahrscheinlich um POST/annotations/Peaks
+erweitert werden muss; der Geraetetest kommt dann am naechsten Labortag dazu.
