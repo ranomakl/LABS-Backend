@@ -105,3 +105,19 @@ Bitte aus Fenster B die Zeilen ab dem Anlegen der STUMM-Datei kopieren (ca. 40 Z
 den Inhalt von logs/.../t2/lauf.json. Bei Abweichung von der Erwartung: welche Zeile fehlt
 oder welche kommt zusaetzlich. Erst wenn Test 1 und 2 wie erwartet laufen, wird am Pi
 neu gestartet und mit dem echten Netzteil (ohne Zelle, 2 V, Kabel kurz ziehen) wiederholt.
+
+## Ergebnis 08.10.2026 (Windows-PC, Dummys)
+
+| Test | Stand f9f7c43 | nach Nachkorrekturen e)-g) |
+|---|---|---|
+| 1 Einzel-Timeout | bestanden | bestanden |
+| 2 Geraet stumm | NICHT bestanden: Serie leer, Pumpe lief weiter, Setup Busy | bestanden (alle Erwartungen inkl. Schritt 5) |
+| 3 Geraet wieder da | - | bestanden (Ventil-auf beim 1. Retry beantwortet, MFC Stopped) |
+
+Die drei Nachkorrekturen (CollectingCommands im Error-Zustand, Geraete einzeln stoppen, Failed
+meldet sich beim Setup) sind in docs/vorfall_08-10-2026_netzteil_blieb_an.txt Abschnitt 6
+beschrieben. Erwartung in Test 2 Schritt 3 ergaenzt: die URGENT-Zeile muss den Befehl enthalten
+(`CommandSeries [Command :06030101217D00]`), nicht `CommandSeries []`.
+
+Hinweis zum Ablauf: Nach Test 2 Schritt 5 zeigt station_overview `running_experiment_name: ""`,
+der Stop geht deshalb ueber den Pfad "alle Geraete stoppen" - das ist in Ordnung.

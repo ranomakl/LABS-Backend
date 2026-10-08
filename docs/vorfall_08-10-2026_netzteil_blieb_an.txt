@@ -1,7 +1,7 @@
 VORFALL 08.10.2026, Versuch 26174 (Kolbe-Elektrolyse im Flow): Netzteil blieb nach Abbruch AN
 =============================================================================================
 Geschrieben 08.10.2026 ca. 14:30 von Claude (KI-Assistent) auf Bitte von Rafael Kleiner.
-Status der Korrekturen: IM CODE, NICHT GETESTET (Test nur nach Freigabe).
+Status der Korrekturen: MIT DUMMYS GETESTET am 08.10.2026 (Windows-PC, siehe Abschnitt 6 und docs/test_fehlerpfad_dummys.md). Test am echten Netzteil steht noch aus.
 
 1. WAS PASSIERT IST
 -------------------
@@ -96,3 +96,44 @@ e) tools/werte_aus_log.py (neu): rekonstruiert values.json aus log.txt, falls es
 Ein Fehlerzustand darf nie dazu fuehren, dass das gefaehrlichste Geraet als einziges NICHT
 abgeschaltet wird. Abschalten ist ein Befehl, der in jedem Zustand erlaubt sein muss. Und ein
 einzelner Kommunikationsfehler ist kein Geraetefehler.
+
+6. NACHTRAG 08.10.2026, 15:00 - DUMMY-TEST AM WINDOWS-PC (Rafael + Claude)
+--------------------------------------------------------------------------
+Getestet nach docs/test_fehlerpfad_dummys.md (Backend 6239bce + Dummys 9793d0d).
+
+Test 1 (ein Timeout): BESTANDEN auf Anhieb. Zwei "Retry", dann Success, Lauf endet "Finished".
+
+Test 2 (Geraet bleibt stumm): mit dem Fix-Commit f9f7c43 allein NICHT bestanden. Drei Luecken:
+  e) Abschaltbefehl ging LEER raus. device.stop() sammelt die final_commands in einer
+     CommandSeries; dazu wechselt das Geraet kurz nach CollectingCommands. Error.new_state()
+     hat diesen Wechsel ignoriert -> der innere Befehl (Ventil auf) lief direkt in Error.send_cmd,
+     war dort noch nicht urgent -> "Cannot send commands in Error state!" wie im Labor. Die
+     Serie selbst wurde urgent und LEER gesendet ("CommandSeries []").
+     Fix: backend/devices/devicestate.py, Error.new_state laesst CollectingCommands zu.
+  f) Pumpe wurde NICHT gestoppt. Experiment._stop_devices ruft device.stop() der Reihe nach;
+     die Ausnahme des MFC hat die Pumpe uebersprungen. Im Labor hat nur die Geraetereihenfolge
+     die Pumpe gerettet (Pumpe vor Netzteil).
+     Fix: backend/experiments/experiment.py, jedes Geraet einzeln in try/except.
+  g) Setup blieb "Busy" mit dem abgebrochenen Experiment. Experiment-Zustand Failed hat nie das
+     Deferred gefeuert, ueber das Setup.execute_experiment das Ende erfaehrt (Original-Fehler,
+     nicht Folge der Ausnahme). Ausserdem fehlte finishing_time -> lauf.json final_state null.
+     Fix: backend/experiments/experimentstates.py, Failed setzt finishing_time, errbackt
+     deferred_success (neue ExperimentFailedError), ist Endzustand (zweites Error-Geraet loest
+     nichts doppelt aus; Stopped nach Failed schaltet Geraete nur nochmal ab).
+     backend/setup/setup.py verbraucht die Failure (sonst "Unhandled error in Deferred").
+
+Test 2 nach e)-g): BESTANDEN. 3x Retry, Fail, MFC Error, Experiment Failed, Ventil-auf wird
+  als URGENT gesendet (3 Retries, dann Fail - Dummy stumm), Pumpenstopp gesendet und bestaetigt,
+  Bericht/values.json/lauf.json (final_state "Failed"), Setup "Failed". KEINE Zeile
+  "Cannot send commands in Error state!". Schritt 5: /api/stop -> HTTP 200, Setup "Stopped",
+  Ventil-auf erneut gesendet und (Dummy wieder da) beantwortet, MFC "Stopped".
+
+Test 3 (Geraet antwortet 2 s nach Error wieder = Laborsituation): BESTANDEN. Ventil-auf wird
+  beim ersten Retry beantwortet, MFC "Stopped". Das ist der Kern: ein Geraet im Error-Zustand
+  wird abgeschaltet, sobald es wieder erreichbar ist.
+
+Beobachtet, harmlos: Der Pumpenstopp wird im Fehlerpfad zweimal gesendet (einmal aus stop(),
+  einmal nachdem finish_experiment das Geraet auf Ready setzt und die Queue nachlaeuft).
+
+Noch offen: derselbe Test am Pi mit dem echten Netzteil ohne Zelle (2 V, Kabel kurz ziehen),
+  bevor der naechste lange Lauf startet.

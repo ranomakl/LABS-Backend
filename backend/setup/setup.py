@@ -263,6 +263,8 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         deferred = experiment.execute()
         deferred.addBoth(stop_observing, experiment)
         deferred.addCallbacks(self.set_state, self.set_state, callbackArgs=[Ready], errbackArgs=[Failed])
+        deferred.addErrback(lambda failure: self.log.error("Experiment {id} failed: {err}",
+                                                           id=experiment.id, err=failure.getErrorMessage()))
 
     def update(self, observable, observable_key, updated_value, timestamp):
         pass

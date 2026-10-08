@@ -131,8 +131,13 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
 
     def _stop_devices(self, result):
         condition = DevicesStateEqualsCondition(f"Devices stopped by {self.log_name}", self.devices_and_channels.values(), devicestate.Stopped)
-        for device in self.devices_and_channels.values():
-            device.stop()
+        for name, device in self.devices_and_channels.items():
+            # 08.10.2026: Ein Geraet, dessen stop() eine Ausnahme wirft (z.B. Error-Zustand), darf nicht
+            # verhindern, dass die UEBRIGEN Geraete abgeschaltet werden (Dummy-Test: MFC warf, Pumpe lief weiter).
+            try:
+                device.stop()
+            except Exception as error:  # noqa: BLE001
+                self.log.error("Stopping device {name} raised: {error}", name=name, error=error)
         return self.factory.setup.conditionhandler.add_condition(condition)
 
     def stop(self):

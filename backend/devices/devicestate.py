@@ -122,7 +122,11 @@ class Error(DeviceState):
         raise error
 
     def new_state(self, state, *args, **kwargs):
-        if isinstance(state, (Stopped, Shutdown, NotReady)):
+        # CollectingCommands: device.stop()/shutdown() sammeln die final_commands in einer CommandSeries
+        # (with-Block). Ohne diesen Wechsel landet jeder einzelne Abschaltbefehl direkt hier in send_cmd,
+        # ist dort noch nicht als urgent markiert und wird abgewiesen - die Serie geht dann LEER raus
+        # (Dummy-Test 08.10.2026: "sending URGENT command anyway: CommandSeries []").
+        if isinstance(state, (Stopped, Shutdown, NotReady, CollectingCommands)):
             super().new_state(state, *args, **kwargs)
 
 
