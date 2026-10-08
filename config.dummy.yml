@@ -219,6 +219,36 @@ experiments:
 
   # ---- new: exercise the simulated Bronkhorst MFC directly ----
 
+  # Fehlerpfad-Test (08.10.2026, s. docs/test_fehlerpfad_dummys.md): Bronkhorst-Dummy zaehlt
+  # 'minutes' Minuten; waehrenddessen wird der Dummy per STUMM-Datei zum Schweigen gebracht.
+  test_fehlerpfad_mfc:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, measure_for_minutes, [], { minutes: "{minutes}" }]
+
+  # Fehlerpfad-Test mit ZWEI Geraeten: Pumpe laeuft, MFC wird stumm -> Pumpe muss trotzdem
+  # gestoppt werden (final_commands), MFC bekommt den Abschaltbefehl (open_valve) trotz Error.
+  test_fehlerpfad_mfc_pumpe:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: 100, minutes: "{minutes}" }]
+
   demo_live_monitoring:
     conditions:
     stopconditions:
