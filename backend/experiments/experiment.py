@@ -3,6 +3,8 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 import json
+import subprocess
+import sys
 
 from twisted.logger import FilteringLogObserver, LogLevelFilterPredicate, LogLevel, jsonFileLogObserver, globalLogPublisher, Logger, textFileLogObserver
 from twisted.internet import defer
@@ -69,6 +71,24 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         with values_file.open("w") as file:
             json.dump(self.observed_updates, file)
 
+    def write_report(self):
+        """HTML-Bericht (bericht.html im Lauf-Ordner) und Tagesbericht automatisch nach jedem Lauf
+        erzeugen - ueber tools/auswertung.py als eigenen Prozess, damit der Reactor nicht blockiert.
+        Nur fuer Hauptexperimente (Subexperimente haben keinen eigenen Bericht)."""
+        if getattr(self, "superexperiment", None) is not None:
+            return
+        skript = Path(__file__).resolve().parents[2] / "tools" / "auswertung.py"
+        if not skript.exists():
+            return
+        try:
+            subprocess.Popen([sys.executable, str(skript), self.id, "--html"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen([sys.executable, str(skript), "--html", "--tag", date.today().isoformat()],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.log.info("Bericht wird erzeugt: {pfad}/bericht.html", pfad=str(self.log_path))
+        except OSError as error:
+            self.log.warn("Bericht konnte nicht gestartet werden: {error}", error=error)
+
     def save_run_info(self):
         """Schreibt lauf.json neben values.json: Experimenttyp, Parameter (Wert + Einheit), deklarierte
         Observablen (Geraet, Name, Typ, Einheit), Start/Ende und Endzustand. values.json allein enthaelt
@@ -101,6 +121,7 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         self._stop_log_observer()
         self._save_observed_updates()
         self.save_run_info()
+        self.write_report()
         for condition, deferreds in self.stopcondition_deferreds.items():
             for deferred in deferreds:
                 self.factory.setup.conditionhandler.remove_deferred_for_condition(deferred, condition)
