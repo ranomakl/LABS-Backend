@@ -90,6 +90,9 @@ def lauf(host, timeout, name, tags, max_lauf, ausgabe):
     (ausgabe / f"{sicher}.csv").write_text(csv_text, encoding="utf-8")
     print(f"{stamp()}  gespeichert: {ausgabe}/{sicher}.json|.csv  (Geraet: Methode {run_data.get('methodName')!r}, "
           f"Zeitstempel {run_data.get('runTimeStamp')!r})", flush=True)
+    print(f"----- Ergebnis '{name}' -----", flush=True)
+    print(csv_text.strip() or "(keine Peak-Tabelle in den Laufdaten)", flush=True)
+    print("-" * 40, flush=True)
     return csv_text
 
 
