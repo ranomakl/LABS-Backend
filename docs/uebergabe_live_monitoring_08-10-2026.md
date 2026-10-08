@@ -115,3 +115,11 @@ geprueft (7D00 -> 50.0 mL/min, Counter-Float, WJ-Ack/Statusmeldung -> keine Obse
   `hcd.0` (so meldet es der Pi heute; Geraet antwortet, 60 V / 5 A).
 - microGC: eth0 hatte um 09:26 keinen Link (carrier 0) - Geraet aus oder Kabel nicht gesteckt.
   Backend ueberspringt ihn mit Warnung, die microgc-Experimente fehlen dann in der Auswahl.
+
+## Nachtrag 08.10. 10:10: Auswertung im Nachhinein
+
+- Backend schreibt jetzt pro Lauf `lauf.json` neben `values.json` (Experimenttyp, Parameter mit Einheit,
+  deklarierte Observablen mit Einheit, Start/Ende, Endzustand) - beim Start und am Ende, damit auch ein
+  abgebrochener Lauf Typ und Parameter hinterlaesst. Am Geraet geprueft (Lauf lauf_json_test).
+- `tools/auswertung.py --html` erzeugt einen Versuchsbericht als einzelne HTML-Datei (Kurven + alle
+  Messwerte + CSV-Download), `--html --tag JJJJ-MM-TT` einen Tagesbericht. Beschreibung in tools/README.md.

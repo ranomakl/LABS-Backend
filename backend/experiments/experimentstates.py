@@ -23,6 +23,7 @@ class Running(ExperimentState):
     def enter(self):
         self.experiment.start_log_observer()
         self.experiment.starting_time = time.time()
+        self.experiment.save_run_info()
         for device in self.experiment.devices_and_channels.values():
             device.subscribe(self.experiment)
 

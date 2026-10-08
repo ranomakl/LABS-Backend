@@ -52,13 +52,21 @@ Treiber nicht und der Scan bricht ab.
 
 ## Auswertung im Nachhinein: `auswertung.py`
 
-Kein Diagnosewerkzeug, sondern liest die Versuchslogs `logs/<Jahr>/<Monat>/<Tag>/<Experiment-ID>/values.json`
-und greift auf kein Geraet zu. Nur Standardbibliothek.
+Kein Diagnosewerkzeug, sondern liest die Versuchslogs `logs/<Jahr>/<Monat>/<Tag>/<Experiment-ID>/`
+(`values.json` = alle Messwerte, `lauf.json` = Typ, Parameter, Einheiten, Start/Ende - wird vom Backend
+seit 08.10.2026 geschrieben). Greift auf kein Geraet zu, nur Standardbibliothek.
 
-    .venv/bin/python tools/auswertung.py --liste                 # alle Laeufe (Datum, Dauer, Observablen)
-    .venv/bin/python tools/auswertung.py                         # neuester Lauf: Uebersicht + Tabelle alle 10 s
-    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --takt 600 --csv werte.csv   # 10-Minuten-Tabelle als CSV
-    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --roh # jeden Messwert einzeln
+    .venv/bin/python tools/auswertung.py --liste                      # alle Laeufe (Datum, Dauer, Typ, Observablen)
+    .venv/bin/python tools/auswertung.py --html                       # BERICHT fuer den neuesten Lauf -> logs/.../<ID>/bericht.html
+    .venv/bin/python tools/auswertung.py --html --tag 2026-10-08      # Tagesbericht, alle Laeufe des Tages in einer Datei
+    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --html ~/bericht.html --takt 600
+    .venv/bin/python tools/auswertung.py                              # Terminal: Uebersicht + Tabelle alle 10 s
+    .venv/bin/python tools/auswertung.py "<Experiment-ID>" --csv werte.csv --takt 600   # 10-Minuten-Tabelle als CSV
+
+Der HTML-Bericht ist EINE Datei ohne Internet-Abhaengigkeiten (im Browser oeffnen, drucken, per Mail
+verschicken): Kopf mit Typ/Parametern/Start/Ende/Dauer, Kennzahlen je Observable, eine Kurve je
+Observable (Fadenkreuz beim Ueberfahren), Messwerttabelle im Raster `--takt` (Standard 10 s) und
+zwei Knoepfe, die alle Rohwerte bzw. die Tabelle als CSV herunterladen.
 
 Die Experiment-ID ist der Verzeichnisname unter logs/, so wie das Frontend ihn vergibt
 (z.B. `test_0810-Polling test-3`), in Anfuehrungszeichen wegen der Leerzeichen.

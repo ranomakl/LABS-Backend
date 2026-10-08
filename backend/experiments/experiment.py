@@ -69,6 +69,30 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         with values_file.open("w") as file:
             json.dump(self.observed_updates, file)
 
+    def save_run_info(self):
+        """Schreibt lauf.json neben values.json: Experimenttyp, Parameter (Wert + Einheit), deklarierte
+        Observablen (Geraet, Name, Typ, Einheit), Start/Ende und Endzustand. values.json allein enthaelt
+        davon nichts - fuer die Auswertung im Nachhinein (tools/auswertung.py) ist das aber noetig.
+        Wird beim Start (Running.enter) und am Ende (finish_experiment) geschrieben, damit auch ein
+        abgestuerzter Lauf wenigstens Typ und Parameter hinterlaesst."""
+        info = {
+            "experiment_id": self.id,
+            "experiment_type": getattr(self.factory, "experiment_name", None),
+            "parameters": {name: {"value": value[0], "unit": value[1]} if isinstance(value, (list, tuple)) and len(value) == 2
+                           else {"value": value, "unit": None}
+                           for name, value in (self.parameters or {}).items()},
+            "observables": [list(obs) for obs in (self.observable_details or [])],
+            "devices": list(self.devices_and_channels.keys()),
+            "starting_time": self.starting_time,
+            "finishing_time": self.finishing_time,
+            "final_state": self.state.__name__ if self.finishing_time else None,
+        }
+        try:
+            with (self.log_path / "lauf.json").open("w") as file:
+                json.dump(info, file, indent=1, default=str)
+        except (OSError, TypeError, ValueError) as error:
+            self.log.warn("lauf.json konnte nicht geschrieben werden: {error}", error=error)
+
     def _stop_log_observer(self):
         globalLogPublisher.removeObserver(self.json_log_observer)
         globalLogPublisher.removeObserver(self.text_log_observer)
@@ -76,6 +100,7 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
     def finish_experiment(self):
         self._stop_log_observer()
         self._save_observed_updates()
+        self.save_run_info()
         for condition, deferreds in self.stopcondition_deferreds.items():
             for deferred in deferreds:
                 self.factory.setup.conditionhandler.remove_deferred_for_condition(deferred, condition)
