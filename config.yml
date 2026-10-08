@@ -26,7 +26,7 @@ devices:
     # Vorher (06.10.): erster Kasten an Hub-Buchse 2.1. Aufruf ohne --port zeigt die Pfade:
     #   .venv/bin/python tools/lese_netzteil.py
     # ACHTUNG: Ein Kasten, dessen Wandler am Pi auftaucht, aber nicht antwortet, ist AUSGESCHALTET.
-    address: /dev/serial/by-path/platform-xhci-hcd.0-usb-0:2.4.2:1.0-port0
+    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.4.2:1.0-port0
     dpm_address: "01"          # am Geraet bestaetigt
     voltage_limit: 48.0        # Obergrenze fuer Sollwerte in V (laut Labor: Geraet kann 48 V; es meldet selbst max 60 V)
     current_limit: 5.0         # Obergrenze fuer Sollwerte in A (Geraetemaximum, 5-A-Modell). Der Strom pro Versuch
@@ -163,9 +163,28 @@ experiments:
       flow: [float, mL/min]
     observables:
       - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, ""]
     commands:
       - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
       - [mfc, measure_flow, [], {}]
+
+  # Live-Monitoring-Test ohne Eingriff in den Gasweg: MFC wird NUR gelesen (start_measuring ohne
+  # Setpoint, Ventil bleibt zu), die Pumpe laeuft volume/rate Minuten und haelt das Experiment am
+  # Laufen. Experimentende raeumt auf (Pumpenstopp, MFC-Setpoint bleibt 0, Polling endet).
+  test_live_polling:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      volume: [float, mL]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, ""]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, dispense, [], { rate: "{rate}", volume: "{volume}" }]
 
   test_mfc_counter:
     conditions:

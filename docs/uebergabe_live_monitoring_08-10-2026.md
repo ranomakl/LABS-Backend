@@ -97,3 +97,21 @@ geprueft (7D00 -> 50.0 mL/min, Counter-Float, WJ-Ack/Statusmeldung -> keine Obse
   docs/daheim_entwickeln_ohne_pi.md. Dort steht noch "fuer Bronkhorst/Pumpe gibt es
   keinen Dummy" - das ist UEBERHOLT, beide Dummys existieren seit 25.08. (Ports
   12351/12352) und sprechen das aktuelle Protokoll.
+
+## Ergebnis am Pi (08.10.2026, 09:30, echte Geraete)
+
+- Pruefpunkt 1 ERLEDIGT: Polling am echten Bronkhorst und an der echten Longer-Pumpe laeuft.
+  Testlauf `test_live_polling` (neu in config.yml, rate 100 mL/min, volume 50 mL = 30 s):
+  MFC 2 Anfragen/s (READ_MEASURE + READ_COUNTER, 31 Werte in 30,7 s), Pumpe RJ ~1/s
+  (26 Werte in 29,2 s; bei 1200 Baud faellt etwa jede 7. Sekunde aus, weil ein RJ-Paar ~150 ms
+  braucht - erwartet, kein Fehler). Werte: flow 0,0 (kein Gas, Ventil zu), counter 793,21 konstant,
+  Pumpe 113 rpm / 100,38 mL/min, running/clockwise true. Keine Fehler/Retries im Log.
+- Aufraeumen am Experimentende verifiziert: Pumpe WJ-Stopp (Status 1E), MFC Setpoint 0 (Status 00),
+  Polling endet.
+- `test_live_polling` greift NICHT in den Gasweg ein: MFC nur `start_measuring` ohne Setpoint
+  (Sicherheitsfrage 1 bleibt unberuehrt). Die Pumpe haelt per `dispense` das Experiment am Laufen.
+- Pruefpunkt 2 ERLEDIGT: counter-Observable bei `test_mfc_setpoint` ergaenzt.
+- Netzteil-Pfad in config.yml korrigiert: Hub-Buchse 2.4.2 haengt an Controller `xhci-hcd.1`, nicht
+  `hcd.0` (so meldet es der Pi heute; Geraet antwortet, 60 V / 5 A).
+- microGC: eth0 hatte um 09:26 keinen Link (carrier 0) - Geraet aus oder Kabel nicht gesteckt.
+  Backend ueberspringt ihn mit Warnung, die microgc-Experimente fehlen dann in der Auswahl.
