@@ -223,7 +223,7 @@ Scan 30.09.2026 (tools/scan_liquiline.py, nur FC03, Stufe 1 = Adressen 1 und 247
   Leitung); ASCII 19200/E Adr 247: 139 Anfragen, 0 Byte; RTU 19200/E Adr 247: 97 Anfragen,
   0 Byte; ASCII 19200/E Adr 1: 70 Anfragen, 0 Byte. Befund identisch zum 30.09. Der namenlose
   CH340 am Hub (heute ttyUSB2) wurde vorsichtshalber ebenfalls gescannt: 0 Reaktionen.
-  Zusammenfassung fuer den E+H-Service: docs/liquiline_telefonat_eh.txt.
+  (Telefonat-Protokoll fuer den E+H-Service am 08.10. geloescht, Befund steht hier.)
 - ACHTUNG 07.10.2026: Der USB-Hub steckt seit 14:35 in einer anderen Pi-Buchse (xhci-hcd.1 statt
   hcd.0). Der by-path des Netzteils in config.yml (platform-xhci-hcd.0-usb-0:2.1:1.0-port0) ist
   damit falsch, bis der Hub zurueckgesteckt oder der Pfad angepasst ist.

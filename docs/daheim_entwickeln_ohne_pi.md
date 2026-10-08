@@ -38,7 +38,6 @@ Die Monitoring-Seite zeigt die Kurven des laufenden Experiments - mit simulierte
 - Fragen und Einzelschritte fuer den Versuch: docs/versuch_08-10-2026_fragen_und_schritte.md
 - Geraete-Befunde (Adressen, Adapter, was am Geraet geprueft ist): OFFENE_FRAGEN.md
 - Werkzeuge fuer Geraetetests (nur lesend, mit Sperren): tools/README.md
-- Liquiline fuer den E+H-Service: docs/liquiline_telefonat_eh.txt
 - Workflow aus dem Labor: docs/Maximal_Workflow_-_Kolbe_electrolysis_-_Flow.pdf
 
 ## Am Pi (Labor) gilt
