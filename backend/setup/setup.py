@@ -145,6 +145,22 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
             experiments.append(data)
         return experiments
 
+    _TIME_UNITS_S = {"s": 1, "sec": 1, "seconds": 1, "min": 60, "minutes": 60, "h": 3600, "hours": 3600}
+
+    @classmethod
+    def _planned_duration_s(cls, experiment):
+        """Summe aller Experiment-Parameter mit Zeiteinheit (s/min/h) in Sekunden; None, wenn es keinen gibt.
+        Parameter liegen als {name: [wert, einheit]} vor (ExperimentFactory._get_experiment_parameters)."""
+        total = None
+        for value in (getattr(experiment, "parameters", None) or {}).values():
+            try:
+                number, unit = value
+                factor = cls._TIME_UNITS_S[str(unit).strip().lower()]
+                total = (total or 0.0) + float(number) * factor
+            except (TypeError, ValueError, KeyError):
+                continue
+        return total
+
     def remote_get_updates(self, component_observable_pairs: Optional[dict] = None, from_timestamp: Optional[str] = None, to_timestamp: Optional[str] = None):
         response = {"timestamp": time.time()}
         from_timestamp = float(from_timestamp) if from_timestamp is not None else None
@@ -155,6 +171,12 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         else:
             response["current_experiment"] = self.current_experiment.id
             response["experiment_started"] = self.current_experiment.starting_time
+            # 08.10.2026: geplante Dauer aus den Zeit-Parametern des Experiments (z.B. minutes: [float, min]),
+            # damit das Frontend neben dem Timer die Uhrzeit des voraussichtlichen Endes zeigen kann.
+            duration = self._planned_duration_s(self.current_experiment)
+            response["experiment_planned_duration_s"] = duration
+            started = self.current_experiment.starting_time
+            response["experiment_planned_end"] = started + duration if (duration is not None and started) else None
         if component_observable_pairs is None:
             component_observable_pairs = defaultdict(list)
             if self.current_experiment is None:

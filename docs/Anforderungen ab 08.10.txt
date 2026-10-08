@@ -2,6 +2,10 @@ Anforderungen ab 08.10
 
 
 - nicht nur Timer sondern auch Uhrzeit (wann versuch fertig ist) 
+  -> ERLEDIGT 08.10.: Monitoring-Seite zeigt "running for MM:SS - ends ~HH:MM (in MM:SS)".
+     Backend liefert in get_updates experiment_planned_duration_s/experiment_planned_end (Summe aller
+     Parameter mit Zeiteinheit s/min/h), Frontend live_values.js rechnet mit Backend-Zeitdifferenzen
+     (Uhrenversatz Pi/Browser egal). Am PC mit Dummys im Browser geprueft.
 
 - microgc Werte in LABS implementieren, Elektrolyse
 
