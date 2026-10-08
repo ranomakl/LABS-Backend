@@ -28,11 +28,13 @@ import argparse
 import base64
 import csv
 import datetime as dt
+import glob
 import html
 import io
 import json
 import math
 import os
+import re
 import sys
 
 _HIER = os.path.dirname(os.path.abspath(__file__))
@@ -156,6 +158,69 @@ def tabelle(lauf, takt):
     return list(reihen), zeilen
 
 
+# ----------------------------------------------------------------------------- microGC (Messplan-Dateien)
+
+GC_IMMER = ["H2", "O2", "N2", "CO2"]
+GC_LAUFDAUER_S = 456   # typische Dauer eines Laufs (7,6 min, am 08.10.2026 gemessen)
+
+
+def _gc_zeit(iso):
+    """runTimeStamp des microGC ('2026-10-08T08:44:58.319Z', UTC) -> Epoch-Sekunden."""
+    try:
+        return dt.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError):
+        return None
+
+
+def gc_messungen(lauf, vorlauf=600, nachlauf=900):
+    """microGC-Laeufe aus <Tagesordner>/microgc/*.json|csv (tools/kolbe_gc_messplan.py), deren
+    Startzeit in das Zeitfenster des Laufs faellt. Liefert [(t_epoch, name, {label: konz_%})]."""
+    ordner = os.path.join(os.path.dirname(lauf.pfad), "microgc")
+    if not os.path.isdir(ordner):
+        return []
+    out = []
+    for jpfad in glob.glob(os.path.join(ordner, "*.json")):
+        try:
+            daten = json.load(open(jpfad))
+        except (json.JSONDecodeError, OSError):
+            continue
+        # Zeitbasis: Die Geraeteuhr des microGC geht falsch (08.10.2026: ~11,5 min nach), deshalb
+        # NICHT runTimeStamp, sondern die Speicherzeit der Datei (Pi-Uhr = Backend-Uhr) am Ende des
+        # Laufs, abzueglich der typischen Laufdauer (GC_LAUFDAUER_S). Das ist der geschaetzte Start.
+        t = os.path.getmtime(jpfad) - GC_LAUFDAUER_S
+        if not (lauf.start - vorlauf <= t <= lauf.ende + nachlauf):
+            continue
+        name = os.path.splitext(os.path.basename(jpfad))[0]
+        anm = daten.get("annotations") or {}
+        if isinstance(anm, dict) and anm.get("name"):
+            name = str(anm["name"])
+        # Geplanter Zeitpunkt aus dem Namen ("26174_10 min") - genauer als die Schaetzung
+        m = re.search(r"_(\d+)\s*min$", name)
+        if m and lauf.info.get("starting_time"):
+            t = lauf.start + 60 * int(m.group(1))
+        konz = {}
+        cpfad = os.path.splitext(jpfad)[0] + ".csv"
+        if os.path.exists(cpfad):
+            for r in csv.DictReader(open(cpfad, encoding="utf-8")):
+                try:
+                    konz[r["label"]] = float(r["concentration"])
+                except (KeyError, ValueError, TypeError):
+                    pass
+        out.append((t, name, konz))
+    out.sort()
+    return out
+
+
+def gc_spalten(messungen):
+    """Stoffe, die angezeigt werden: die vier Hauptgase immer, sonst alles, was irgendwann > 0.001 % war."""
+    alle = []
+    for _, _, konz in messungen:
+        for k in konz:
+            if k not in alle:
+                alle.append(k)
+    return [k for k in alle if k in GC_IMMER or any(m[2].get(k, 0) > 0.001 for m in messungen)]
+
+
 # ----------------------------------------------------------------------------- Terminal
 
 def uebersicht(lauf):
@@ -180,6 +245,12 @@ def uebersicht(lauf):
         einheit = f" [{lauf.einheit(name)}]" if lauf.einheit(name) else ""
         print(f"  {name + einheit:<30} n={k['n']:<5} {stat}  (erster {_fmt(k['erster'])}, letzter {_fmt(k['letzter'])}{takt})")
     print(f"Zustandswechsel (nicht in Tabelle): { {g: len(o.get('state', [])) for g, o in lauf.daten.items()} }")
+    gc = gc_messungen(lauf)
+    if gc:
+        sp = gc_spalten(gc)
+        print(f"microGC-Messungen im Zeitfenster: {len(gc)}  (Stoffe: {', '.join(sp)})")
+        for t, name, konz in gc:
+            print(f"  {_lokal(t)}  t={_fmt_zeit(t - lauf.start):>7}  {name:<16} " + "  ".join(f"{k} {konz.get(k, 0):.3g}%" for k in sp))
     print()
 
 
@@ -300,6 +371,10 @@ def _svg_kurve(lauf, name, reihe, idx):
             f'<div class="tip" hidden></div></div></figure>')
 
 
+def sicher_gc(lauf):
+    return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in lauf.id)
+
+
 def _abschnitt(lauf, takt, nr):
     p = lauf.info.get("parameters") or {}
     param_html = ("<dl class='params'>" + "".join(
@@ -329,13 +404,39 @@ def _abschnitt(lauf, takt, nr):
     for t, s, w in zeilen:
         tab.append(f"<tr><td>{_lokal(t)}</td><td>{_fmt_zeit(s)}</td>" + "".join(f"<td>{_fmt(w.get(c))}</td>" for c in spalten) + "</tr>")
     tab.append("</tbody></table>")
+    gc = gc_messungen(lauf)
+    gc_html = ""
+    if gc:
+        sp = gc_spalten(gc)
+        for k in sp:
+            lauf.einheiten[f"microGC.{k}"] = "%"
+        gc_kurven = "".join(_svg_kurve(lauf, f"microGC.{k}", [(t, konz.get(k, 0.0)) for t, _, konz in gc], f"{nr}_gc{i}")
+                            for i, k in enumerate(sp))
+        gc_tab = ["<table class='werte'><thead><tr><th>Uhrzeit</th><th>t</th><th>Messung</th>"]
+        gc_tab.extend(f"<th>{html.escape(k)}<br><span class='muted'>%</span></th>" for k in sp)
+        gc_tab.append("</tr></thead><tbody>")
+        for t, name, konz in gc:
+            gc_tab.append(f"<tr><td>{_lokal(t)}</td><td>{_fmt_zeit(t - lauf.start)}</td><td>{html.escape(name)}</td>"
+                          + "".join(f"<td>{konz.get(k, 0):.3g}</td>" for k in sp) + "</tr>")
+        gc_tab.append("</tbody></table>")
+        gc_buf = io.StringIO(); w = csv.writer(gc_buf, delimiter=";", lineterminator="\n")
+        w.writerow(["messung", "datum_uhrzeit", "t_s"] + sp)
+        for t, name, konz in gc:
+            w.writerow([name, _lokal(t, True), f"{t - lauf.start:.0f}"] + [konz.get(k, "") for k in sp])
+        gc_csv = base64.b64encode(gc_buf.getvalue().encode("utf-8")).decode("ascii")
+        gc_html = (f"<h3>microGC-Messungen ({len(gc)}, Konzentration in %)</h3>"
+                   f"<p class='muted'>Aus tools/kolbe_gc_messplan.py (logs/.../microgc/), zugeordnet ueber die Startzeit. "
+                   f"Gezeigt: H2, O2, N2, CO2 und alle Stoffe, die irgendwann ueber 0,001 % lagen.</p>"
+                   f"<div class='charts'>{gc_kurven}</div>"
+                   f"<p class='dl'><a download='{sicher_gc(lauf)}_microgc.csv' href='data:text/csv;base64,{gc_csv}'>GC-Tabelle als CSV</a></p>"
+                   f"<div class='scroll'>{''.join(gc_tab)}</div>")
     _, alle = tabelle(lauf, 0)
     roh_csv = base64.b64encode(csv_text(lauf, spalten, alle).encode("utf-8")).decode("ascii")
     raster_csv = base64.b64encode(csv_text(lauf, spalten, zeilen).encode("utf-8")).decode("ascii")
     sicher = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in lauf.id)
     takt_txt = f"alle {takt:g} s" if takt > 0 else "jeder Messwert"
     return (f"<section id='l{nr}'><h2>{html.escape(lauf.id)}</h2>{kopf}<h3>Parameter</h3>{param_html}"
-            f"<h3>Kennzahlen</h3>{''.join(kz)}<h3>Verlauf</h3><div class='charts'>{kurven}</div>"
+            f"<h3>Kennzahlen</h3>{''.join(kz)}<h3>Verlauf</h3><div class='charts'>{kurven}</div>{gc_html}"
             f"<h3>Messwerte ({takt_txt}, {len(zeilen)} Zeilen)</h3>"
             f"<p class='dl'><a download='{sicher}_rohwerte.csv' href='data:text/csv;base64,{roh_csv}'>Alle Rohwerte als CSV ({len(alle)} Zeilen)</a> "
             f"<a download='{sicher}_tabelle.csv' href='data:text/csv;base64,{raster_csv}'>Diese Tabelle als CSV</a></p>"
