@@ -143,12 +143,12 @@ Klammern sind Parameter, die beim Start eingegeben werden. "vorhanden" = Eintrag
 | 3 | Pumpe an zum Befuellen/Dichtheitstest (Rate, Minuten) | dosing_pump + mfc lesen | kolbe_pumpe_zeit (rate, minutes) | VORHANDEN 08.10. |
 | 4 | N2-Spuelung 10 min: Zaehler auf 0, Pumpe laeuft, Gas live | mfc, dosing_pump | kolbe_n2_spuelung (rate, minutes) | VORHANDEN 08.10. |
 | 5 | Elektrolyse: Zaehler 0, Pumpe + Netzteil laufen 'minutes', Netzteil schaltet selbst ab, alles live | psu, mfc, dosing_pump | kolbe_elektrolyse (current 0.55, max_voltage 48, minutes 219, rate 100) | VORHANDEN 08.10. (Logik am Geraet mit 50 mA/2 V/20 s geprueft) |
-| 6 | waehrenddessen alle 10 min microGC-Messung (Name "Nr_Zeit") | microgc | test_microgc_run (method) bzw. neu mit Name/Tags | vorhanden ohne Name, Frage 12/13 |
+| 6 | waehrenddessen microGC-Messungen nach Plan (Name "26174_<t> min") | microgc | NICHT ueber das Backend (nur ein Experiment zur Zeit), sondern tools/kolbe_gc_messplan.py im zweiten Terminal | VORHANDEN 08.10. |
 | 7 | Netzteil aus (Ende oder Notfall) | psu | stop_psu_output | vorhanden |
 | 8 | N2-Spuelen nach Ansaeuern bis ~150 mLn: Zaehler 0, Gas live, ohne Pumpe | mfc | kolbe_gas_zaehlen (minutes) | VORHANDEN 08.10. |
 | 9 | Pumpe aus | dosing_pump | stop_wt600 | vorhanden |
 | 10 | Nachspuelen 10 min mit Reaktionsloesung | dosing_pump | kolbe_pumpe_zeit (rate 100, minutes 10) | VORHANDEN 08.10. |
-| 11 | Offline-Gasbeutel: 3x microGC-Messung ("Nr_rep1..3") | microgc | test_microgc_run 3x | vorhanden, Frage 12 |
+| 11 | Offline-Gasbeutel: 3x microGC-Messung ("26174_rep1..3") | microgc | kolbe_gc_messung (method, name, tags) oder kolbe_gc_messplan.py --einzel rep1 | VORHANDEN 08.10. (benannter Lauf am Geraet ungetestet) |
 
 Notfall: stop_psu_output und stop_wt600 sind jederzeit einreihbar; ausserdem /api/stop am Backend
 und der Netzschalter am grauen Kasten.
@@ -162,5 +162,5 @@ Spuelen mit Cyclohexan/Wasser/Aceton, Leersaugen, Probenahme, pH/Leitfaehigkeit/
 - [x] mfc: Zaehler-Reset (reset_counter, am Geraet geprueft) und periodisches Lesen (08.10.).
 - [x] dosing_pump: periodisches Lesen; run_for_minutes(rate, minutes) in mL/min (08.10.).
 - [x] Schritt kolbe_elektrolyse (current, max_voltage, minutes, rate) mit Abschalten am Ende (08.10.).
-- [ ] microgc: runWithName (Name + Tags) statt run, falls Frage 12 = ja.
+- [x] microgc: run_method_named (POST wie runWithName) + tools/kolbe_gc_messplan.py (08.10., am Geraet ungetestet: BakeOut).
 - [x] Frontend auf dem Pi laeuft, Station eingetragen (08.10.). Neue Experimente: Routines Administration -> Download Experiments from Station.

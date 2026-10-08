@@ -84,6 +84,8 @@ from urllib.parse import quote
 from twisted.internet import defer, reactor
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
+from twisted.web.iweb import IBodyProducer
+from zope.interface import implementer
 
 from backend.commands import commandstate
 from backend.commands.parser import BaseParser, ParserParameterFactory
@@ -159,6 +161,27 @@ class HTTPJSONParser(BaseParser):
         return reply, commandstate.Success
 
 
+@implementer(IBodyProducer)
+class _BytesProducer:
+    """Minimaler IBodyProducer fuer einen fertigen Byte-Koerper (twisted.web.client.Agent)."""
+    def __init__(self, body: bytes):
+        self.body = body
+        self.length = len(body)
+
+    def startProducing(self, consumer):
+        consumer.write(self.body)
+        return defer.succeed(None)
+
+    def pauseProducing(self):
+        pass
+
+    def resumeProducing(self):
+        pass
+
+    def stopProducing(self):
+        pass
+
+
 class HTTPCommandTransport:
     """Ersetzt BaseDeviceProtocol (backend/devices/base.py) fuer dieses Geraet: keine persistente
     Byte-Stream-Verbindung, sondern ein einzelner HTTP-Request pro Command, ueber Twisteds eigenen
@@ -182,12 +205,31 @@ class HTTPCommandTransport:
         d.addCallback(read_body)
         return d
 
+    def post_json(self, url: str, body: dict) -> defer.Deferred:
+        data = json.dumps(body).encode("utf-8")
+        headers = Headers({b"Content-Type": [b"application/json"]})
+        d = self.agent.request(b"POST", url.encode("ascii"), headers, _BytesProducer(data))
+
+        def read_body(response):
+            body_deferred = readBody(response)
+            body_deferred.addCallback(lambda raw: (response.code, raw))
+            return body_deferred
+
+        d.addCallback(read_body)
+        return d
+
     def write_command(self, command_object) -> None:
         url = self.device.base_url() + command_object.parameters.commandstring
-        d = self.get(url)
+        json_body = command_object.parameters.command_values.get("json_body")
+        if json_body is not None:
+            # Benannter Lauf (runWithName in MicroGCFusionAPI): POST mit JSON-Koerper statt GET.
+            d = self.post_json(url, json_body)
+            self.device.log.info(f"Wrote POST {url} {json.dumps(json_body)} to device.")
+        else:
+            d = self.get(url)
+            self.device.log.info(f"Wrote GET {url} to device.")
         d.addCallback(self._build_result, url)
         d.addErrback(self._request_failed, url)
-        self.device.log.info(f"Wrote GET {url} to device.")
 
     def _build_result(self, code_and_body, url):
         code, body = code_and_body
@@ -275,6 +317,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             method_name = quote(str(values["method_name"]), safe="")
             return f"{path}?methodLocation=/v1/methods/userMethods/{method_name}"
         if path == PATH_RUN:
+            if "json_body" in values:
+                return path  # runWhenReady steht im JSON-Koerper (s. HTTPCommandTransport.write_command)
             return f"{path}?runWhenReady=true"
         if path == PATH_RUN_DATA_PREFIX:
             return run_data_path(str(values["location"]))
@@ -307,6 +351,17 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def load_method(self, method_name, **kwargs):
         """Methode laden (Name der Methode auf dem Geraet)."""
         return self.write("LOAD_METHOD", command_values={"method_name": method_name}, **kwargs)
+
+    def run_method_named(self, name, tags="", poll_interval=5, **kwargs):
+        """Die geladene Methode mit LAUFNAMEN und Tags ausfuehren (POST cmd.run mit
+        {"runWhenReady": true, "annotations": {"name": ..., "tags": [...]}} - exakt wie
+        MicroGCFusionAPI.control.runWithName(), Quelltext 0.0.8 gelesen 08.10.2026). Tags als
+        Semikolon-Liste ("Kolbe;MP"), weil das Frontend Kommas in Parameterwerten zu Punkten macht.
+        NOCH NICHT am Geraet getestet (08.10.: Geraet war im BakeOut); Fallback ist run_method()."""
+        tag_list = [t.strip() for t in str(tags).split(";") if t.strip()]
+        body = {"runWhenReady": True, "annotations": {"name": str(name), "tags": tag_list}}
+        self.write("RUN", command_values={"json_body": body}, **kwargs)
+        return self._wait_until_ready(poll_interval)
 
     def run_method(self, poll_interval=5, **kwargs):
         """Die aktuell geladene Methode ausfuehren. Wie start_bakeout(): nicht-blockierend, das

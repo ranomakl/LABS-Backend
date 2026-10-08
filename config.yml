@@ -251,6 +251,25 @@ experiments:
       - [mfc, reset_counter, [], {}]
       - [mfc, measure_for_minutes, [], { minutes: "{minutes}" }]
 
+  # Schritt 6/11: EINE microGC-Messung mit Namen und Tags (Offline-Gasbeutel "26174_rep1" usw.).
+  # Nur nutzbar, wenn gerade KEIN anderes Experiment laeuft (Backend = ein Experiment zur Zeit).
+  # Fuer die Online-Messungen WAEHREND der Elektrolyse: tools/kolbe_gc_messplan.py im zweiten Terminal.
+  # Tags mit Semikolon trennen (das Frontend macht aus Kommas Punkte). run_method_named ist am
+  # Geraet noch ungetestet (08.10. BakeOut) - Fallback: test_microgc_run (ohne Namen).
+  kolbe_gc_messung:
+    conditions:
+    stopconditions:
+    parameters:
+      method: [str, ""]
+      name: [str, ""]
+      tags: [str, ""]
+    observables:
+      - [microgc, system, str, ""]
+    commands:
+      - [microgc, load_method, [], { method_name: "{method}" }]
+      - [microgc, run_method_named, [], { name: "{name}", tags: "{tags}" }]
+      - [microgc, get_last_run_data, [], {}]
+
   # Live-Monitoring-Test ohne Eingriff in den Gasweg: MFC wird NUR gelesen (start_measuring ohne
   # Setpoint, Ventil bleibt zu), die Pumpe laeuft volume/rate Minuten und haelt das Experiment am
   # Laufen. Experimentende raeumt auf (Pumpenstopp, MFC-Setpoint bleibt 0, Polling endet).

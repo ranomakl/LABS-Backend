@@ -70,3 +70,14 @@ zwei Knoepfe, die alle Rohwerte bzw. die Tabelle als CSV herunterladen.
 
 Die Experiment-ID ist der Verzeichnisname unter logs/, so wie das Frontend ihn vergibt
 (z.B. `test_0810-Polling test-3`), in Anfuehrungszeichen wegen der Leerzeichen.
+
+## microGC-Messplan parallel zur Elektrolyse: `kolbe_gc_messplan.py`
+
+STEUERT DAS GERAET. Laeuft im zweiten Terminal unabhaengig vom Backend (das immer nur ein Experiment
+gleichzeitig faehrt). Wartet, bis der microGC bereit ist, laedt die Methode, wartet auf ENTER (= Start
+der Elektrolyse) und startet dann zu den Zeiten des Versuchsplans (0-60 min alle 10, dann alle 20,
+zuletzt 219) je einen benannten Lauf "<Versuch>_<t> min" mit Tags; Laufdaten als JSON+CSV unter
+logs/<J>/<M>/<T>/microgc/.
+
+    .venv/bin/python tools/kolbe_gc_messplan.py --versuch 26174 --ja              # kompletter Plan
+    .venv/bin/python tools/kolbe_gc_messplan.py --versuch 26174 --einzel rep1 --ja  # ein Offline-Lauf
