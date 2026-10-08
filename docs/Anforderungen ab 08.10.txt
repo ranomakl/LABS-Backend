@@ -1,0 +1,30 @@
+Anforderungen ab 08.10
+
+
+- nicht nur Timer sondern auch Uhrzeit (wann versuch fertig ist) 
+
+- microgc Werte in LABS implementieren, Elektrolyse
+
+- der gleiche versuch soll sozusagen 3x gleichzeitig laufen
+
+excelliste Auswertung
+nicht nur Timer sondern auch Uhrzeit (wann versuch fertig ist)
+einzelne Experimente in einem großen Experiment, wenn du gespült hast z.b drücke enter … to the next step button; 
+
+die Excel file soll übernommen werden können für exp. darin sind auch noch nicht integrierbare Parameter. Testung auch ob geräte angeschlossen sidn siehe measurement Setup
+microgc soll immer werte auslesen, messen wenn sie wieder Ready ist. 
+
+Monitoring
+x achse soll immer zeitstempel sein; was ist überhaupt x Achse
+observable Datei max mal geben für korrekte bezeichnungen
+
+nächsten Dienstag Testlauf (wie heute nur optimal) 
+
+28.10 Testlauf 3x 
+
+
+
+
+
+
+
