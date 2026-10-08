@@ -34,8 +34,15 @@ class Finished(ExperimentState):
 
 class Failed(ExperimentState):
     def enter(self):
-        self.experiment.stop()
-        self.experiment.finish_experiment()
+        # 08.10.2026: stop() kann scheitern (Geraet im Error-Zustand) - die Messwerte muessen TROTZDEM
+        # geschrieben werden (finish_experiment), sonst sind Stunden an Daten weg (Versuch 26174:
+        # values.json fehlte, aus log.txt rekonstruiert).
+        try:
+            self.experiment.stop()
+        except Exception as error:  # noqa: BLE001 - alles, Hauptsache finish_experiment laeuft
+            self.experiment.log.error("Stopping devices after failure raised: {error}", error=error)
+        finally:
+            self.experiment.finish_experiment()
 
 
 class Stopped(Failed): pass

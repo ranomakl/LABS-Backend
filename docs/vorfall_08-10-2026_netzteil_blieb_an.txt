@@ -1,0 +1,98 @@
+VORFALL 08.10.2026, Versuch 26174 (Kolbe-Elektrolyse im Flow): Netzteil blieb nach Abbruch AN
+=============================================================================================
+Geschrieben 08.10.2026 ca. 14:30 von Claude (KI-Assistent) auf Bitte von Rafael Kleiner.
+Status der Korrekturen: IM CODE, NICHT GETESTET (Test nur nach Freigabe).
+
+1. WAS PASSIERT IST
+-------------------
+11:35:57  Elektrolyse gestartet (Frontend, Experiment kolbe_elektrolyse, ID
+          "Elektrolyse-Elektrolyse_0810-5"): 0,55 A, 48 V Grenze, 219 min, Pumpe 100 mL/min.
+          Netzteil misst alle 0,5 s Strom und Spannung, Bronkhorst 1x/s Fluss und Zaehler,
+          Pumpe ~1x/s Drehzahl. 142 Minuten lang fehlerfrei.
+13:58:46  Das Netzteil beantwortet EINE Spannungsabfrage (:01r30=0,,) nicht. Davor hatte es ca.
+          16.000 Abfragen in Folge beantwortet. Zuletzt gemessen: 0,55 A, 4,70 V.
+13:58:48  Nach 2,5 s Timeout setzt der Treiber den Befehl auf "Fail", das Netzteil-Objekt in den
+          Zustand "Error" und das Experiment in "Failed". Das Backend stoppt daraufhin die
+          anderen Geraete: Pumpe Stopp (bestaetigt 13:58:49), Bronkhorst Ventil offen.
+13:58:48  Das Backend versucht, auch das Netzteil abzuschalten - und verweigert sich das selbst:
+          "Cannot send commands in Error state!" (zweimal im Log). Der Ausschaltbefehl wird
+          NICHT gesendet. Die Ausnahme bricht ausserdem den Abbruch-Ablauf ab: die Messwerte
+          (values.json) werden nicht geschrieben, das Experiment bleibt fuer das Backend
+          "laufend" (Status Busy), die Rohlog-Dateien laufen weiter.
+          Im Frontend sah das aus wie "Pumpe ausgefallen, Experiment abgebrochen".
+ca.14:05  Rafael bemerkt den Abbruch im Frontend.
+14:07     Claude liest das Log: Ursache Netzteil-Timeout, nicht Pumpe. Direktes Auslesen des
+          Netzteils ueber die serielle Schnittstelle: AUSGANG NOCH AN, Spannung 48 V (Grenze),
+          Strom 0,0 A, Temperatur 40 C, Konstantstrom-Modus.
+14:08     Claude sendet den Ausschaltbefehl direkt seriell (:01w12=0,,): Antwort "ok",
+          Rueckgelesen: Ausgang 0, 0 V, 0 A.
+14:10     Messwerte aus log.txt rekonstruiert (tools/werte_aus_log.py, 72.857 Antwortzeilen),
+          Bericht erzeugt. Erfasst: 142 min, 4713 C von 7227 C geplant (65 %), 220,7 mLn Gas,
+          11 microGC-Messungen.
+
+Offen: Warum stand das Netzteil bei 48 V und 0 A, als es ausgelesen wurde (um 13:58 noch 4,7 V
+bei 0,55 A)? Entweder hat sich der Stromkreis an der Zelle geoeffnet, oder das Netzteil hat
+intern abgeregelt. Das Geraet selbst hat keinen Fehler gemeldet. Mit 0 A floss kein Strom mehr,
+es bildete sich also ab diesem Zeitpunkt kein Wasserstoff mehr - aber das war Zufall, nicht
+Sicherheit: haette der Stromkreis bestanden, waere die Elektrolyse ohne Pumpe weitergelaufen.
+
+2. WARUM ES PASSIERT IST (drei Fehler im Backend, die zusammenkamen)
+-------------------------------------------------------------------
+a) EIN Timeout = Geraetefehler. backend/commands/commands.py, CommandParameterFactory:
+   on_timeout stand auf FAIL. Ein einziger unbeantworteter Befehl (2,5 s) liess den Befehl
+   endgueltig scheitern -> Geraet "Error" -> Experiment "Failed". Fuer Kommunikationsfehler gab
+   es zwar einen Retry-Mechanismus (retries=3), fuer Timeouts wurde er aber nicht benutzt.
+   Serielle Verbindungen verlieren gelegentlich eine Antwort (auch beim manuellen Auslesen um
+   14:07 blieb eine von neun Antworten leer).
+b) Im Error-Zustand sind ALLE Befehle gesperrt, auch "aus". backend/devices/devicestate.py,
+   Klasse Error.send_cmd: wirft fuer jeden Befehl eine Ausnahme. Die Abschaltbefehle
+   (final_commands: Netzteil aus, Pumpe Stopp, Ventil auf) laufen aber genau ueber diesen Weg.
+   Das Geraet, das den Fehler hatte, war damit das einzige, das NICHT abgeschaltet wurde.
+   Historisch gemeint war: "Geraet antwortet nicht, also nichts mehr senden". Fuer ein Netzteil
+   ist das die falsche Richtung - "aus" muss immer versucht werden.
+c) Der Abbruch selbst ist nicht robust. backend/experiments/experimentstates.py, Failed.enter:
+   ruft erst stop() (Geraete abschalten) und dann finish_experiment() (Messwerte schreiben,
+   Logs schliessen). Die Ausnahme aus b) in stop() verhinderte finish_experiment(). Folge:
+   keine values.json, kein automatischer Bericht, Backend blieb in "Busy" haengen.
+   Dazu backend/setup/setupstates.py, Failed: liess keinen Zustandswechsel mehr zu, auch kein
+   Stop/Shutdown.
+
+3. WAS GEAENDERT WURDE (Commit folgt, Stand: Code geschrieben, Import geprueft, NICHT getestet)
+---------------------------------------------------------------------------------------------
+a) commands.py: on_timeout = RETRY (Standard). Ein Befehl wird bei ausbleibender Antwort bis zu
+   3x wiederholt (je 2,5 s), erst dann gilt er als gescheitert. Nebenwirkung: ein wirklich
+   totes Geraet wird erst nach ~10 s statt 2,5 s als Fehler erkannt. Gilt fuer alle Treiber.
+b) devicestate.py, Error: DRINGENDE Befehle (urgent=True - genau die final_commands aus
+   stop()/shutdown()) werden auch im Error-Zustand gesendet. Antwortet das Geraet, werden sie
+   bestaetigt; antwortet es nicht, scheitern sie nach den Retries - aber sie werden gesendet.
+   Ausserdem darf das Geraet aus Error nach Stopped/Shutdown/NotReady wechseln (Abschluss von
+   stop(), Neuverbindung). Alles andere bleibt gesperrt bis zum Backend-Neustart.
+c) experimentstates.py, Failed.enter: stop() in try/except, finish_experiment() im finally -
+   Messwerte und Bericht werden in jedem Fall geschrieben, auch wenn ein Geraet nicht mehr
+   antwortet.
+d) setupstates.py, Failed: Stop und Shutdown sind nach einem Fehler erlaubt (Geraete sicher
+   abschalten, Backend sauber beenden). Weiterarbeiten erst nach Neustart - das Geraet im
+   Error-Zustand muss neu verbunden werden.
+e) tools/werte_aus_log.py (neu): rekonstruiert values.json aus log.txt, falls es doch einmal
+   fehlt. Bereits am Lauf 26174 angewendet.
+
+4. WAS NOCH ZU TUN IST
+----------------------
+- TEST der Aenderungen a)-d) - NUR NACH FREIGABE. Vorschlag ohne Laborgeraete: Backend-Instanz
+  gegen den Bronkhorst-Dummy (LABS-DeviceDummys, Port 12351), Dummy-Prozess waehrend eines
+  Laufs mit SIGSTOP einfrieren (= antwortet nicht, Verbindung bleibt), pruefen: 3 Retries im Log,
+  dann Error, dann wird der Abschaltbefehl trotzdem gesendet, values.json/bericht.html
+  entstehen; Dummy mit SIGCONT aufwecken -> Abschaltbefehl wird bestaetigt -> Geraet "Stopped".
+  Danach derselbe Test mit dem echten Netzteil ohne Last (Ausgang 2 V, Kabel kurz abziehen).
+- Backend auf dem Pi neu starten (es steht noch in Busy/Error vom Vorfall).
+- Ueberlegen, ob das Frontend bei Experiment "Failed" deutlich warnen soll (rot, Geraetename),
+  statt nur "nicht mehr laufend" anzuzeigen.
+- Klaeren (Chemie/Elektrik): warum 0 A bei 48 V nach 13:58 - Zelle, Kontakt oder Netzteil?
+- Die Restladung (2514 C, ~76 min bei 0,55 A) fuer 26174 nachfahren oder den Versuch als
+  65-%-Lauf werten - Entscheidung Chemiker.
+
+5. LEHRE
+--------
+Ein Fehlerzustand darf nie dazu fuehren, dass das gefaehrlichste Geraet als einziges NICHT
+abgeschaltet wird. Abschalten ist ein Befehl, der in jedem Zustand erlaubt sein muss. Und ein
+einzelner Kommunikationsfehler ist kein Geraetefehler.

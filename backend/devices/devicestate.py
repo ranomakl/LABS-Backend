@@ -98,16 +98,32 @@ class Initializing(Ready):
 
 
 class Error(DeviceState):
+    """Geraet hat einen Befehl endgueltig nicht beantwortet/fehlerhaft beantwortet.
+
+    08.10.2026 (Versuch 26174): Das Netzteil blieb nach EINEM unbeantworteten Lesebefehl in diesem
+    Zustand haengen und verweigerte auch den Ausschaltbefehl - der Ausgang blieb an, waehrend Pumpe
+    und Zaehler laengst gestoppt waren. Deshalb jetzt:
+      - DRINGENDE Befehle (urgent=True, das sind die final_commands aus device.stop()/shutdown(),
+        also Netzteil aus, Pumpe Stopp, Ventil auf) werden auch im Error-Zustand gesendet.
+        Antwortet das Geraet wieder, laufen sie durch; antwortet es nicht, scheitern sie nach den
+        Retries - aber sie werden versucht.
+      - Der Wechsel nach Stopped/Shutdown/NotReady ist erlaubt (Abschluss von stop()/shutdown(),
+        Neuverbindung); alles andere bleibt ignoriert, das Geraet ist bis zum Neustart defekt."""
     def enter(self):
         self.device.cmd_queue = []
 
     def send_cmd(self, cmd: ABDeviceCommand):
+        if cmd.parameters.urgent:
+            self.device.log.warn("Error state: sending URGENT command anyway (shutdown path): {cmd}", cmd=cmd)
+            self.device.execute_cmd(cmd)
+            return
         error = DeviceErrorError("Cannot send commands in Error state!")
         self.device.log.error(f"{str(error)}")
         raise error
 
     def new_state(self, state, *args, **kwargs):
-        pass
+        if isinstance(state, (Stopped, Shutdown, NotReady)):
+            super().new_state(state, *args, **kwargs)
 
 
 class Stopped(DeviceState):

@@ -87,6 +87,11 @@ class Failed(SetupState):
         pass
 
     def new_state(self, stateclass):
+        # 08.10.2026: Stop/Shutdown muessen auch nach einem Fehler moeglich sein (Geraete sicher
+        # abschalten, Backend sauber beenden). Weiterarbeiten (Ready/Busy) erst nach Neustart.
+        if isinstance(stateclass, (Stopped, Shutdown)):   # kommt als Instanz (s. StateMachineMixIn.state)
+            self.setup.stateobject = stateclass
+            return
         raise SetupStateError("Setup is in failed state.")
 
     def insert_experiment_after(self, existing_id: Optional[str], experiment_id: str, experiment_type: str, **kwargs):

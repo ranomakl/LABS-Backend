@@ -50,7 +50,10 @@ class CommandParameterFactory(DeviceCommandParameterFactory):
             # How long does it take until the command is executed if no response
             # is expected.
             query: bool = False,
-            on_timeout: CommandAction = CommandAction.FAIL,
+            # 08.10.2026: RETRY statt FAIL. Ein einzelner unbeantworteter Befehl (Netzteil, Versuch 26174)
+            # darf das Geraet nicht in den Error-Zustand und das Experiment nicht in Failed bringen.
+            # Erst nach `retries` (Standard 3) Fehlversuchen in Folge gilt der Befehl als gescheitert.
+            on_timeout: CommandAction = CommandAction.RETRY,
             command_values: dict[Any, Any] = None,
             **kwargs
     ):
