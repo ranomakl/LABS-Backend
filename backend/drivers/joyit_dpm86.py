@@ -24,6 +24,7 @@
 from .psu_base import BaseDevice, SinglechannelBaseDevice, CommandParameterFactory
 from backend.commands.parser import ParserParameterFactory, REParser
 from backend.conditions import ObservableGreaterOrEqualValueCondition
+from backend.conditions.conditions import TimeCondition
 from backend.combined_observables import TimeIntegral
 
 import re
@@ -191,11 +192,22 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             self._current_measuring = None
             self._voltage_measuring = None
 
-    def output_constant_current(self, current, max_voltage=None, amount_of_charge=None):
+    def output_constant_current(self, current, max_voltage=None, amount_of_charge=None, minutes=None):
         # Wie TDK-Treiber: Strom und Spannungsbegrenzung setzen, Ausgang an. Ob das Geraet dann im
         # Konstantstrom- oder Konstantspannungsbetrieb laeuft, entscheidet es selbst (Observable "mode").
+        # minutes (neu 08.10.): Ausgang nach dieser Zeit automatisch abschalten (Elektrolyse-Schritt).
+        # Das Geraet ist solange Busy und haelt damit das Experiment am Laufen; Strom/Spannung werden
+        # weiter alle 0,5 s gemessen (repeated_query laeuft auch im Busy-Zustand).
         if max_voltage is None:
             max_voltage = self.voltage_limit
+        if minutes is not None and float(minutes) > 0:
+            self.set_current(current)
+            self.set_voltage(max_voltage)
+            deferred_result = self.set_output(True).deferred_result
+            self.start_measuring_output()
+            self.busy(TimeCondition("Elektrolysezeit abgelaufen", 60 * float(minutes)))
+            self.stop_current()
+            return deferred_result
         self.set_current(current)
         self.set_voltage(max_voltage)
         deferred_result = self.set_output(True).deferred_result
@@ -227,10 +239,10 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             max_current = self.current_limit
         return self.output_constant_current(max_current, voltage, amount_of_charge)
 
-    def stop_current(self):
+    def stop_current(self, **kwargs):
         def stop_measuring(result):
             self._stop_measuring_output()
             return result
-        cmd = self.write("SET_OUTPUT", command_values={"value": 0})
+        cmd = self.write("SET_OUTPUT", command_values={"value": 0}, **kwargs)
         cmd.deferred_execution.addCallback(stop_measuring)
         return cmd

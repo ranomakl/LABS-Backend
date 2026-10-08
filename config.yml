@@ -168,6 +168,89 @@ experiments:
       - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
       - [mfc, measure_flow, [], {}]
 
+  # ===========================================================================================
+  # KOLBE-ELEKTROLYSE IM FLOW - Einzelschritte (Versuchsplan 26174-26177, Max Pohl; Werte siehe
+  # docs/versuch_08-10-2026_fragen_und_schritte.md). Jeder Schritt wird einzeln im Frontend
+  # eingereiht und gestartet; zwischen den Schritten passiert die Handarbeit (Haehne, Proben, pH).
+  # Bronkhorst = reiner Gaszaehler, Ventil immer offen (Treiber), kein Setpoint in diesen Schritten.
+  # Werte fuer 26174-26177: rate 100 mL/min, current 0.55 A, max_voltage 48 V, minutes 219.
+  # ===========================================================================================
+
+  # Schritt 3/10: Pumpe eine feste Zeit laufen lassen (Befuellen/Dichtheitstest, Nachspuelen 10 min).
+  # Gaszaehler liest dabei mit (ohne Reset).
+  kolbe_pumpe_zeit:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+    commands:
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  # Schritt 4: N2-Spuelung vor der Elektrolyse (Plan: 10 min): Zaehler auf 0, Pumpe laeuft,
+  # Gasfluss/Zaehler live. Ohne Pumpe -> kolbe_gas_zaehlen benutzen.
+  kolbe_n2_spuelung:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  # Schritt 5: DIE ELEKTROLYSE. Zaehler auf 0, Pumpe und Netzteil laufen 'minutes' Minuten, dann
+  # schaltet das Netzteil selbst ab und die Pumpe stoppt. Alle Werte live (Strom, Spannung,
+  # Ladung, Gasfluss, Gasmenge, Drehzahl). Notfall: "Stop Experiments" im Frontend oder
+  # Netzschalter am grauen Kasten.
+  kolbe_elektrolyse:
+    conditions:
+    stopconditions:
+    parameters:
+      current: [float, A]
+      max_voltage: [float, V]
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [psu, current, float, A]
+      - [psu, voltage, float, V]
+      - [psu, amount_of_charge, float, C]
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
+
+  # Schritt 8: Gas zaehlen ohne Pumpe (N2-Spuelung nach dem Ansaeuern, Plan: bis ~150 mLn).
+  # Zaehler auf 0, dann 'minutes' Minuten Fluss/Zaehler live; frueher beenden mit "Stop Experiments".
+  kolbe_gas_zaehlen:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, measure_for_minutes, [], { minutes: "{minutes}" }]
+
   # Live-Monitoring-Test ohne Eingriff in den Gasweg: MFC wird NUR gelesen (start_measuring ohne
   # Setpoint, Ventil bleibt zu), die Pumpe laeuft volume/rate Minuten und haelt das Experiment am
   # Laufen. Experimentende raeumt auf (Pumpenstopp, MFC-Setpoint bleibt 0, Polling endet).
@@ -195,6 +278,7 @@ experiments:
     commands:
       - [mfc, read_counter, [], {}]
 
+  # ACHTUNG Zaehlerbetrieb: schliesst das Ventil = Gasweg zu. Nur bewusst benutzen.
   stop_mfc:
     conditions:
     stopconditions:

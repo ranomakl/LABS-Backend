@@ -374,6 +374,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             return result
         self.busy(TimeCondition("dispense finished", time_to_pump)).deferred_result.addBoth(stop)
 
+    def run_for_minutes(self, rate, minutes, **kwargs):
+        """Pumpe 'minutes' Minuten mit 'rate' mL/min laufen lassen, dann Stopp (= dispense mit
+        Volumen rate*minutes). Fuer Experimentschritte, die in Minuten gedacht sind (Befuellen,
+        N2-Spuelung, Elektrolyse, Nachspuelen). Das Geraet ist solange Busy -> haelt das Experiment."""
+        return self.dispense(rate, float(rate) * float(minutes), **kwargs)
+
     def stop_pumping(self, **kwargs):
         """Stop. Beendet auch das periodische Auslesen."""
         self.stop_measuring()

@@ -16,7 +16,7 @@ solange der Liquiline pausiert (enabled: false in config.yml).
 Stand 08.10. 10:40: Antworten aus dem Versuchsplan eingetragen (vier identische Wiederholungen 26174-26177,
 Excel-Blaetter in docs/versuchsplanung_26174-26177.zip, Blattnamen in Klammern). Kernwerte: 550 mA,
 219 min, Pumpe 100 mL/min, Bronkhorst 50er als Zaehler, microGC online alle 10/20 min + 3x offline.
-NICHT aus den Daten ableitbar und weiter offen: 1 (Ventil des Bronkhorst), 7, 10, 14.
+Weiter offen (nicht aus den Daten): 7 Polung, 10 Drehrichtung, 14 BakeOut. Frage 1 am 08.10. geklaert: Ventil immer 100 %.
 
 ### Bronkhorst - WICHTIGSTER PUNKT
 
@@ -25,11 +25,11 @@ NICHT aus den Daten ableitbar und weiter offen: 1 (Ventil des Bronkhorst), 7, 10
    Ventil. Das Backend setzt den Sollwert beim Start und beim Beenden auf 0 = Ventil ZU. Steht das
    Geraet am Reaktorausgang, ist damit der Gasweg zum Gasbeutel versperrt (Druckaufbau!).
    Wie wird das bisher von Hand gemacht: Sollwert 100 % oder Ventil im Menue auf "offen"?
-   -> Antwort (08.10., aus Versuchsplan 26174-26177, Blatt Analytics): "Mass flow meter: Yes, Calibration gas N2,
-         max. flow rate 50 mLn/min" - der Bronkhorst ist im Plan ein reiner ZAEHLER am Ausgang. WIE das Ventil
-         des FG-201CV dabei offen gehalten wird, steht NICHT in den Daten. -> CHEMIKER FRAGEN. Vorschlag Backend:
-         beim Start des Elektrolyse-Schritts Sollwert auf 100 % (50 mL/min) = Ventil ganz auf, und
-         initial/final_commands NICHT mehr auf 0 setzen, solange ein Elektrolyse-Lauf aktiv ist.
+   -> Antwort (08.10., vom Chemiker bestaetigt): Der Bronkhorst ist reiner GASZAEHLER, das Ventil
+      bleibt IMMER auf 100 %. Umgesetzt im Treiber: initial/final_commands oeffnen das Ventil
+      (Setpoint 32000 = 50 mL/min), Setpoint wird zur Kontrolle zurueckgelesen (Observable
+      'setpoint' = 50.0). Die Setpoint-0-Logik vom 25./31.08. ist raus. stop_mfc schliesst weiterhin
+      bewusst das Ventil - im Versuch nicht benutzen.
 2. Welcher der beiden Zaehler ist morgen dran: der 50er (BG01B77U, in config.yml) oder der 20er?
    Der 50er war am 07.10. nicht am Pi eingesteckt.
    -> Antwort (aus Versuchsplan, Analytics B11): max. flow rate 50 mLn/min -> der 50er (BG01B77U), wie in config.yml.
@@ -140,14 +140,14 @@ Klammern sind Parameter, die beim Start eingegeben werden. "vorhanden" = Eintrag
 | 0 | Alles sicher: Netzteil aus, Pumpe aus, Zaehler lesen | psu, dosing_pump, mfc | passiert automatisch beim Backend-Start | vorhanden |
 | 1 | microGC BakeOut 20 min (Tagesanfang) | microgc | test_microgc_bakeout (minutes=20) | vorhanden, Frage 14 |
 | 2 | microGC Methode laden | microgc | Teil von test_microgc_run | vorhanden |
-| 3 | Pumpe an zum Befuellen/Dichtheitstest (Rate) | dosing_pump | test_wt600_speed (rpm) bzw. neu: pumpe_an (mL/min) | vorhanden (rpm), neu (mL/min) |
-| 4 | Gaszaehler auf 0 (nach N2-Spuelung) | mfc | neu: mfc_zaehler_reset | neu, Frage 3 |
-| 5 | Elektrolyse: Netzteil an mit Strom (A) und Spannungsgrenze (V), laeuft fuer Dauer (min), dabei alle Werte live | psu (+ mfc, dosing_pump lesen) | neu: elektrolyse (current, max_voltage, minutes) | neu, Fragen 4-6 |
+| 3 | Pumpe an zum Befuellen/Dichtheitstest (Rate, Minuten) | dosing_pump + mfc lesen | kolbe_pumpe_zeit (rate, minutes) | VORHANDEN 08.10. |
+| 4 | N2-Spuelung 10 min: Zaehler auf 0, Pumpe laeuft, Gas live | mfc, dosing_pump | kolbe_n2_spuelung (rate, minutes) | VORHANDEN 08.10. |
+| 5 | Elektrolyse: Zaehler 0, Pumpe + Netzteil laufen 'minutes', Netzteil schaltet selbst ab, alles live | psu, mfc, dosing_pump | kolbe_elektrolyse (current 0.55, max_voltage 48, minutes 219, rate 100) | VORHANDEN 08.10. (Logik am Geraet mit 50 mA/2 V/20 s geprueft) |
 | 6 | waehrenddessen alle 10 min microGC-Messung (Name "Nr_Zeit") | microgc | test_microgc_run (method) bzw. neu mit Name/Tags | vorhanden ohne Name, Frage 12/13 |
 | 7 | Netzteil aus (Ende oder Notfall) | psu | stop_psu_output | vorhanden |
-| 8 | Zaehler/Fluss lesen (Endmenge nach Ansaeuern, nach N2-Spuelen ~150 mL) | mfc | test_mfc_counter | vorhanden |
+| 8 | N2-Spuelen nach Ansaeuern bis ~150 mLn: Zaehler 0, Gas live, ohne Pumpe | mfc | kolbe_gas_zaehlen (minutes) | VORHANDEN 08.10. |
 | 9 | Pumpe aus | dosing_pump | stop_wt600 | vorhanden |
-| 10 | Nachspuelen 10 min mit Reaktionsloesung (Pumpe an, Zeit, Pumpe aus) | dosing_pump | neu: pumpe_zeit (mL/min, minutes) | neu, Frage 9 |
+| 10 | Nachspuelen 10 min mit Reaktionsloesung | dosing_pump | kolbe_pumpe_zeit (rate 100, minutes 10) | VORHANDEN 08.10. |
 | 11 | Offline-Gasbeutel: 3x microGC-Messung ("Nr_rep1..3") | microgc | test_microgc_run 3x | vorhanden, Frage 12 |
 
 Notfall: stop_psu_output und stop_wt600 sind jederzeit einreihbar; ausserdem /api/stop am Backend
@@ -158,9 +158,9 @@ Spuelen mit Cyclohexan/Wasser/Aceton, Leersaugen, Probenahme, pH/Leitfaehigkeit/
 
 ## Code-TODO vor dem Versuch (nach Beantwortung der Fragen)
 
-- [ ] Frage 1 klaeren; ggf. Bronkhorst initial/final NICHT auf Sollwert 0, sondern Ventil offen.
-- [ ] mfc: Zaehler-Reset (Frage 3) und periodisches Lesen von Fluss + Zaehler (Live-Kurve).
-- [ ] dosing_pump: periodisches Lesen der Drehzahl (Live-Kurve); Schritt "pumpe_an" in mL/min.
-- [ ] Schritt "elektrolyse" (current, max_voltage, minutes) mit TimeCondition und Abschalten am Ende.
+- [x] Frage 1 geklaert; Bronkhorst initial/final = Ventil offen (08.10.).
+- [x] mfc: Zaehler-Reset (reset_counter, am Geraet geprueft) und periodisches Lesen (08.10.).
+- [x] dosing_pump: periodisches Lesen; run_for_minutes(rate, minutes) in mL/min (08.10.).
+- [x] Schritt kolbe_elektrolyse (current, max_voltage, minutes, rate) mit Abschalten am Ende (08.10.).
 - [ ] microgc: runWithName (Name + Tags) statt run, falls Frage 12 = ja.
-- [ ] Frontend auf dem Pi starten und Station eintragen.
+- [x] Frontend auf dem Pi laeuft, Station eingetragen (08.10.). Neue Experimente: Routines Administration -> Download Experiments from Station.

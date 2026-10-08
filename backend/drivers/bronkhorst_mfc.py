@@ -28,8 +28,15 @@
 #    UND das Zaehlerwert-Beispiel (3.9.4) bestaetigt: TYPE_FLOAT = 2 (Byte 0x40), Big-Endian.
 #    read_counter() ist deshalb nicht mehr gesperrt.
 # 5. Schreibzugriff am Geraet verifiziert (SET_SETPOINT auf 0, Antwort :0403000005 = Status 00).
-#    initial_commands() setzt den Setpoint jetzt beim Verbindungsaufbau auf 0 - Begruendung
-#    siehe dort.
+# 6. 08.10.2026 - EINSATZ ALS GASZAEHLER (vom Chemiker bestaetigt): Das Geraet sitzt am
+#    Reaktorausgang und zaehlt nur. Das Ventil muss IMMER offen sein, sonst ist der Gasweg
+#    versperrt (Druckaufbau). Deshalb setzen initial_commands()/final_commands() den Setpoint
+#    jetzt auf 100 % (open_valve) statt auf 0 wie bis August. stop_flow() (Ventil zu) gibt es
+#    weiter, wird aber nirgends mehr automatisch aufgerufen. set_setpoint() startet auch kein
+#    Polling mehr von selbst - das macht start_measuring() im Experiment.
+#    Neu: reset_counter() (Prozess 115, Parameter 8, Wert 1 = Zaehlerwert nullen, Handbuch
+#    "Reset"), READ_SETPOINT zum Rueckpruefen, measure_for_minutes() als zeitlich begrenzter
+#    Zaehlschritt fuer Experimente.
 #
 # Frameformat WRITE (Befehl 01, Abschnitt 3.7):
 #   ":" LEN NODE "01" PROZESS PARAMETER WERT "\r\n"
@@ -96,6 +103,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     PROCESS_SETPOINT, PARAMETER_SETPOINT, TYPE_SETPOINT = 1, 1, TYPE_UINT16
     PROCESS_MEASURE, PARAMETER_MEASURE, TYPE_MEASURE = 1, 0, TYPE_UINT16
     PROCESS_COUNTER, PARAMETER_COUNTER, TYPE_COUNTER = 104, 1, TYPE_FLOAT
+    PROCESS_RESET, PARAMETER_RESET, TYPE_RESET = 115, 8, TYPE_CHAR   # Handbuch "reset", Wert 1 = Zaehler nullen
+    RESET_VALUE_COUNTER = 1
 
     commands = {
         "SET_SETPOINT": [
@@ -104,6 +113,18 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                                     pattern=r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})00"
                                             r"(?P<status>[0-9A-F]{2})(?P<statusindex>[0-9A-F]{2})",
                                     expected_values={"status": "00"}),
+        ],
+        "RESET_COUNTER": [
+            f"{CMD_WRITE}{_rw_pair(PROCESS_RESET, TYPE_RESET, PARAMETER_RESET)}",
+            ParserParameterFactory(parserclass=REParser,
+                                    pattern=r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})00"
+                                            r"(?P<status>[0-9A-F]{2})(?P<statusindex>[0-9A-F]{2})",
+                                    expected_values={"status": "00"}),
+        ],
+        "READ_SETPOINT": [
+            f"{CMD_READ}{_rw_pair(PROCESS_SETPOINT, TYPE_SETPOINT, READ_ECHO_INDEX)}"
+            f"{_rw_pair(PROCESS_SETPOINT, TYPE_SETPOINT, PARAMETER_SETPOINT)}",
+            r":(?P<len>[0-9A-F]{2})(?P<node>[0-9A-F]{2})02[0-9A-F]{4}(?P<setpoint_raw>[0-9A-F]{4})",
         ],
         "READ_MEASURE": [
             f"{CMD_READ}{_rw_pair(PROCESS_MEASURE, TYPE_MEASURE, READ_ECHO_INDEX)}"
@@ -133,21 +154,24 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def cmd_string(self, command_parameters: CommandParameterFactory) -> str:
         data = ""
         if "value" in command_parameters.command_values:
-            data = f"{command_parameters.command_values['value']:04X}"
+            data = f"{command_parameters.command_values['value']:04X}"       # UINT16 (Setpoint)
+        elif "value_char" in command_parameters.command_values:
+            data = f"{command_parameters.command_values['value_char']:02X}"  # CHAR (Reset)
         body = f"{self.node}{command_parameters.commandstring}{data}"
         length = f"{len(body) // 2:02X}"
         return f":{length}{body}"
 
     def initial_commands(self):
-        # Setpoint beim Verbindungsaufbau auf 0 fahren. Der Setpoint ist im Geraet gespeichert und
-        # ueberlebt einen Neustart: final_commands() greift nur beim sauberen Beenden, nach einem
-        # Absturz/Stromausfall/Kabelziehen bleibt der alte Wert stehen. Ohne dieses Zuruecksetzen
-        # wuerde das Ventil beim naechsten Start sofort auf den alten Wert oeffnen, sobald Gas
-        # anliegt (am Geraet vorgefunden: gespeicherter Setpoint 32000 = 100 % = Vollausschlag).
-        self.stop_flow()
+        # GASZAEHLER-BETRIEB (s. Punkt 6 oben): Ventil beim Verbinden ganz oeffnen und den Setpoint
+        # zur Kontrolle zuruecklesen (Observable 'setpoint'). Der Setpoint ist im Geraet gespeichert
+        # und ueberlebt Stromausfall/Absturz - mit 100 % ist das hier erwuenscht: auch ohne Backend
+        # bleibt der Gasweg offen.
+        self.open_valve()
+        self.read_setpoint()
 
     def final_commands(self):
-        self.stop_flow()
+        # Beim Beenden ebenfalls offen lassen - Gasweg darf nie versperrt werden.
+        self.open_valve()
 
     def handle_event(self, match: re.Match) -> None:
         pass
@@ -162,6 +186,9 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             observables = {"flow": self._percent_to_ml_min(raw / 32000 * 100)}
         elif "counter_raw" in observables:
             observables = {"counter": _hex_to_float32(observables["counter_raw"])}
+        elif "setpoint_raw" in observables:
+            raw = _hex_to_int16(observables["setpoint_raw"])
+            observables = {"setpoint": self._percent_to_ml_min(raw / 32000 * 100)}
         else:
             # Statusmeldungen (SET_SETPOINT) und sonstige Rohgruppen sind keine Observables.
             observables = {key: value for key, value in observables.items()
@@ -202,11 +229,40 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def set_setpoint(self, flow_ml_min: float):
         """Setpoint in mL/min setzen (wird intern in 0-32000 = 0-100% des Messbereichs umgerechnet).
         Die Geraeteantwort (Statusmeldung) wird geprueft; Status != 0 fuehrt zu einem Retry/Fehler.
-        Bei Setpoint > 0 startet automatisch das periodische Messen (Live-Werte im Monitoring)."""
+        Startet KEIN Polling mehr (seit 08.10., Zaehlerbetrieb) - dafuer start_measuring()."""
         raw_value = self._ml_min_to_raw(flow_ml_min)
-        cmd = self.write("SET_SETPOINT", command_values={"value": raw_value})
-        if raw_value > 0:
-            self.start_measuring()
+        return self.write("SET_SETPOINT", command_values={"value": raw_value})
+
+    def open_valve(self, **kwargs):
+        """Ventil ganz auf (Setpoint 100 % = max_flow_ml_min). Normalzustand im Zaehlerbetrieb."""
+        return self.write("SET_SETPOINT", command_values={"value": 32000}, **kwargs)
+
+    def read_setpoint(self):
+        """Setpoint zurücklesen -> Observable 'setpoint' in mL/min (Kontrolle: 50.0 = Ventil ganz auf)."""
+        return self.query("READ_SETPOINT")
+
+    def reset_counter(self, **kwargs):
+        """Zaehler (Totalizer) auf 0 setzen: Parameter 'Reset' (Prozess 115, Parameter 8) = 1
+        ('reset counter value, no mode change', Handbuch Parametertabelle). Danach wird der Zaehler
+        einmal gelesen, damit die Observable 'counter' sofort den neuen Stand zeigt."""
+        cmd = self.write("RESET_COUNTER", command_values={"value_char": self.RESET_VALUE_COUNTER}, **kwargs)
+        self.read_counter()
+        return cmd
+
+    def measure_for_minutes(self, minutes: float, interval: float = 1.0):
+        """Zeitlich begrenzter Zaehlschritt fuer Experimente (z.B. N2-Spuelung): Fluss und Zaehler
+        'minutes' Minuten lang jede Sekunde lesen, Geraet ist solange Busy (haelt das Experiment am
+        Laufen), danach endet das Polling. Das Ventil wird dabei NICHT angefasst."""
+        from backend.conditions.conditions import TimeCondition
+        self.start_measuring(interval)
+        self.busy(TimeCondition("Zaehlschritt beendet", 60 * float(minutes)))
+        self.stop_measuring_queued()
+
+    def stop_measuring_queued(self, **kwargs):
+        """stop_measuring() als Befehl in der Geraetequeue, d.h. erst NACH vorher eingereihten
+        Warte-/Busy-Befehlen. Umgesetzt als Setpoint-Rücklesen mit Callback (ein harmloser Lesebefehl)."""
+        cmd = self.read_setpoint()
+        cmd.deferred_execution.addCallback(lambda result: (self.stop_measuring(), result)[1])
         return cmd
 
     def measure_flow(self):
@@ -220,5 +276,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         return self.query("READ_COUNTER")
 
     def stop_flow(self):
+        """Ventil ZU (Setpoint 0). Nur noch auf ausdruecklichen Befehl (Experiment stop_mfc) -
+        im Zaehlerbetrieb versperrt das den Gasweg! Wird nicht mehr automatisch aufgerufen."""
         self.stop_measuring()
         return self.set_setpoint(0)
