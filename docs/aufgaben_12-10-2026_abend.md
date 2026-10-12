@@ -37,8 +37,14 @@ Geraetemenue Diagnose/Systeminformationen oder im Webserver) nicht antwortet?
 
 ## 5. Fuer morgen frueh im Labor vormerken (vor dem langen Lauf, ca. 30 min)
 
-1. Backend am Pi starten (kein Autostart!): `cd ~/LABS/LABS-Backend && .venv/bin/python main.py`
-   im Terminal; beenden mit Strg+C. Im Log muss der Liquiline als `Ready` erscheinen.
+1. ERST ALLE GERAETE EINSCHALTEN (Netzteil, MFC, Pumpe, Liquiline, microGC am LAN), DANN das Backend
+   starten (kein Autostart!): `cd ~/LABS/LABS-Backend && .venv/bin/python main.py` im Terminal; beenden
+   mit Strg+C. Im Log muss jedes Geraet als `Ready` erscheinen. Ein Geraet, das beim Start aus ist, geht
+   nach ~40 s nach Error und wird als "nicht verfuegbar" uebersprungen - alle Experimente mit diesem
+   Geraet fehlen dann bis zum naechsten Backend-Start (am 12.10. abends so gesehen: MFC und Pumpe aus ->
+   kolbe_elektrolyse_ph nicht verfuegbar). Spaeter eingeschaltet = Backend neu starten.
+   Probelauf 12.10. abends mit echter config.yml: Liquiline Ready, test_liquiline_all_channels ueber die
+   API bis Finished gelaufen (Status Bad wegen Sensoren), Netzteil antwortet, Ausgang aus.
 2. Netzteil-Test aus der Fehlerpfad-Doku Abschnitt 8: Geraet ausschalten / USB-Kabel ziehen, jeweils
    pruefen, dass der Ausgang danach AUS ist.
 3. Liquiline-Sensoren: Display muss fuer CH1 und CH2 einen pH-Wert zeigen (heute "X --- ---" = kein
