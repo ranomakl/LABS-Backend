@@ -306,3 +306,26 @@ In config.yml stand faelschlich tdk_lambda_zplus.
 \- Wie viele Kanäle werden tatsächlich benutzt von den sechzehn?
 \- Braucht die Relaisplatine eine eigene 12-V-Versorgung, oder reicht der Pi?
 
+
+DURCHBRUCH 12.10.2026 (Labor, nach Umstellen des Geraets auf RTU): Der Liquiline ANTWORTET per Modbus
+RTU, 19200 Baud, 8E1, Adresse 247, Adapter BG01XFU4 - 63 gueltige FC03-Antworten in 20 s (bei 9600 Baud
+nichts, bei ASCII nie etwas). Der ASCII-Modus des Geraets hat also nie funktioniert, nicht die Hardware.
+Register gelesen (tools-Skript, RTU): AI1-AI6 (Reg 0-23) alle Value 0.0, Status 3, Unit 0 -> keine
+Sensoren auf AI gemappt (E+H: Setup/Ausgaenge/Modbus). Reg 504 = 1 (RS485_ENABLE an), Reg 506/507 als
+Float in Wortfolge 3-2-1-0 = 5.0 (vermutlich Watchdog 5 s) -> Hinweis, dass die Wortfolge am Geraet NICHT
+"1-0-3-2" wie in config.yml ist; mit echtem Messwert pruefen.
+FOLGE: Treiber backend/drivers/endress_hauser_liquiline.py muss von ASCII auf RTU umgestellt werden
+(binaerer Framer wie longer_wt600.py, CRC16 statt LRC). Danach AI-Mapping am Geraet und Wortfolge pruefen.
+ERLEDIGT 12.10.2026 nachmittags: Treiber endress_hauser_liquiline.py auf Modbus RTU umgebaut (binaerer
+Framer, CRC16, _RawFrame wie longer_wt600.py), AM GERAET VERIFIZIERT: read_all_channels liest AI1-AI3
+(ph_ch1 / ph_ch2 / temperature; Einheiten pH, pH, degC; Status "Bad", weil beide Sensoren am Display
+"X --- ---" zeigen = kein Messwert). Dummy (LABS-DeviceDummys) ebenfalls auf RTU, 15 Unit-Tests
+(backend/test/test_liquiline_rtu.py), Treiber<->Dummy-Roundtrip ok. config.yml: liquiline aktiviert,
+Kanaele ph_ch1 (0), ph_ch2 (4), temperature (8) - am Geraet unter Setup/Ausgaenge/Modbus AI1-AI3 gesetzt.
+AM GERAET: CH1 = "1:1 pH Glas", CH2 = "1:2 pH Glas". Es gibt KEINE Leitfaehigkeitssonde am Liquiline.
+Beide Sensoren liefern keinen Wert -> Sensoren/Memosens-Kabel pruefen (eigenes Thema, nicht Modbus).
+LAN: Geraet ist am Pi-eth0 sichtbar (ARP: 169.254.233.247 = MAC 00:07:05:25:88:81, E+H-OUI), Ping
+scheitert, weil der Pi (169.254.230.104/16) ausserhalb des /24 des Geraets liegt und das Geraet kein
+Gateway hat. Abhilfe: zweite Pi-Adresse `sudo ip addr add 169.254.233.100/24 dev eth0` (temporaer) oder
+am Geraet Netzmaske 255.255.0.0 setzen (dann reicht Link-Local). Webserver noch nicht gesehen.
+An E+H: Fall kann geschlossen werden (Ursache: ASCII-Modus des Geraets antwortet nicht, RTU laeuft).

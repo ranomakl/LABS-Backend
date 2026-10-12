@@ -1,71 +1,48 @@
 # Treiber fuer den Endress+Hauser Liquiline CM442/CM448 Multiparameter-Messumformer, angebunden
-# ueber Modbus RS485. Quelle: docs/handbuch_liquiline_modbus.pdf (Endress+Hauser SD01189C/07/EN/06.20,
-# "Data transmission via Modbus") - ein echtes Herstellerhandbuch (anders als bei longer_wt600.py).
+# ueber Modbus RTU auf RS485 (Modul 485MB). Quelle: docs/handbuch_liquiline_modbus.pdf (Endress+Hauser
+# SD01189C/07/EN/06.20, "Data transmission via Modbus").
 #
-# TRANSMISSION-MODE-ENTSCHEIDUNG: Das Geraet unterstuetzt ueber RS485 sowohl Modbus RTU (binaer,
-# CRC16, Abschnitt 3.2.2) als auch Modbus ASCII (druckbare Hex-Zeichen, LRC, Abschnitt 3.2.1). Dieser
-# Treiber verwendet ASCII. Begruendung:
-#   - Reiner Lesezugriff auf wenige Register (ein AI-Block = 4 Register = 8 Byte Nutzdaten) in
-#     niedriger Frequenz (periodisches Pollen von Sensorwerten) - der ASCII-Overhead (ca. 2x mehr
-#     Bytes auf der Leitung als RTU) ist bei den in diesem Handbuch vorgesehenen Baudraten
-#     (1200-115200, Default 19200) fuer diesen Anwendungsfall irrelevant.
-#   - ASCII-Frames sind durch ":" ... CRLF text-delimitiert (Abschnitt 3.2.1) und passen dadurch
-#     vollstaendig in das bestehende BaseDeviceProtocol (LineReceiver mit delimiter="\r\n") - genau
-#     das Muster, das bronkhorst_mfc.py schon nutzt. Es ist kein eigenes Protocol/Framer noetig (RTU
-#     haette denselben Sonderaufwand wie longer_wt600.py gebraucht: eigener laengenbasierter Framer,
-#     Rohbytes statt commandstring.encode()).
-#   - ASCII-Frames sind reiner druckbarer ASCII-Text -> commandstring.encode() (UTF-8, siehe
-#     backend/commands/commands.py) ist von Haus aus byte-treu, keine _RawFrame-Klasse noetig. Das
-#     vermeidet genau den Fehler, der bei longer_wt600.py live auftrat: rohe Steuerzeichen in
-#     Result.line liessen dort den Windows-Konsolen-Log-Observer mit UnicodeEncodeError abstuerzen
-#     (siehe Kommentar in longer_wt600.py, WT600Parser). Bei ASCII kann das strukturell nicht
-#     passieren.
-#   - LRC ist algorithmisch einfacher als CRC16 (geringere Fehlererkennung, aber auf einem kurzen,
-#     langsamen RS485-Sensor-Bus im Labor kein relevanter Nachteil gegenueber dem Robustheits- und
-#     Einfachheitsgewinn).
-# RTU waere die richtige Wahl, wenn hohe Durchsatzrate, viele Register oder viele Geraete am selben
-# Bus gefragt waeren - hier nicht der Fall.
+# TRANSMISSION MODE = RTU (seit 12.10.2026). Vorgeschichte: Der Treiber sprach zunaechst Modbus ASCII
+# (Begruendung damals: textdelimitierte Frames passen in den LineReceiver des Backends). Das Geraet
+# hat im Labor vom 30.09. bis 12.10.2026 auf KEINE ASCII-Anfrage reagiert - bei allen Baudraten,
+# Paritaeten, Adressen, zwei Adaptern, beiden Polungen, mit/ohne GND und Terminierung. Nach dem
+# Umstellen des Geraets auf RTU (Menue Setup/General settings/Extended setup/Modbus) kamen am
+# 12.10.2026 sofort gueltige Antworten (63 FC03-Antworten in 20 s bei 19200 8E1, Adresse 247,
+# Adapter BG01XFU4). Der ASCII-Modus dieses Geraets funktioniert offenbar nicht; E+H selbst hat nur
+# RTU getestet (Case 01976469). Deshalb RTU, mit binaerem Framer nach dem Muster von longer_wt600.py.
 #
-# QUELLENLAGE: Register-Adressen, Datentypen und Frame-Feldstruktur (Abschnitte 3.2.1, 3.5, 3.6,
-# 3.8.1, 7.3.1, 7.3.2.2) sind direkt aus den Tabellen dieses Handbuchs uebernommen und daher
-# byte-genau verifiziert (s.u.). Das Handbuch selbst enthaelt aber kein vollstaendiges, mit LRC/CRC16
-# durchgerechnetes Beispiel-Frame (die FC08-Loopback-Beispielbytes in Abschnitt 3.8.3 haben keine
-# Pruefsumme; LRC/CRC16 werden im Handbuch nur mit "see Modbus specification" referenziert, nicht
-# selbst vorgerechnet). Die LRC-Implementierung ist deshalb stattdessen gegen die oeffentliche
-# Modbus-Spezifikation verifiziert (s.u., Referenz-Testvektor) - nicht gegen ein Beispiel aus diesem
-# Handbuch, das es fuer die Pruefsumme schlicht nicht gibt.
+# RTU-Rahmen (Abschnitt 3.2.2): ADRESSE(1) FUNKTION(1) DATEN(N) CRC16(2, Low-Byte zuerst).
+#   Anfrage FC03:  addr 03 start_hi start_lo count_hi count_lo crc_lo crc_hi            (8 Byte)
+#   Antwort FC03:  addr 03 bytecount daten[bytecount] crc_lo crc_hi                      (5+bytecount)
+#   Exception:     addr 83 code crc_lo crc_hi                                            (5 Byte)
+# Rahmengrenzen definiert RTU ueber Sendepausen (3,5 Zeichen); hier wird stattdessen laengenbasiert
+# geframed (Antwortlaenge ist aus Funktionscode und Bytecount bekannt), was bei einem einzigen Master
+# und Anfrage/Antwort-Betrieb gleichwertig ist. CRC16: Polynom 0xA001 (reflektiert 0x8005), Start 0xFFFF
+# - verifiziert gegen die am Geraet gemessene Antwort F7 03 02 00 00 70 51 (CRC 0x5170) und das
+# kanonische Spezifikationsbeispiel (s. backend/test/test_liquiline_rtu.py).
 #
-# VERIFIZIERT gegen die Tabellen dieses Handbuchs:
-#   - ASCII-Rahmen: ":" ADRESSE(2 Zeichen) FUNKTION(2 Zeichen) DATEN(N Zeichen) LRC(2 Zeichen) CRLF
-#     (Abschnitt 3.2.1)
-#   - FC03 Read Holding Register: Request = Adresse+0x03+Startregister(2B)+Anzahl(2B);
-#     Response = Adresse+0x03+ByteCount(1B)+Daten(ByteCount B) (Abschnitt 3.8.1)
-#   - Registerzaehlung beginnt bei 0, keine +1-Verschiebung (Abschnitt 3.3/7.3.1) - so wie vom
-#     Nutzer verlangt, exakt uebernommen: die in config.yml eingetragenen Registernummern werden
-#     unveraendert als Modbus-Startadresse verwendet.
-#   - AI-Geraetevariablen-Block (Value/Status/Unit), Abschnitt 3.7 (allgemeine Struktur) UND
-#     Abschnitt 7.3.2.2 (konkrete Registernummern): MODBUS_AI_n: Value=FLOAT ab Register
-#     (n-1)*4 (2 Register), Status=UNSIGNED8 auf Register (n-1)*4+2, Unit=UNSIGNED8 auf Register
-#     (n-1)*4+3 - z.B. AI1: Register 0-3, AI2: Register 4-7, ... (Tabelle in 7.3.2.2 bis AI16
-#     durchgerechnet und Formel bestaetigt).
-#   - FLOAT = IEEE754, 4 Byte / 2 Register, Byte-Reihenfolge einstellbar ueber den Geraeteparameter
-#     "Byte order" (Werkseinstellung "1-0-3-2", Abschnitt 3.5 + 4.1); der Optionsname selbst ist die
-#     Uebertragungsreihenfolge der 4 Standard-IEEE754-Bytes (Byte3=MSB...Byte0=LSB) - z.B. "1-0-3-2"
-#     heisst Byte1,Byte0,Byte3,Byte2 auf der Leitung, s. _decode_float() unten. Alle 4 Optionen aus
-#     der Handbuchtabelle sind durch dieselbe generische Permutation abgedeckt und per Rundtrip-Test
-#     gegen struct.pack('>f', ...) geprueft.
-#   - UNSIGNED8-Werte (Status, Unit) belegen ein volles 16-Bit-Register; welches der beiden Bytes
-#     (hoch/niedrig) den Wert traegt, ist im Handbuch fuer 1-Byte-Werte nicht explizit angegeben (die
-#     Byte-Order-Tabelle in 3.5 behandelt nur FLOAT/INTEGER/STRING). ANNAHME (s. _decode_unsigned8):
-#     genau eines der beiden Bytes ist 0, das andere traegt den Wert - das deckt beide moeglichen
-#     Payload-Lagen robust ab, weil Status (0-3) und Unit-Code (0-254, s. Abschnitt 7.1) beide immer
-#     kleiner als 256 sind und daher nie beide Registerbytes gleichzeitig sinnvoll belegen koennten.
+# Rohbytes im Backend: Command.__init__ (backend/commands/commands.py) ruft commandstring.encode()
+# (UTF-8) auf, was fuer Bytes >= 0x80 nicht byte-treu waere -> _RawFrame (str-Subklasse, .encode()
+# liefert die Rohbytes; Text ist die Hex-Anzeige fuer Logs). Antworten tragen die Rohbytes in
+# reply.raw, reply.line ist nur die Hex-Anzeige (Konsolen-Logs vertragen keine Steuerzeichen, s.
+# longer_wt600.py).
+#
+# AM GERAET VERIFIZIERT 12.10.2026 (Modbus RTU, Firmware-Stand des Laborgeraets):
+#   - Registerzaehlung 0-basiert, FC03 ab Register 0 liefert AI1 (Value/Status/Unit = 4 Register).
+#   - AI-Block: Register 0-1 Value (FLOAT), 2 Status (UNSIGNED8, Low-Byte), 3 Unit (UNSIGNED8,
+#     Low-Byte). Gemessen: [0, 0, 2, 53] = Wert 0.0, Status 2 "Bad", Einheit 53 "pH".
+#   - Byte order "1-0-3-2" (Werkseinstellung) bestaetigt ueber Register 506/507 MODBUS_WATCHDOG:
+#     Drahtbytes 00 00 40 A0 -> 5.0 s (Geraetemenue: Watchdog 5 s). _decode_float(0, 16544, "1-0-3-2") == 5.0.
+#   - Status-Codes (Abschnitt 3.7): 0 Good, 1 Uncertain, 2 Bad, 3 Not assigned (= keine Datenquelle
+#     unter Setup/Outputs/Modbus/AI n gewaehlt). Ohne Mapping liefert jedes AI Status 3, Wert 0.
+#   - Konfigurationsregister (Tabelle 7.3.x): 501 RS485_BAUDRATE = 4 (19200), 503 RS485_PARITY = 0
+#     (Even), 504 RS485_ENABLE = 1, 505 MODBUS_MODE = 0 (RTU), 509 ETHERNET_ENABLE = 1,
+#     510/511 IP = 169.254.233.247 (Link-Local), 512/513 Netzmaske 255.255.255.0.
 #   - Unit-Codes (Abschnitt 7.1): vollstaendige Tabelle 0-177 sowie 254 uebernommen (UNIT_CODES).
 #
-# LRC verifiziert (oeffentliche Modbus-Spezifikation, nicht dieses Handbuch, s.o.):
-#   - Kanonisches Modbus-ASCII-Beispiel "FC03, Slave 0x11, Start 0x006B, Anzahl 3" ergibt LRC=0x7E
-#     (Summe 0x11+0x03+0x00+0x6B+0x00+0x03=0x82, LRC=(-0x82)&0xFF=0x7E) -> vollstaendiger Rahmen
-#     ":1103006B00037E" byte-genau nachgerechnet und gegen die Treiberfunktion _lrc() verifiziert.
+# ANNAHME (unveraendert): UNSIGNED8-Werte (Status, Unit) belegen ein volles 16-Bit-Register; gelesen
+# wird das Byte, das ungleich 0 ist (am Geraet: Low-Byte). Status (0-3) und Unit-Code (0-254) sind
+# immer < 256, beide Bytes koennen also nie gleichzeitig sinnvoll belegt sein.
 
 import re
 import struct
@@ -73,7 +50,8 @@ import struct
 from backend.commands import commandstate
 from backend.commands.parser import BaseParser, ParserParameterFactory
 from backend.commands.results import Result
-from .transmitter_base import BaseDevice, SinglechannelBaseDevice, CommandParameterFactory
+from .transmitter_base import (BaseDevice, SinglechannelBaseDevice, CommandParameterFactory,
+                               BaseDeviceProtocol, BaseDeviceProtocolFactory)
 
 
 FC_READ_HOLDING_REGISTERS = 0x03
@@ -122,11 +100,84 @@ EXCEPTION_CODES = {
 }
 
 
-def _lrc(data: bytes) -> int:
-    """Modbus-ASCII Longitudinal Redundancy Check: Zweierkomplement der Bytesumme. Verifiziert
-    gegen das kanonische Beispiel der Modbus-Spezifikation (s. Dateikopf): LRC("11 03 00 6B 00 03")
-    ergibt 0x7E."""
-    return (-sum(data)) & 0xFF
+def _crc16(data: bytes) -> bytes:
+    """Modbus-RTU-CRC16 (Polynom 0xA001, Start 0xFFFF), Rueckgabe in Drahtreihenfolge (Low-Byte zuerst).
+    Verifiziert gegen die Geraeteantwort F7 03 02 00 00 -> 70 51 (12.10.2026)."""
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc.to_bytes(2, "little")
+
+
+def _build_request(bus_address: int, function: int, start_register: int, quantity: int) -> bytes:
+    pdu = bytes([bus_address, function,
+                 (start_register >> 8) & 0xFF, start_register & 0xFF,
+                 (quantity >> 8) & 0xFF, quantity & 0xFF])
+    return pdu + _crc16(pdu)
+
+
+def expected_frame_length(buffer: bytes) -> int | None:
+    """Laenge des RTU-Antwortrahmens, der am Anfang von `buffer` steht, oder None, wenn dafuer noch
+    Bytes fehlen. Exception-Antwort (Funktion | 0x80): 5 Byte. FC03: 3 + Bytecount + 2."""
+    if len(buffer) < 2:
+        return None
+    if buffer[1] & 0x80:
+        return 5
+    if len(buffer) < 3:
+        return None
+    return 3 + buffer[2] + 2
+
+
+class _RawFrame(str):
+    """str-Subklasse: Text = Hex-Anzeige (fuer Logs), .encode() = die echten Rohbytes (s. Dateikopf)."""
+
+    def __new__(cls, raw: bytes):
+        obj = super().__new__(cls, raw.hex(" ").upper())
+        obj._raw = bytes(raw)
+        return obj
+
+    def encode(self, *args, **kwargs):
+        return self._raw
+
+
+class LiquilineProtocol(BaseDeviceProtocol):
+    """Laengenbasierter RTU-Framer statt LineReceiver. Bytes vor der erwarteten Busadresse werden als
+    Rauschen verworfen (Resynchronisation nach Stoerung/Teilrahmen)."""
+
+    def __init__(self):
+        super().__init__()
+        self._buffer = bytearray()
+
+    def dataReceived(self, data):
+        self._buffer.extend(data)
+        while True:
+            expected = self.device.bus_address
+            while self._buffer and self._buffer[0] != expected:
+                del self._buffer[0]
+            length = expected_frame_length(self._buffer)
+            if length is None or len(self._buffer) < length:
+                return
+            frame = bytes(self._buffer[:length])
+            del self._buffer[:length]
+            self.frameReceived(frame)
+
+    def rawDataReceived(self, data):
+        pass  # ungenutzt, dataReceived() oben delegiert nie in den LineReceiver
+
+    def frameReceived(self, frame: bytes):
+        result = Result(frame.hex(" ").upper())
+        result.raw = frame
+        self.device.receive(result)
+
+    def write_command(self, command_object):
+        self.transport.write(command_object.bytestring)   # kein sendLine: RTU hat kein Trennzeichen
+        self.device.log.info(f"Wrote {command_object.parameters.commandstring} to device.")
+
+
+class LiquilineProtocolFactory(BaseDeviceProtocolFactory):
+    protocol = LiquilineProtocol
 
 
 def _byte_order_permutation(byte_order: str) -> list:
@@ -159,8 +210,9 @@ def _decode_unsigned8(register: int) -> int:
 
 
 class LiquilineParser(BaseParser):
-    """Prueft Adress-Echo, LRC und Modbus-Exceptions eines ASCII-Antwortrahmens und dekodiert einen
-    AI-Geraetevariablen-Block (Value/Status/Unit, 4 Register/8 Byte, s. Dateikopf) daraus."""
+    """Prueft Adresse, CRC16 und Modbus-Exception eines RTU-Antwortrahmens (reply.raw, gesetzt von
+    LiquilineProtocol.frameReceived) und dekodiert einen AI-Geraetevariablen-Block (Value/Status/Unit,
+    4 Register/8 Byte, s. Dateikopf)."""
 
     def __init__(self, command, expect_bus_address: int, expect_function: int, byte_order: str, **kwargs):
         super().__init__(command)
@@ -169,33 +221,28 @@ class LiquilineParser(BaseParser):
         self.byte_order = byte_order
 
     def __call__(self, reply: Result):
-        line = reply.line
-        if not line.startswith(":"):
-            return (commandstate.CommandResponseError(reply=reply, msg=f"Missing ':' start in {line!r}."),
-                    commandstate.Retry)
-
         try:
-            raw = bytes.fromhex(line[1:])
-        except ValueError:
-            return (commandstate.CommandResponseError(reply=reply, msg=f"Non-hex payload in {line!r}."),
+            frame = reply.raw
+        except AttributeError:
+            return (commandstate.CommandResponseError(reply=reply, msg=f"Reply has no raw frame bytes: {reply.line!r}."),
+                    commandstate.Retry)
+        shown = reply.line
+        if len(frame) < 5:
+            return (commandstate.CommandResponseError(reply=reply, msg=f"Frame too short: {shown!r}."),
                     commandstate.Retry)
 
-        if len(raw) < 4:
-            return (commandstate.CommandResponseError(reply=reply, msg=f"Frame too short: {line!r}."),
-                    commandstate.Retry)
-
-        body, received_lrc = raw[:-1], raw[-1]
-        expected_lrc = _lrc(body)
-        if expected_lrc != received_lrc:
+        body, received_crc = frame[:-2], frame[-2:]
+        expected_crc = _crc16(body)
+        if expected_crc != received_crc:
             return (commandstate.CommandResponseError(
-                        reply=reply, msg=f"LRC mismatch in {line!r}: got {received_lrc:02X}, "
-                                          f"expected {expected_lrc:02X}."),
+                        reply=reply, msg=f"CRC mismatch in {shown!r}: got {received_crc.hex()}, "
+                                          f"expected {expected_crc.hex()}."),
                     commandstate.Retry)
 
         address, function = body[0], body[1]
         if address != self.expect_bus_address:
             return (commandstate.CommandResponseError(
-                        reply=reply, msg=f"Unexpected bus address in {line!r}: expected "
+                        reply=reply, msg=f"Unexpected bus address in {shown!r}: expected "
                                           f"{self.expect_bus_address}, got {address}."),
                     commandstate.Retry)
 
@@ -204,12 +251,12 @@ class LiquilineParser(BaseParser):
             exception_name = EXCEPTION_CODES.get(exception_code, "unknown")
             return (commandstate.CommandErrorError(
                         reply=reply, msg=f"Modbus exception {exception_code!r} ({exception_name}) "
-                                          f"in {line!r}."),
+                                          f"in {shown!r}."),
                     commandstate.Fail)
 
         if function != self.expect_function:
             return (commandstate.CommandResponseError(
-                        reply=reply, msg=f"Unexpected function code in {line!r}: expected "
+                        reply=reply, msg=f"Unexpected function code in {shown!r}: expected "
                                           f"{self.expect_function:#04x}, got {function:#04x}."),
                     commandstate.Retry)
 
@@ -217,7 +264,7 @@ class LiquilineParser(BaseParser):
         payload = body[3:]
         if len(payload) != byte_count or byte_count != 8:
             return (commandstate.CommandResponseError(
-                        reply=reply, msg=f"Unexpected byte count in {line!r}: expected 8 "
+                        reply=reply, msg=f"Unexpected byte count in {shown!r}: expected 8 "
                                           f"(one AI block = 4 registers), got {byte_count} "
                                           f"({len(payload)} payload bytes)."),
                     commandstate.Retry)
@@ -231,7 +278,10 @@ class LiquilineParser(BaseParser):
 
 
 class Device(BaseDevice, SinglechannelBaseDevice):
-    delimiter = "\r\n"
+    protocol_factory_class = LiquilineProtocolFactory
+    # Werkseinstellung des Geraets (Abschnitt 4.1) und am 12.10.2026 am Geraet bestaetigt; config.yml
+    # kann einzelne Schluessel ueberschreiben (serial_parameters).
+    serial_parameters = {"baudrate": 19200, "bytesize": 8, "parity": "E", "stopbits": 1}
     command_parameter_factory = CommandParameterFactory(command_execution_time=.1)
     replies_commands = True
     log_name = "Endress+Hauser Liquiline CM44x"
@@ -251,8 +301,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                              TCP-Endpunkt der Dummy-Umgebung).
         :param byte_order: Geraeteparameter "Byte order" (Menu: Setup/General settings/Extended
                             setup/Modbus/Settings, Abschnitt 4.1), muss mit der tatsaechlichen
-                            Geraetekonfiguration uebereinstimmen. "1-0-3-2" (Werkseinstellung),
-                            "0-1-2-3", "2-3-0-1" oder "3-2-1-0".
+                            Geraetekonfiguration uebereinstimmen. "1-0-3-2" (Werkseinstellung, am
+                            Laborgeraet 12.10.2026 bestaetigt), "0-1-2-3", "2-3-0-1" oder "3-2-1-0".
         :param channels: {Kanalname: Register} - Register ist die 0-basierte Modbus-Startadresse des
                           zugehoerigen AI-Geraetevariablen-Blocks (Value/Status/Unit, s. Dateikopf),
                           wie sie am Geraet unter Setup/Outputs/Modbus/AI 1...AI 16 konfiguriert
@@ -268,16 +318,24 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def cmd_string(self, command_parameters: CommandParameterFactory) -> str:
         function = int(command_parameters.commandstring, 16)
         start_register, quantity = command_parameters.command_values["value"]
-        pdu = bytes([self.bus_address, function,
-                     (start_register >> 8) & 0xFF, start_register & 0xFF,
-                     (quantity >> 8) & 0xFF, quantity & 0xFF])
-        return f":{pdu.hex().upper()}{_lrc(pdu):02X}"
+        return _RawFrame(_build_request(self.bus_address, function, start_register, quantity))
 
     def initial_commands(self):
         pass
 
     def final_commands(self):
         pass
+
+    def update_observables(self, observables: dict, timestamp: float = None):
+        # base.receive() reicht die Parser-Rohgruppen (value/status/unit) als Observablen durch; die
+        # kanalbezogenen Observablen (<kanal>_value/_status/_unit) setzt read_channel() selbst.
+        observables = {k: v for k, v in observables.items() if k not in ("value", "status", "unit")}
+        if not observables:
+            return
+        if timestamp is None:
+            super().update_observables(observables)
+        else:
+            super().update_observables(observables, timestamp)
 
     def handle_event(self, match: re.Match) -> None:
         pass

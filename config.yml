@@ -3,7 +3,7 @@
 # STAND 07.10.2026: Konfiguration fuer den Laborversuch am 08.10.2026 (Stufe I) auf dem Pi.
 # Aktiv (werden beim Start verbunden): psu (Joy-IT Netzteil), mfc (Bronkhorst),
 #   dosing_pump (Longer WT600-2J), microgc (Inficon).
-# Eingetragen, aber mit `enabled: false` abgeschaltet: liquiline (pausiert bis Antwort von E+H),
+# Eingetragen, aber mit `enabled: false` abgeschaltet:
 #   demo_gpio_valve (Relais, am 08.10. nicht gebraucht). Solche Geraete werden nicht verbunden,
 #   Experimente, die sie benutzen, beim Start mit Warnung uebersprungen.
 # Entfernt wurden die Dummy-Geraete, die auf 127.0.0.1 (LABS-DeviceDummys) zeigten, samt ihrer
@@ -55,23 +55,27 @@ devices:
 
   liquiline:
     driver: endress_hauser_liquiline
-    enabled: false              # 07.10.2026: PAUSIERT bis Antwort vom E+H-Service - das Geraet antwortet auf
-                                # keine Modbus-Anfrage (Protokoll in OFFENE_FRAGEN.md). Mit enabled: false
-                                # wird es beim Start nicht verbunden, und Experimente, die es benutzen,
-                                # werden mit Warnung uebersprungen. Zum Aktivieren: Zeile auf true oder loeschen.
-    # Echter Anschluss: USB-RS485-Adapter BG01XFU4 (FTDI) an Modul 485, Klemmen 95=B, 96=A, 99=GND.
-    # Am Geraetemenue abgelesen 30.09.2026: Modbus ASCII, 19200 Baud, Paritaet gerade, Adresse 247.
+    # 12.10.2026: LAEUFT. Modbus RTU, 19200 Baud, 8E1, Adresse 247, Adapter BG01XFU4 - am Geraet
+    # verifiziert (Treiber liest alle drei AI-Bloecke). Der ASCII-Modus des Geraets hat nie
+    # geantwortet (30.09.-12.10.); das Geraet steht jetzt im Menue auf RTU, der Treiber spricht RTU.
+    # Anschluss: USB-RS485-Adapter BG01XFU4 (FTDI) an Modul 485MB, Klemmen 95 = B (Data+), 96 = A (Data-),
+    # 99 = GND. Geraetemenue: Setup/General settings/Extended setup/Modbus: RTU, 19200, Paritaet gerade,
+    # Adresse 247, Byte order 1-0-3-2 (ueber Register 506 Watchdog = 5.0 s bestaetigt), Watchdog 5 s.
+    # Sensoren am Geraet (12.10.2026): CH1 = "1:1 pH Glas", CH2 = "1:2 pH Glas" - KEINE Leitfaehigkeit.
+    # Beide zeigen am Display "X --- ---" (kein Messwert) -> Status 2 "Bad", Wert 0.0, bis die
+    # Memosens-Sensoren wieder Werte liefern. Protokoll in OFFENE_FRAGEN.md.
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01XFU4-if00-port0
     serial_parameters:
       baudrate: 19200
       parity: E
     bus_address: 247            # Modbus-Busadresse (1-247), Werkseinstellung 247 = am Geraet abgelesen
-    byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung - muss zur echten Geraetekonfig passen
-    channels:                   # Kanalname: Register (0-basiert, = Beginn des AI-Blocks Value/Status/Unit)
-      ph: 0                     # z.B. AI1 am Geraetemenue auf Sensor-1-pH-Messwert gemappt - NOCH NICHT am Geraet geprueft
-      conductivity: 4           # AI2
-      temperature: 8            # AI3
+    byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung, am Geraet bestaetigt (s.o.)
+    channels:                   # Kanalname: Register (0-basiert = Beginn des AI-Blocks Value/Status/Unit)
+      ph_ch1: 0                 # AI1 = CH1 "1:1 pH Glas", Messwert pH       (am Geraet gesetzt 12.10.2026)
+      ph_ch2: 4                 # AI2 = CH2 "1:2 pH Glas", Messwert pH
+      temperature: 8            # AI3 = CH1 "1:1 pH Glas", Messwert Temperatur
     # Dummy-Umgebung (LABS-DeviceDummys): address 127.0.0.1:12353, bus_address 1, siehe config.dummy.yml
+    # Ethernet des Geraets (Register 509-513): aktiv, IP 169.254.233.247/24 (Link-Local), kein Gateway.
 
   microgc:
     driver: inficon_microgc_fusion
@@ -329,26 +333,26 @@ experiments:
     commands:
       - [dosing_pump, stop_pumping, [], {}]
 
-  # ---- Liquiline (Endress+Hauser CM448) - werden uebersprungen, solange das Geraet enabled: false ist ----
+  # ---- Liquiline (Endress+Hauser CM448), Modbus RTU, seit 12.10.2026 am Geraet verifiziert ----
 
   test_liquiline_ph:
     conditions:
     stopconditions:
     parameters:
     observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, ph_status, str, ""]
-      - [liquiline, ph_unit, str, ""]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [liquiline, ph_ch1_unit, str, ""]
     commands:
-      - [liquiline, read_channel, [], { channel: "ph" }]
+      - [liquiline, read_channel, [], { channel: "ph_ch1" }]
 
   test_liquiline_all_channels:
     conditions:
     stopconditions:
     parameters:
     observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, conductivity_value, float, uS/cm]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch2_value, float, pH]
       - [liquiline, temperature_value, float, degC]
     commands:
       - [liquiline, read_all_channels, [], {}]

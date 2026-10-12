@@ -84,9 +84,9 @@ devices:
     bus_address: 1              # Modbus-Busadresse des Geraets (1-247, Werkseinstellung 247) - hier auf 1 gesetzt
     byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung - muss zur echten Geraetekonfig passen
     channels:                   # Kanalname: Register (0-basiert, = Beginn des AI-Blocks Value/Status/Unit)
-      ph: 0                     # z.B. AI1 am Geraetemenue auf Sensor-1-pH-Messwert gemappt
-      conductivity: 4           # AI2
-      temperature: 8            # AI3
+      ph_ch1: 0                 # AI1 (am echten Geraet: CH1 "1:1 pH Glas", pH)
+      ph_ch2: 4                 # AI2 (CH2 "1:2 pH Glas", pH)
+      temperature: 8            # AI3 (CH1, Temperatur)
 
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
@@ -325,19 +325,19 @@ experiments:
     stopconditions:
     parameters:
     observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, ph_status, str, ""]
-      - [liquiline, ph_unit, str, ""]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [liquiline, ph_ch1_unit, str, ""]
     commands:
-      - [liquiline, read_channel, [], { channel: "ph" }]
+      - [liquiline, read_channel, [], { channel: "ph_ch1" }]
 
   test_liquiline_all_channels:
     conditions:
     stopconditions:
     parameters:
     observables:
-      - [liquiline, ph_value, float, pH]
-      - [liquiline, conductivity_value, float, uS/cm]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch2_value, float, pH]
       - [liquiline, temperature_value, float, degC]
     commands:
       - [liquiline, read_all_channels, [], {}]
