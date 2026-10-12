@@ -357,3 +357,34 @@ experiments:
       - [liquiline, temperature_value, float, degC]
     commands:
       - [liquiline, read_all_channels, [], {}]
+
+  # Dummy-Variante von kolbe_elektrolyse_ph (config.yml), damit das Experiment im Frontend mit den
+  # Dummys durchgespielt werden kann (Aufgabenliste 12.10.2026, Punkt 3). Einziger Unterschied: der
+  # TDK-Dummy-Treiber kennt kein "minutes" am Netzteil - der Ausgang geht hier erst mit den
+  # Abschaltbefehlen am Experimentende aus (Pumpe laeuft "minutes", danach final_commands).
+  kolbe_elektrolyse_ph:
+    conditions:
+    stopconditions:
+    parameters:
+      current: [float, A]
+      max_voltage: [float, V]
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [psu, current, float, A]
+      - [psu, voltage, float, V]
+      - [psu, amount_of_charge, float, C]
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_ch1_status, str, ""]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]

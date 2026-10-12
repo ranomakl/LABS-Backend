@@ -41,8 +41,11 @@ class TimeIntegral(ABCombinedObservable):
         except ValueError:
             new_integral = 0
         value = new_integral + last_value
-        self.observable.update_observables({self.name: str(value)}, timestamp)
-        return str(value)
+        # 12.10.2026: als Zahl weitergeben, nicht als Text. Alle Abnehmer (Bedingungen, MathExpression)
+        # rufen ohnehin float() auf; das Frontend zeichnet aber nur Zahlen - amount_of_charge blieb
+        # deshalb im Monitoring immer eine leere Kurve.
+        self.observable.update_observables({self.name: value}, timestamp)
+        return value
 
     def _initial_values(self):
         observable_values = self.observable.get_updates(
@@ -82,6 +85,6 @@ class MathExpression(ABCombinedObservable):
                         variable)[1]) for variable in self.expression.variables()}
                     result = self.expression.evaluate(last_values)
                     self.observable.update_observables(
-                        {self.name: str(result)}, timestamp)
+                        {self.name: float(result)}, timestamp)
                 except IndexError:
                     pass
