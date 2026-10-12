@@ -41,11 +41,14 @@ class FloatTest(unittest.TestCase):
 class FakeCommand:
     class device:
         log = type("L", (), {"info": staticmethod(lambda *a, **k: None)})()
-    parameters = type("P", (), {"commandstring": "03"})()
+
+    def __init__(self, start_register=0, quantity=4):
+        self.parameters = type("P", (), {"commandstring": "03", "command_values": {"value": (start_register, quantity)}})()
 
 
-def parse(frame: bytes, byte_order="1-0-3-2", address=247):
-    parser = LiquilineParser(FakeCommand(), expect_bus_address=address, expect_function=3, byte_order=byte_order)
+def parse(frame: bytes, byte_order="1-0-3-2", address=247, start_register=0, quantity=4, channel_map=None):
+    parser = LiquilineParser(FakeCommand(start_register, quantity), expect_bus_address=address, expect_function=3,
+                             byte_order=byte_order, channel_map=channel_map)
     reply = Result(frame.hex(" ").upper()); reply.raw = frame
     return parser(reply)
 
@@ -75,6 +78,28 @@ class ParserTest(unittest.TestCase):
 
     def test_falsche_adresse(self):
         _, state = parse(frame_with_crc("01 03 08 0000 0000 0002 0035"))
+        self.assertIs(state, commandstate.Retry)
+
+    def test_drei_bloecke_mit_kanalnamen(self):
+        # Eine Anfrage Register 0-11 (AI1-AI3), wie read_all_channels/start_measuring sie stellt
+        frame = frame_with_crc("F7 03 18" + " 0000 40E8 0000 0035" + " 0000 40E6 0000 0035" + " 0000 41BC 0000 0059")
+        result, state = parse(frame, start_register=0, quantity=12, channel_map={0: "ph_ch1", 4: "ph_ch2", 8: "temperature"})
+        self.assertIs(state, commandstate.Success)
+        self.assertEqual(result.parameters["ph_ch1_value"], "7.25")
+        self.assertEqual(result.parameters["ph_ch2_value"], "7.1875")
+        self.assertEqual(result.parameters["temperature_value"], "23.5")
+        self.assertEqual(result.parameters["temperature_unit"], "89")
+        self.assertNotIn("value", result.parameters)
+
+    def test_luecke_zwischen_bloecken_wird_uebersprungen(self):
+        frame = frame_with_crc("F7 03 10" + " 0000 40E8 0000 0035" + " 0000 0000 0003 0000")
+        result, state = parse(frame, start_register=0, quantity=8, channel_map={0: "ph_ch1"})
+        self.assertIs(state, commandstate.Success)
+        self.assertEqual(set(result.parameters), {"ph_ch1_value", "ph_ch1_status", "ph_ch1_unit"})
+
+    def test_mehrere_bloecke_ohne_kanalnamen_abgelehnt(self):
+        frame = frame_with_crc("F7 03 10" + " 0000 40E8 0000 0035" + " 0000 0000 0003 0000")
+        _, state = parse(frame, quantity=8)
         self.assertIs(state, commandstate.Retry)
 
 
@@ -115,5 +140,13 @@ class DeviceTest(unittest.TestCase):
         dev = Device("127.0.0.1:1", bus_address=247, channels={"ph_ch1": 0})
         dev.update_observables({"value": "0.0", "status": "2", "unit": "53"})
         self.assertNotIn("value", dev.observables)
-        dev.update_observables({"ph_ch1_value": 0.0})
-        self.assertIn("ph_ch1_value", dev.observables)
+        dev.update_observables({"ph_ch1_value": "7.25", "ph_ch1_status": "2", "ph_ch1_unit": "53"})
+        self.assertEqual(dev.observables["ph_ch1_value"][-1][1], 7.25)
+        self.assertEqual(dev.observables["ph_ch1_status"][-1][1], "Bad")
+        self.assertEqual(dev.observables["ph_ch1_unit"][-1][1], "pH")
+
+    def test_eine_anfrage_fuer_alle_kanaele(self):
+        dev = Device("127.0.0.1:1", bus_address=247, channels={"ph_ch1": 0, "ph_ch2": 4, "temperature": 8})
+        self.assertEqual(dev._block_request(dev.channels), (0, 12, {0: "ph_ch1", 4: "ph_ch2", 8: "temperature"}))
+        dev2 = Device("127.0.0.1:2", bus_address=247, channels={"a": 20, "b": 4})
+        self.assertEqual(dev2._block_request(dev2.channels)[:2], (4, 20))

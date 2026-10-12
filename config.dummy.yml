@@ -331,6 +331,22 @@ experiments:
     commands:
       - [liquiline, read_channel, [], { channel: "ph_ch1" }]
 
+  # Dauer-Messung wie in kolbe_elektrolyse_ph (config.yml): pH/Temperatur alle 2 s, solange die Pumpe laeuft.
+  test_liquiline_messung:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [dosing_pump, speed_rpm, int, rpm]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: 100, minutes: "{minutes}" }]
+
   test_liquiline_all_channels:
     conditions:
     stopconditions:

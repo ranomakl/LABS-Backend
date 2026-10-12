@@ -214,11 +214,17 @@ class LiquilineParser(BaseParser):
     LiquilineProtocol.frameReceived) und dekodiert einen AI-Geraetevariablen-Block (Value/Status/Unit,
     4 Register/8 Byte, s. Dateikopf)."""
 
-    def __init__(self, command, expect_bus_address: int, expect_function: int, byte_order: str, **kwargs):
+    def __init__(self, command, expect_bus_address: int, expect_function: int, byte_order: str,
+                 channel_map: dict = None, **kwargs):
+        """channel_map: {Startregister des AI-Blocks: Kanalname}. Ist es gesetzt, heissen die Parameter
+        <kanal>_value/_status/_unit und die Antwort darf mehrere AI-Bloecke enthalten (eine Anfrage fuer
+        alle Kanaele, s. Device.read_all_channels). Ohne channel_map: genau ein Block, Parameter
+        value/status/unit."""
         super().__init__(command)
         self.expect_bus_address = expect_bus_address
         self.expect_function = expect_function
         self.byte_order = byte_order
+        self.channel_map = {int(k): v for k, v in (channel_map or {}).items()}
 
     def __call__(self, reply: Result):
         try:
@@ -262,18 +268,35 @@ class LiquilineParser(BaseParser):
 
         byte_count = body[2]
         payload = body[3:]
-        if len(payload) != byte_count or byte_count != 8:
+        if len(payload) != byte_count or byte_count == 0 or byte_count % 8 != 0:
             return (commandstate.CommandResponseError(
-                        reply=reply, msg=f"Unexpected byte count in {shown!r}: expected 8 "
+                        reply=reply, msg=f"Unexpected byte count in {shown!r}: expected a multiple of 8 "
                                           f"(one AI block = 4 registers), got {byte_count} "
                                           f"({len(payload)} payload bytes)."),
                     commandstate.Retry)
+        blocks = byte_count // 8
+        if not self.channel_map and blocks != 1:
+            return (commandstate.CommandResponseError(
+                        reply=reply, msg=f"Expected exactly one AI block in {shown!r}, got {blocks}."),
+                    commandstate.Retry)
 
-        registers = [(payload[2 * i] << 8) | payload[2 * i + 1] for i in range(4)]
-        value = _decode_float(registers[0], registers[1], self.byte_order)
-        status = _decode_unsigned8(registers[2])
-        unit = _decode_unsigned8(registers[3])
-        reply.parameters = {"value": str(value), "status": str(status), "unit": str(unit)}
+        start_register = self.command.parameters.command_values["value"][0]
+        parameters = {}
+        for block in range(blocks):
+            chunk = payload[8 * block: 8 * block + 8]
+            registers = [(chunk[2 * i] << 8) | chunk[2 * i + 1] for i in range(4)]
+            value = _decode_float(registers[0], registers[1], self.byte_order)
+            status = _decode_unsigned8(registers[2])
+            unit = _decode_unsigned8(registers[3])
+            if self.channel_map:
+                channel = self.channel_map.get(start_register + 4 * block)
+                if channel is None:
+                    continue   # Register ohne konfigurierten Kanal (Luecke zwischen zwei AI-Bloecken)
+                prefix = f"{channel}_"
+            else:
+                prefix = ""
+            parameters.update({f"{prefix}value": str(value), f"{prefix}status": str(status), f"{prefix}unit": str(unit)})
+        reply.parameters = parameters
         return reply, commandstate.Success
 
 
@@ -313,6 +336,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self.bus_address = int(bus_address)
         self.byte_order = byte_order
         self.channels = {name: int(register) for name, register in (channels or {}).items()}
+        self._last_status = {}
+        self._measuring = None
         super().__init__(address, *args, **kwargs)
 
     def cmd_string(self, command_parameters: CommandParameterFactory) -> str:
@@ -324,55 +349,91 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         pass
 
     def final_commands(self):
-        pass
-
-    def update_observables(self, observables: dict, timestamp: float = None):
-        # base.receive() reicht die Parser-Rohgruppen (value/status/unit) als Observablen durch; die
-        # kanalbezogenen Observablen (<kanal>_value/_status/_unit) setzt read_channel() selbst.
-        observables = {k: v for k, v in observables.items() if k not in ("value", "status", "unit")}
-        if not observables:
-            return
-        if timestamp is None:
-            super().update_observables(observables)
-        else:
-            super().update_observables(observables, timestamp)
+        # Wird aus device.stop()/shutdown() gerufen (Experimentende, Abbruch, Fehlerpfad): Dauer-Messung
+        # beenden. Sendet selbst nichts - das Geraet hat keinen Abschaltbefehl, es wird nur gelesen.
+        self.stop_measuring()
 
     def handle_event(self, match: re.Match) -> None:
         pass
 
+    def update_observables(self, observables: dict, timestamp: float = None):
+        # base.receive() reicht die Parser-Parameter als Observablen durch. Kanalbezogene Werte
+        # (<kanal>_value/_status/_unit) werden hier in float bzw. Klartext umgesetzt; die rohen,
+        # kanallosen Schluessel (value/status/unit, nur ohne channel_map) werden verworfen.
+        converted = {}
+        for key, raw in observables.items():
+            if key in ("value", "status", "unit"):
+                continue
+            if key.endswith("_value"):
+                converted[key] = float(raw)
+            elif key.endswith("_status"):
+                code = int(raw)
+                converted[key] = STATUS_CODES.get(code, f"unknown ({code})")
+                channel = key[:-len("_status")]
+                if converted[key] != self._last_status.get(channel):     # nur bei Aenderung loggen
+                    self._last_status[channel] = converted[key]
+                    (self.log.info if code == 0 else self.log.warn)(
+                        "Channel {channel!r} status is now {status!r}", channel=channel, status=converted[key])
+            elif key.endswith("_unit"):
+                code = int(raw)
+                converted[key] = UNIT_CODES.get(code, f"unknown ({code})")
+            else:
+                converted[key] = raw
+        if not converted:
+            return
+        if timestamp is None:
+            super().update_observables(converted)
+        else:
+            super().update_observables(converted, timestamp)
+
+    def _block_request(self, channels: dict) -> tuple:
+        """(Startregister, Anzahl Register, channel_map) fuer EINE FC03-Anfrage ueber alle `channels`
+        (zusammenhaengend oder mit Luecken; max. 125 Register je Modbus-Anfrage)."""
+        registers = sorted(channels.values())
+        start, quantity = registers[0], registers[-1] + 4 - registers[0]
+        if quantity > 125:
+            raise ValueError(f"Channels span {quantity} registers, Modbus allows 125 per request: {channels}")
+        return start, quantity, {register: name for name, register in channels.items()}
+
+    def _query_blocks(self, channels: dict, write_function=None, **kwargs):
+        start, quantity, channel_map = self._block_request(channels)
+        return (write_function or self.query)("READ_AI_BLOCK", command_values={"value": (start, quantity)},
+                                              expect_bus_address=self.bus_address, byte_order=self.byte_order,
+                                              channel_map=channel_map, **kwargs)
+
     def read_channel(self, channel, **kwargs):
-        """Ein konfigurierter Kanal (Name aus config.yml `channels`) auslesen: liest den
-        vollstaendigen AI-Block (4 Register) in einer Anfrage (s. Handbuch: Parameter muessen
-        vollstaendig gelesen werden, sonst SLAVE_DEVICE_FAILURE) und aktualisiert die Observablen
-        '<channel>_value', '<channel>_status' (0=Good...3=Not assigned, s. Abschnitt 3.7) und
-        '<channel>_unit' (Text aus der Unit-Code-Tabelle, Abschnitt 7.1)."""
+        """Einen konfigurierten Kanal (Name aus config.yml `channels`) einmal auslesen: ein AI-Block
+        (4 Register, Value/Status/Unit) in einer Anfrage. Observablen '<channel>_value' (float),
+        '<channel>_status' (Good/Uncertain/Bad/Not assigned), '<channel>_unit' (Text, Abschnitt 7.1)."""
         try:
-            start_register = self.channels[channel]
+            register = self.channels[channel]
         except KeyError:
             raise ValueError(f"No register configured for channel {channel!r} "
                               f"(configured channels: {list(self.channels)}). "
                               f"Add it to this device's `channels` in config.yml.")
-
-        def to_observables(result):
-            status = int(result.parameters["status"])
-            unit_code = int(result.parameters["unit"])
-            observables = {
-                f"{channel}_value": float(result.parameters["value"]),
-                f"{channel}_status": STATUS_CODES.get(status, f"unknown ({status})"),
-                f"{channel}_unit": UNIT_CODES.get(unit_code, f"unknown ({unit_code})"),
-            }
-            if status != 0:
-                self.log.warn(f"Channel {channel!r} (register {start_register}) has status "
-                              f"{observables[f'{channel}_status']!r}, value may not be usable.")
-            self.update_observables(observables)
-            return result
-
-        cmd = self.query("READ_AI_BLOCK", command_values={"value": (start_register, 4)},
-                         expect_bus_address=self.bus_address, byte_order=self.byte_order, **kwargs)
-        cmd.deferred_result.addCallback(to_observables)
-        return cmd
+        return self._query_blocks({channel: register}, **kwargs)
 
     def read_all_channels(self, **kwargs):
-        """Alle in config.yml konfigurierten Kanaele nacheinander auslesen."""
-        for channel in self.channels:
-            self.read_channel(channel, **kwargs)
+        """Alle konfigurierten Kanaele mit EINER Anfrage auslesen (z.B. Register 0-11 fuer AI1-AI3)."""
+        return self._query_blocks(self.channels, **kwargs)
+
+    def start_measuring(self, interval=2.0, condition=None, **kwargs):
+        """Alle konfigurierten Kanaele fortlaufend lesen (alle `interval` Sekunden, eine Anfrage je
+        Zyklus), bis stop_measuring() bzw. das Experimentende (final_commands) sie beendet. Laeuft wie
+        das Netzteil-Polling als RepeatedCommand (dringend, auch im Busy/Waiting-Zustand des Geraets),
+        sonst bliebe die Abfrage nach dem Ende der Befehlsliste in der Warteschlange haengen.
+        config.yml: [liquiline, start_measuring, [], {interval: 2.0}]. Am Geraet dauert ein Zyklus ~0,1 s."""
+        self.stop_measuring()
+        interval = max(0.5, float(interval))
+        start, quantity, channel_map = self._block_request(self.channels)
+        self._measuring = self.repeated_query("READ_AI_BLOCK", interval, condition,
+                                              command_values={"value": (start, quantity)},
+                                              expect_bus_address=self.bus_address, byte_order=self.byte_order,
+                                              channel_map=channel_map, inter_command_time=.001)
+        return self._measuring
+
+    def stop_measuring(self, **kwargs):
+        measuring = getattr(self, "_measuring", None)
+        if measuring is not None:
+            measuring.stop_running()
+            self._measuring = None
