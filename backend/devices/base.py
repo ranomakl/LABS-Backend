@@ -98,6 +98,11 @@ class BaseDeviceProtocol(LineReceiver):
 
     def connectionLost(self, reason: failure.Failure = connectionDone):
         self.device.protocol = None
+        # 12.10.2026: Bei SERIELLEN Geraeten ist das der einzige Hinweis auf einen Verbindungsabbruch
+        # (USB-Adapter weg, Twisted meldet ConnectionDone/ConnectionLost); clientConnectionLost der
+        # Factory gibt es nur fuer TCP. Vorher wurde hier nur protocol=None gesetzt: das Geraet blieb
+        # Busy, das Experiment lief weiter, die Messung starb leise, ein Netzteil blieb an.
+        self.device.connection_lost(reason)
         return reason
 
 
@@ -200,6 +205,7 @@ class DeviceAndChannelBase(StateDeviceMixIn, BaseObservable, ABC):
 class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
     protocol_factory_class = BaseDeviceProtocolFactory
     callLater = reactor.callLater
+    RECONNECT_INTERVAL = 2.0   # s zwischen zwei Wiederverbindungsversuchen nach connection_lost()
     reply_to_state = {}
     event_patterns = []
     error_patterns = []
@@ -239,6 +245,8 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
         self.connection_method = self.get_connection_method()
         self.protocol_factory = self.protocol_factory_class(self)
         self.protocol = None
+        self._reconnect_call = None      # IDelayedCall des naechsten Wiederverbindungsversuchs
+        self._reconnect_attempts = 0
         self.cmd_queue: list[ABDeviceCommand] = []
         self.current_command: Optional[ABDeviceCommand] = None
 
@@ -275,7 +283,7 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
     def stop(self):
         self.cmd_queue = []
         # self.state = devicestate.Ready
-        with self.get_commandseries(command_parameter = self.command_parameter_factory(urgent = True, next_devicestate = devicestate.Stopped)) as series:
+        with self.get_commandseries(command_parameter = self.command_parameter_factory(urgent = True, shutdown_path = True, next_devicestate = devicestate.Stopped)) as series:
             self.final_commands()
         self.stop_repeated_commands()
         return series.deferred_result
@@ -291,22 +299,76 @@ class AbstractBaseDevice(ICommander, ICommunicator, DeviceAndChannelBase):
             self.initial_commands()
         return series.deferred_result.addCallback(lambda _: protocol)
 
+    def _new_protocol_deferred(self) -> defer.Deferred:
+        # Beim ersten Verbinden ist d_protocol frisch; bei einer Wiederverbindung wurde es schon gefeuert
+        # und braucht einen Nachfolger (connectionMade/clientConnectionFailed feuern immer factory.d_protocol).
+        if self.protocol_factory.d_protocol.called:
+            self.protocol_factory.d_protocol = defer.Deferred()
+        return self.protocol_factory.d_protocol
+
     def _serial(self) -> defer.Deferred:
+        d_protocol = self._new_protocol_deferred().addCallback(self.connection_done)
         protocol = self.protocol_factory.buildProtocol(self.address)
         protocol.factory = self.protocol_factory
-        SerialPort(protocol, self.address, reactor, **self.serial_parameters)
-        d_protocol = self.protocol_factory.d_protocol.addCallback(self.connection_done)
+        SerialPort(protocol, self.address, reactor, **self.serial_parameters)   # ruft connectionMade sofort
         return d_protocol
 
     def _tcp(self) -> defer.Deferred:
+        d_protocol = self._new_protocol_deferred().addCallback(self.connection_done)
         reactor.connectTCP(self.address, self.port, self.protocol_factory)
-        d_protocol = self.protocol_factory.d_protocol.addCallback(self.connection_done)
         return d_protocol
 
     def connection_lost(self, reason):
-        if not self.state == devicestate.Shutdown:
-            self.state = devicestate.Shutdown
-            self.update_observables({"errorcode": reason})
+        """Verbindung zum Geraet ist weg (seriell: BaseDeviceProtocol.connectionLost; TCP: zusaetzlich
+        BaseDeviceProtocolFactory.clientConnectionLost - deshalb idempotent).
+
+        12.10.2026: Vorher wurde das Geraet still auf Shutdown gesetzt, das Experiment lief weiter und
+        hat davon nie erfahren (Experiment.update reagierte nur auf "Error"). Jetzt:
+          1. Zustand Error -> ein laufendes Experiment geht nach Failed und stoppt die UEBRIGEN Geraete.
+          2. Wiederverbindung alle RECONNECT_INTERVAL s (seriell: sobald die Geraetedatei wieder da ist).
+             Nach der Wiederverbindung laeuft connection_done() -> initial_commands(), und die schalten
+             bei Netzteil/MFC/Pumpe den sicheren Zustand (Ausgang aus, Ventil auf, Pumpe stopp).
+        Ein absichtlich beendetes Geraet (Shutdown) wird nicht wiederverbunden."""
+        if self.state == devicestate.Shutdown:
+            return
+        if self._reconnect_call is not None and self._reconnect_call.active():
+            return   # schon gemeldet (TCP meldet den Verlust doppelt)
+        message = reason.getErrorMessage() if hasattr(reason, "getErrorMessage") else str(reason)
+        self.log.error("CONNECTION LOST to {address}: {reason} - device -> Error, reconnecting every {t} s",
+                       address=self.full_address, reason=message, t=self.RECONNECT_INTERVAL)
+        self.update_observables({"errorcode": f"connection lost: {message}"})   # String, kein Failure (values.json!)
+        self.state = devicestate.Error
+        self._reconnect_attempts = 0
+        self._schedule_reconnect()
+
+    def _schedule_reconnect(self):
+        if self._reconnect_call is not None and self._reconnect_call.active():
+            return
+        self._reconnect_call = self.callLater(self.RECONNECT_INTERVAL, self._reconnect)
+
+    def _reconnect(self):
+        self._reconnect_call = None
+        if self.state == devicestate.Shutdown:
+            return
+        self._reconnect_attempts += 1
+        log = self.log.info if self._reconnect_attempts in (1, 5) or self._reconnect_attempts % 30 == 0 else self.log.debug
+        log("Reconnect attempt {n} to {address}", n=self._reconnect_attempts, address=self.full_address)
+        try:
+            deferred = self.connect()
+        except Exception as error:  # noqa: BLE001 - z.B. serial.SerialException: Geraetedatei (noch) nicht da
+            log("Reconnect attempt {n} failed: {error}", n=self._reconnect_attempts, error=error)
+            self._schedule_reconnect()
+            return
+
+        def failed(failure):
+            log("Reconnect attempt {n} failed: {error}", n=self._reconnect_attempts, error=failure.getErrorMessage())
+            self._schedule_reconnect()
+
+        def connected(result):
+            self.log.info("RECONNECTED to {address} after {n} attempt(s); initial_commands set the safe state.",
+                          address=self.full_address, n=self._reconnect_attempts)
+            return result
+        deferred.addCallbacks(connected, failed)
 
     @abstractmethod
     def initial_commands(self):
@@ -459,7 +521,7 @@ class MultichannelBaseDevice(AbstractBaseDevice, ABC):
                     deferreds.append(channel.stop())
             return defer.DeferredList(deferreds).addCallback(self.set_state, devicestate.Stopped)
         else:
-            with self.get_commandseries(command_parameter = self.command_parameter_factory(urgent = True)) as series:
+            with self.get_commandseries(command_parameter = self.command_parameter_factory(urgent = True, shutdown_path = True)) as series:
                 self.final_commands()
             self.stop_repeated_commands()
             return series.deferred_result.addCallback(self.channel_acting.set_state, devicestate.Stopped)

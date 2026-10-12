@@ -32,8 +32,18 @@ class Sent(CommandState):
             self._command.timer = None
             reply = Result()
             reply.command = self._command
-            self._command.temp_result = CommandTimeoutError(reply=reply)
-            self._command.state = Retry
+            # 12.10.2026: Laeuft der Befehl innerhalb einer CommandSeries (so sendet device.stop() die
+            # Abschaltbefehle), muss der Timeout an die SERIE gehen - genau wie eine Antwort ueber
+            # device.receive() an device.current_command (= die Serie) geht. Vorher landete der Timeout
+            # nur beim inneren Befehl: der scheiterte still, die Serie blieb fuer immer "NotSent", das
+            # Geraet erfuhr nichts davon (Netzteil-AUS 4x gesendet, dann nie wieder; kein Error-Zustand,
+            # wenn ein Geraet schon bei initial_commands nicht antwortet).
+            target = self._command
+            series = getattr(self._command, "parent_command_series", None)
+            if series is not None and series.current_command is self._command:
+                target = series
+            target.temp_result = CommandTimeoutError(reply=reply)
+            target.state = Retry
 
         self._command.timer = self.callLater(self._command.parameters.timeout, timedout)
 

@@ -231,6 +231,26 @@ Naechster Schritt: am Geraet pruefen, ob Modbus ueberhaupt aktiviert ist (ab Wer
 ein RS485-Modul (Modul 485) verbaut ist; Adresse/Baudrate/Modus dort ablesen. Stufe 2 (Adressen
 1-247) laeuft pro Adapter ~25 min und hilft nichts, solange Modbus aus ist.
 
+ANTWORT E+H 08.10.2026 11:02 (Case 01976469, Datei docs/RE_ Aw_ Case# 01976469 ... .html):
+- E+H hat ein CM448 ab Werk mit einem Memograph als Modbus-RTU-Master getestet: Werte kommen, COM-LED
+  blinkt kurz je Anfrage, im Display gegenlaeufige Pfeile beim Geraetestatus.
+- Modbus ist ab Werk EIN; das Menue zeigt direkt, welche Variante aktiv ist. Unser Geraet (SN
+  2J10G06OA6P) hat ab Werk Modbus RTU aktiv (Option "Modbus RS485, Webserver").
+- Modul muss explizit "485MB" heissen (ggf. zweizeilig); unten Klemmen, mittig DIP-Schalter fuer
+  HW-Adresse, auf der Platine DIP fuer Terminierung. Neuere Module ohne DIP: Adresse nur per Software.
+- WATCHDOG: erst aktiv nach der ERSTEN ERFOLGREICHEN Anfrage, und die Meldung ist ab Werk deaktiviert
+  (Menue Diagnoseeinstellungen/Diagnoseverhalten). -> Das Fehlen von S969 sagt NICHTS aus (unsere Frage 2
+  damit beantwortet).
+- Empfehlung E+H: Leitung nochmals pruefen, zum Test niedrige Baudrate, Terminierung bei kurzen Wegen
+  nicht noetig, Foto vom Geraeteinneren (Anschluesse/Module) schicken; Geraet kann zur Pruefung ins
+  Service-/Kalibriercenter.
+- Fuer Messwerte in den Registern muessen die Sensoren auf AI gemappt sein (Setup/Ausgaenge/Modbus) -
+  erklaert aber NICHT das Schweigen (ohne Mapping kaeme trotzdem eine Antwort/Exception).
+Einschaetzung 12.10.: siehe Chat-Protokoll; naechste Schritte: Geraet oeffnen, Modulbezeichnung + DIP-
+Stellungen fotografieren und an E+H schicken; einmal RTU (Werkseinstellung) bei 9600/E, Adresse 247
+testen; E+H fragen, ob die COM-LED bei JEDEM empfangenen Byte oder nur bei gueltigen Rahmen blinkt;
+danach Modul/Geraet einschicken. Nicht auf dem kritischen Pfad (enabled: false).
+
 
 
 \## Spannungsquelle Joy-IT DPM86xx ("DC SOURCE 48V") — ERLEDIGT, am Geraet geprueft 06.10.2026

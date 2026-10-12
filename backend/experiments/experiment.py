@@ -135,9 +135,15 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
             # 08.10.2026: Ein Geraet, dessen stop() eine Ausnahme wirft (z.B. Error-Zustand), darf nicht
             # verhindern, dass die UEBRIGEN Geraete abgeschaltet werden (Dummy-Test: MFC warf, Pumpe lief weiter).
             try:
-                device.stop()
+                deferred = device.stop()
             except Exception as error:  # noqa: BLE001
                 self.log.error("Stopping device {name} raised: {error}", name=name, error=error)
+            else:
+                # 12.10.2026: Scheitert die Abschaltserie (Geraet antwortet nicht), landet der Fehler sonst als
+                # "Unhandled error in Deferred" irgendwann spaeter im Log. Hier klar benennen; die Wiederholung
+                # uebernimmt der Error-Zustand des Geraets (devicestate.Error).
+                deferred.addErrback(lambda failure, name=name: self.log.error(
+                    "Shutdown commands for {name} NOT confirmed: {err}", name=name, err=failure.getErrorMessage()))
         return self.factory.setup.conditionhandler.add_condition(condition)
 
     def stop(self):
@@ -175,7 +181,10 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
 
     def update(self, observable, observable_key, updated_value, timestamp):
         self.observed_updates[self._device_to_name[observable]][observable_key].append((timestamp, updated_value))
-        if observable_key == "state" and updated_value == "Error":
+        # 12.10.2026: auch "Shutdown". Ein Geraet, das waehrend des Laufs die Verbindung verliert oder
+        # heruntergefahren wird, muss das Experiment beenden (uebrige Geraete abschalten, Messwerte
+        # sichern) - vorher lief das Experiment in dem Fall einfach weiter.
+        if observable_key == "state" and updated_value in ("Error", "Shutdown"):
             self.state = Failed
 
 

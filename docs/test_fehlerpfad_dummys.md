@@ -121,3 +121,13 @@ beschrieben. Erwartung in Test 2 Schritt 3 ergaenzt: die URGENT-Zeile muss den B
 
 Hinweis zum Ablauf: Nach Test 2 Schritt 5 zeigt station_overview `running_experiment_name: ""`,
 der Stop geht deshalb ueber den Pfad "alle Geraete stoppen" - das ist in Ordnung.
+
+## Nachtrag 12.10.2026
+
+Test 2 prueft seit der Nachbesserung (docs/fehlerpfad_nachbesserung_12-10-2026.md) zusaetzlich:
+nach den 16 Sendungen von Ventil-auf (ca. 40 s) MUSS `CommandSeries [Command :06030101217D00] failed.`
+und `NOT confirmed - repeating device.stop() in 5.0 s` erscheinen, danach alle 5 s `repeating device.stop()`.
+Erst wenn die STUMM-Datei weg ist: `changed to: Stopped`. Neuer Test 4: Dummy-Prozess beenden -> je
+Geraet `CONNECTION LOST ... device -> Error`, `Reconnect attempt ...`; Dummys neu starten -> `RECONNECTED`,
+`Initializing`, `Ready`. Am 12.10. am Pi bestanden (Protokoll in der Nachbesserungs-Doku, Abschnitt 7).
+Die manuellen Tests sind jetzt auch automatisiert: `.venv/bin/python -m twisted.trial backend.test`.

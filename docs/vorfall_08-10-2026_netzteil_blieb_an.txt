@@ -137,3 +137,17 @@ Beobachtet, harmlos: Der Pumpenstopp wird im Fehlerpfad zweimal gesendet (einmal
 
 Noch offen: derselbe Test am Pi mit dem echten Netzteil ohne Zelle (2 V, Kabel kurz ziehen),
   bevor der naechste lange Lauf startet.
+
+7. NACHTRAG 12.10.2026 - REVIEW UND NACHBESSERUNG (Claude, auf Bitte von Rafael)
+--------------------------------------------------------------------------------
+Beim Lesen des gesamten Fehlerpfads zwei weitere Luecken gefunden und geschlossen, Details in
+docs/fehlerpfad_nachbesserung_12-10-2026.md:
+  h) Timeouts INNERHALB einer CommandSeries erreichten die Serie nie. Der Abschaltbefehl aus stop()
+     wurde deshalb 4x in 10 s gesendet und dann NIE WIEDER, ohne dass es jemand erfuhr. Jetzt scheitert
+     die Serie sichtbar und der Error-Zustand wiederholt stop() alle 5 s, bis das Geraet bestaetigt.
+  i) Ein serieller Verbindungsverlust (USB-Adapter weg) wurde nicht erkannt: Geraet blieb Busy,
+     Experiment lief weiter. Jetzt: Geraet Error -> Experiment Failed -> uebrige Geraete aus;
+     Wiederverbindung alle 2 s, danach schalten initial_commands den sicheren Zustand.
+16 automatische Tests (backend/test/, `python -m twisted.trial backend.test`), Dummy-Lauf am Pi
+bestanden. Test am echten Netzteil (Geraet aus / Kabel ziehen) steht noch aus - Anleitung dort, Abschnitt 8.
+Unveraendert offen: Hardware-Interlock, Autostart, Stopp-Reihenfolge, Frontend-Alarm.

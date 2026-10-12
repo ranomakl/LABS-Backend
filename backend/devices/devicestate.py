@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 class DeviceState(IState, ABC):
+    callLater = reactor.callLater   # Klassenattribut, damit Tests eine task.Clock einsetzen koennen
+
     def __init__(self, device, *args, **kwargs):
         self.device = device
 
@@ -37,6 +39,12 @@ class DeviceState(IState, ABC):
     def handle_fail(self, failure):
         cmd = failure.value.command
         cmd.device.state = Error
+        # 12.10.2026: War der gescheiterte Befehl ein DRINGENDER (Abschaltpfad: device.stop()/shutdown()),
+        # darf es nicht bei diesem einen Versuch bleiben - der Error-Zustand wiederholt stop(), bis das
+        # Geraet bestaetigt. (Error.handle_fail macht dasselbe fuer Befehle, die IM Error-Zustand scheitern.)
+        state = cmd.device.stateobject
+        if cmd.parameters.shutdown_path and isinstance(state, Error):
+            state.schedule_stop_retry()
         return failure
 
     def add_command_callbacks(self, cmd):
@@ -98,35 +106,114 @@ class Initializing(Ready):
 
 
 class Error(DeviceState):
-    """Geraet hat einen Befehl endgueltig nicht beantwortet/fehlerhaft beantwortet.
+    """Geraet hat einen Befehl endgueltig nicht beantwortet/fehlerhaft beantwortet, oder die Verbindung
+    ist weg (base.AbstractBaseDevice.connection_lost).
 
     08.10.2026 (Versuch 26174): Das Netzteil blieb nach EINEM unbeantworteten Lesebefehl in diesem
     Zustand haengen und verweigerte auch den Ausschaltbefehl - der Ausgang blieb an, waehrend Pumpe
-    und Zaehler laengst gestoppt waren. Deshalb jetzt:
+    und Zaehler laengst gestoppt waren. Deshalb:
       - DRINGENDE Befehle (urgent=True, das sind die final_commands aus device.stop()/shutdown(),
         also Netzteil aus, Pumpe Stopp, Ventil auf) werden auch im Error-Zustand gesendet.
-        Antwortet das Geraet wieder, laufen sie durch; antwortet es nicht, scheitern sie nach den
-        Retries - aber sie werden versucht.
-      - Der Wechsel nach Stopped/Shutdown/NotReady ist erlaubt (Abschluss von stop()/shutdown(),
-        Neuverbindung); alles andere bleibt ignoriert, das Geraet ist bis zum Neustart defekt."""
+      - Der Wechsel nach Stopped/Shutdown/NotReady ist erlaubt (Abschluss von stop()/shutdown()).
+    12.10.2026 (Review, docs/fehlerpfad_nachbesserung_12-10-2026.md):
+      - Wird ein dringender Befehl NICHT bestaetigt (Timeout nach allen Retries, keine Verbindung),
+        wird device.stop() alle RETRY_INTERVAL Sekunden wiederholt - solange, bis das Geraet bestaetigt
+        (-> Stopped) oder das Geraet Shutdown/Wiederverbindung erreicht. Vorher: 4 Versuche in 10 s,
+        dann nie wieder.
+      - Dringende Befehle werden der Reihe nach gesendet (nie zwei gleichzeitig auf der Leitung).
+      - Ohne Verbindung (protocol is None) scheitert ein dringender Befehl sofort und sauber; das
+        Abschalten uebernimmt dann connection_done()/initial_commands() nach der Wiederverbindung,
+        zusaetzlich laeuft die stop()-Wiederholung weiter.
+      - Initializing ist erlaubt: einziger Weg dorthin ist connection_done() nach Wiederverbindung.
+    Alles andere bleibt ignoriert, das Geraet gilt bis zum Neustart/Wiederverbindung als defekt."""
+    RETRY_INTERVAL = 5.0   # s zwischen zwei Wiederholungen von device.stop() nach unbestaetigtem Abschalten
+
+    def __init__(self, device, *args, **kwargs):
+        super().__init__(device, *args, **kwargs)
+        self._retry_call = None     # IDelayedCall der naechsten stop()-Wiederholung
+        self._in_flight = False     # laeuft gerade ein dringender Befehl auf der Leitung?
+
     def enter(self):
         self.device.cmd_queue = []
 
     def send_cmd(self, cmd: ABDeviceCommand):
-        if cmd.parameters.urgent:
-            self.device.log.warn("Error state: sending URGENT command anyway (shutdown path): {cmd}", cmd=cmd)
-            self.device.execute_cmd(cmd)
+        if not cmd.parameters.urgent:
+            error = DeviceErrorError("Cannot send commands in Error state!")
+            self.device.log.error(f"{str(error)}")
+            raise error
+        if getattr(self.device, "protocol", None) is None:
+            error = DeviceErrorError(f"NO CONNECTION, cannot send urgent command {cmd}")
+            error.command = cmd
+            self.device.log.error("{error}", error=error)
+            cmd.deferred_result.errback(error)    # -> handle_fail -> stop()-Wiederholung
             return
-        error = DeviceErrorError("Cannot send commands in Error state!")
-        self.device.log.error(f"{str(error)}")
-        raise error
+        if self._in_flight:
+            # Nie zwei Befehle gleichzeitig auf die Leitung: device.current_command wuerde ueberschrieben
+            # und die Antwort dem falschen Befehl zugeordnet. handle_success/handle_fail senden den naechsten.
+            self.device.cmd_queue.append(cmd)
+            return
+        self._execute(cmd)
+
+    def _execute(self, cmd: ABDeviceCommand):
+        self.device.log.warn("Error state: sending URGENT command anyway (shutdown path): {cmd}", cmd=cmd)
+        self._in_flight = True
+        self.device.execute_cmd(cmd)
+
+    def _send_next(self):
+        self._in_flight = False
+        if self.device.cmd_queue:
+            self._execute(self.device.cmd_queue.pop(0))
+
+    def handle_success(self, result):
+        self._send_next()
+        return super().handle_success(result)
+
+    def handle_fail(self, failure):
+        self._send_next()                      # wartet schon ein weiterer dringender Befehl, geht der jetzt raus
+        cmd = getattr(failure.value, "command", None)
+        if cmd is not None and cmd.parameters.shutdown_path:
+            if self._in_flight:
+                self.device.log.error("Error state: shutdown command {cmd} NOT confirmed ({err}) - next one is "
+                                      "already on its way", cmd=cmd, err=failure.getErrorMessage())
+            else:
+                self.device.log.error("Error state: shutdown command {cmd} NOT confirmed ({err}) - repeating "
+                                      "device.stop() in {t} s", cmd=cmd, err=failure.getErrorMessage(),
+                                      t=self.RETRY_INTERVAL)
+                self.schedule_stop_retry()
+        return failure
+
+    def schedule_stop_retry(self):
+        if self._retry_call is not None and self._retry_call.active():
+            return
+        self._retry_call = self.callLater(self.RETRY_INTERVAL, self._retry_stop)
+
+    def _cancel_stop_retry(self):
+        if self._retry_call is not None and self._retry_call.active():
+            self._retry_call.cancel()
+        self._retry_call = None
+
+    def _retry_stop(self):
+        self._retry_call = None
+        if self.device.stateobject is not self:
+            return
+        self.device.log.warn("Error state: repeating device.stop() (final commands) until the device confirms")
+        try:
+            # Fehler sind in handle_fail protokolliert und loesen die naechste Wiederholung aus;
+            # der Errback hier verhindert nur "Unhandled error in Deferred".
+            self.device.stop().addErrback(lambda _: None)
+        except Exception as error:  # noqa: BLE001 - Wiederholung darf an nichts scheitern
+            self.device.log.error("Error state: device.stop() raised {error}", error=error)
+            self.schedule_stop_retry()
 
     def new_state(self, state, *args, **kwargs):
         # CollectingCommands: device.stop()/shutdown() sammeln die final_commands in einer CommandSeries
         # (with-Block). Ohne diesen Wechsel landet jeder einzelne Abschaltbefehl direkt hier in send_cmd,
         # ist dort noch nicht als urgent markiert und wird abgewiesen - die Serie geht dann LEER raus
         # (Dummy-Test 08.10.2026: "sending URGENT command anyway: CommandSeries []").
-        if isinstance(state, (Stopped, Shutdown, NotReady, CollectingCommands)):
+        if isinstance(state, CollectingCommands):
+            super().new_state(state, *args, **kwargs)
+        elif isinstance(state, (Stopped, Shutdown, NotReady, Initializing)):
+            self._cancel_stop_retry()
             super().new_state(state, *args, **kwargs)
 
 

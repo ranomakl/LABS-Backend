@@ -21,6 +21,10 @@ class DeviceCommandParameterFactory(BaseParameterFactoryClass):
             inter_command_time: float = .1,
             on_error: CommandAction = CommandAction.RETRY,
             urgent: bool = False,
+            # 12.10.2026: True fuer die final_commands aus device.stop()/shutdown(). Nur fuer diese Befehle
+            # wiederholt der Error-Zustand stop(), bis das Geraet bestaetigt. (urgent allein reicht als
+            # Kennzeichen nicht: RepeatedCommand setzt urgent=True fuer das Polling im Busy-Zustand.)
+            shutdown_path: bool = False,
             run_while_device_busy: bool = False,
             channel: Optional[int] = None,
             devicestate_while_executing: \
@@ -35,6 +39,7 @@ class DeviceCommandParameterFactory(BaseParameterFactoryClass):
         self.inter_command_time = inter_command_time
         self.on_error = on_error
         self.urgent = urgent
+        self.shutdown_path = shutdown_path
         self.run_while_device_busy = run_while_device_busy
         self.channel = channel
         self.devicestate_while_executing = devicestate_while_executing
@@ -83,6 +88,9 @@ class ABDeviceCommand(StateMachineMixIn, ABC):
         self.device = device
         self.log = self.device.log
         self.parameters = command_parameter(**kwargs)
+        # Die CommandSeries, in der dieser Befehl gerade ausgefuehrt wird (gesetzt von CommandSeries.execute),
+        # sonst None. commandstate.Sent leitet darueber einen Timeout an die Serie weiter.
+        self.parent_command_series = None
         super().__init__(initial_stateclass=commandstate.NotSent)
 
     @abstractmethod
@@ -191,9 +199,11 @@ class CommandSeries(ABDeviceCommand, ContextDecorator):
 
     def execute(self):
         for cmd in self.commandlist:
+            # 12.10.2026: fuer ALLE inneren Befehle (vorher nur fuer verschachtelte Serien), damit ein
+            # Timeout eines inneren Befehls die Serie erreicht (s. commandstate.Sent.enter).
+            cmd.parent_command_series = self
             if isinstance(cmd, CommandSeries):
                 self.has_command_series = True
-                cmd.parent_command_series = self
         if len(self.commandlist) > 0:
             return self.current_command.execute()
         else:
