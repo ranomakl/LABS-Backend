@@ -71,12 +71,17 @@ Fehlt eine Routine, war beim Backend-Start ein Geraet aus (siehe 1).
 
 1. **Experiments** -> **Add a new experimental Design**: Name = Versuchsnummer (z.B. `26175`),
    Station auswaehlen -> Create.
-2. Im Design **Create Stage**: Name des Schritts, Routine auswaehlen. Fuer jeden Schritt des Versuchs
-   eine Stage, in der Reihenfolge, in der sie laufen sollen (Vorschlag unten).
+2. Im Design **Create Stage**: Name des Schritts (freier Text, z.B. `Spuelung_26175` - erscheint
+   in der Warteschlange und im Log-Ordner) und Routine auswaehlen. Fuer jeden Schritt des Versuchs
+   eine Stage. Eine Reihenfolge wird NICHT eingetragen: die Stages stehen im Design in der
+   Reihenfolge, in der sie angelegt wurden (aelteste oben), und genau so werden sie gesendet.
+   Also in der Ablaufreihenfolge anlegen (Vorschlag unten); umsortieren geht nur durch Loeschen
+   und Neuanlegen.
 3. Stage oeffnen (**Edit**): die Parameter der Routine eintragen und **Add** druecken -> ein Run.
    Dezimalzahlen mit Punkt (`0.5`), Kommas werden automatisch zu Punkten.
 4. Zurueck im Design: die Stages anhaken und **Send** -> die Runs stehen jetzt in der Warteschlange
-   des Backends, in der angehakten Reihenfolge.
+   des Backends, in der Listenreihenfolge. Entweder alle Schritte auf einmal senden, oder - wenn
+   zwischen den Schritten am Aufbau etwas zu tun ist - immer nur den naechsten anhaken und senden.
 
 Schrittfolge Kolbe-Elektrolyse (Nummern wie im Laborplan):
 
