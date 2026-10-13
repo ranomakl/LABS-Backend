@@ -8,6 +8,9 @@ Anforderungen ab 08.10
      (Uhrenversatz Pi/Browser egal). Am PC mit Dummys im Browser geprueft.
 
 - microgc Werte in LABS implementieren, Elektrolyse
+  -> ERLEDIGT 13.10.: Experiment kolbe_elektrolyse_gc (Parameter versuch, gc_minutes mit Semikolon
+     "0;10;20;...;219"), microGC misst zu den Zeitpunkten selbst, Konzentrationen gc_H2/gc_CO2/... live
+     im Monitoring und in values.json. Mit Dummys getestet; docs/microgc_messplan_im_experiment_13-10-2026.md
 
 - der gleiche versuch soll sozusagen 3x gleichzeitig laufen
 
@@ -17,6 +20,7 @@ einzelne Experimente in einem großen Experiment, wenn du gespült hast z.b drü
 
 die Excel file soll übernommen werden können für exp. darin sind auch noch nicht integrierbare Parameter. Testung auch ob geräte angeschlossen sidn siehe measurement Setup
 microgc soll immer werte auslesen, messen wenn sie wieder Ready ist. 
+  -> 13.10.: im Messplan startet ein faelliger Lauf sofort, sobald der vorige fertig ist (runWhenReady).
 
 Monitoring
 x achse soll immer zeitstempel sein; was ist überhaupt x Achse

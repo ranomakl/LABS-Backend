@@ -272,6 +272,57 @@ experiments:
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
       - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
 
+  # 13.10.2026: kolbe_elektrolyse_ph PLUS microGC-Messplan im selben Experiment (statt
+  # tools/kolbe_gc_messplan.py im zweiten Terminal). Der microGC startet zu jedem Zeitpunkt in
+  # gc_minutes (Minuten ab Experimentstart, Trenner SEMIKOLON, Versuchsplan: "0;10;20;30;40;50;60;80;
+  # 100;120;140;160;180;200;219") einen benannten Lauf "<versuch>_<t> min" mit Tags Kolbe;MP und
+  # meldet die Konzentrationen (gc_H2, gc_CO2, ... in %) als Observablen -> Kurven/Tabelle im
+  # Monitoring, values.json, Bericht. Das Experiment endet erst, wenn der LETZTE GC-Lauf abgeholt ist
+  # (letzter Zeitpunkt + ~8 min); Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
+  # Neuer Name, weil das Frontend neue Parameter/Observablen nicht in geladene Routinen uebernimmt.
+  kolbe_elektrolyse_gc:
+    conditions:
+    stopconditions:
+    parameters:
+      versuch: [str, ""]
+      gc_minutes: [str, ""]
+      current: [float, A]
+      max_voltage: [float, V]
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [psu, current, float, A]
+      - [psu, voltage, float, V]
+      - [psu, amount_of_charge, float, C]
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [microgc, gc_schedule, str, ""]
+      - [microgc, gc_runs_done, int, ""]
+      - [microgc, gc_run_name, str, ""]
+      - [microgc, gc_H2, float, "%"]
+      - [microgc, gc_O2, float, "%"]
+      - [microgc, gc_N2, float, "%"]
+      - [microgc, gc_CO2, float, "%"]
+      - [microgc, gc_Ethylene, float, "%"]
+      - [microgc, gc_Ethane, float, "%"]
+      - [microgc, gc_1_Penten, float, "%"]
+      - [microgc, gc_n_Pentan, float, "%"]
+      - [microgc, gc_n_Hexane, float, "%"]
+      - [microgc, gc_n_Heptane, float, "%"]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", tags: "Kolbe;MP" }]
+
   # Schritt 8: Gas zaehlen ohne Pumpe (N2-Spuelung nach dem Ansaeuern, Plan: bis ~150 mLn).
   # Zaehler auf 0, dann 'minutes' Minuten Fluss/Zaehler live; frueher beenden mit "Stop Experiments".
   kolbe_gas_zaehlen:
@@ -421,6 +472,35 @@ experiments:
       - [microgc, load_method, [], { method_name: "{method}" }]
       - [microgc, run_method, [], {}]
       - [microgc, get_last_run_data, [], {}]
+
+  # 13.10.2026: GC-Messplan OHNE andere Geraete, zum Testen von run_schedule_named am Geraet.
+  # gc_minutes = Messzeitpunkte in Minuten ab Start, Trenner SEMIKOLON (das Frontend macht aus
+  # Kommas Punkte), z.B. "0;1" = zwei Laeufe, der zweite startet direkt nach dem ersten (je ~8 min).
+  # Laufname "<versuch>_<t> min", Tags "Test;LABS". Laufdaten zusaetzlich als JSON+CSV unter
+  # logs/<J>/<M>/<T>/microgc/ (wie tools/kolbe_gc_messplan.py, tools/auswertung.py findet sie).
+  test_microgc_plan:
+    conditions:
+    stopconditions:
+    parameters:
+      versuch: [str, ""]
+      gc_minutes: [str, ""]
+    observables:
+      - [microgc, system, str, ""]
+      - [microgc, gc_schedule, str, ""]
+      - [microgc, gc_runs_done, int, ""]
+      - [microgc, gc_run_name, str, ""]
+      - [microgc, gc_H2, float, "%"]
+      - [microgc, gc_O2, float, "%"]
+      - [microgc, gc_N2, float, "%"]
+      - [microgc, gc_CO2, float, "%"]
+      - [microgc, gc_Ethylene, float, "%"]
+      - [microgc, gc_Ethane, float, "%"]
+      - [microgc, gc_1_Penten, float, "%"]
+      - [microgc, gc_n_Pentan, float, "%"]
+      - [microgc, gc_n_Hexane, float, "%"]
+      - [microgc, gc_n_Heptane, float, "%"]
+    commands:
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", tags: "Test;LABS" }]
 
   # ---- Relais-Ventile (GPIO) ----
 

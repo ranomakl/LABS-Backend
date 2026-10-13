@@ -1,3 +1,6 @@
+UMGESETZT 13.10.2026 - siehe docs/microgc_messplan_im_experiment_13-10-2026.md (Experiment kolbe_elektrolyse_gc,
+Treiber run_schedule_named). Der Text darunter ist die urspruengliche Aufgabenbeschreibung.
+
 AUFGABE: microGC-Messungen INS Elektrolyse-Experiment und live ins LABS-Monitoring
 =================================================================================
 Stand 08.10.2026, 12:50, geschrieben waehrend Versuch 26174 laeuft. Zum Weiterbauen daheim

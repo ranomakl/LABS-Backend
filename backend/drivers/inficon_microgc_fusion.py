@@ -79,9 +79,15 @@
 # zusaetzlicher lokaler "started"-Zwischenzustand noetig.
 
 import json
+import os
+import re
+import time
+from datetime import date
+from pathlib import Path
 from urllib.parse import quote
 
 from twisted.internet import defer, reactor
+from twisted.python import failure
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.web.iweb import IBodyProducer
@@ -126,6 +132,93 @@ def run_data_path(location: str) -> str:
     if location.startswith(PATH_RUN_DATA_PREFIX):
         return PATH_RUN_DATA_PREFIX + quote(location[len(PATH_RUN_DATA_PREFIX):], safe="")
     return PATH_RUN_DATA_PREFIX + quote(location.lstrip("/"), safe="")
+
+
+# ---------------------------------------------------------------------------------------------
+# GC-MESSPLAN INNERHALB EINES EXPERIMENTS (13.10.2026, docs/aufgabe_microgc_im_experiment.txt)
+# Zustaende des Geraets, wie am 06./08./13.10.2026 beobachtet (tools/starte_microgc_lauf.py):
+#   Leerlauf: public:ready, public:standby (vor dem ersten Laden nach dem Einschalten)
+#   Laden:    public:loading-method (nach cmd.loadMethod, einige Sekunden; ein cmd.run in dieser
+#             Phase startet den Lauf zwar, verliert aber Name/Tags - am 13.10. so gesehen)
+#   Aktiv:    public:preparing -> public:method-running -> (loading-method/preparing) -> ready
+# ---------------------------------------------------------------------------------------------
+IDLE_STATES = {"public:ready", "public:standby"}
+LOADING_STATE = "public:loading-method"
+ACTIVE_STATES = {"public:preparing", "public:method-running", "public:waiting-for-modules"}
+ERROR_PREFIX = "public:error"
+SCHEDULE_OBSERVABLE = "gc_schedule"          # "running" / "finished" / "cancelled"
+MAX_RUN_S = 30 * 60                          # ein Methodenlauf dauert ~7,6 min; danach gilt er als haengend
+MAX_LOAD_S = 5 * 60
+
+
+def observable_key(label: str) -> str:
+    """Peak-Label vom Geraet -> Observablenname: alles ausser Buchstaben/Ziffern wird zu '_',
+    z.B. 'H2' -> gc_H2, 'n Hexane' -> gc_n_Hexane, '1,3 Butadien' -> gc_1_3_Butadien,
+    'trans + cis 2 Buten' -> gc_trans_cis_2_Buten."""
+    return "gc_" + re.sub(r"[^0-9A-Za-z]+", "_", str(label)).strip("_")
+
+
+def concentrations_from_run_data(run_data: dict) -> dict:
+    """Benannte Peaks aller Detektoren -> {gc_<Label>: concentration, gc_<Label>_norm:
+    normalizedConcentration} (Einheit %, wie das Geraet sie liefert). Peaks ohne Label oder ohne
+    Zahl werden ausgelassen. Struktur s. run_data_to_csv()."""
+    values = {}
+    for detector_data in (run_data.get("detectors") or {}).values():
+        for peak in ((detector_data or {}).get("analysis") or {}).get("peaks") or []:
+            if "label" not in peak:
+                continue
+            key = observable_key(peak["label"])
+            for suffix, field in (("", "concentration"), ("_norm", "normalizedConcentration")):
+                try:
+                    values[key + suffix] = float(peak[field])
+                except (KeyError, TypeError, ValueError):
+                    continue
+    return values
+
+
+def parse_minutes(text) -> list:
+    """'0;10;20' (auch Komma/Leerzeichen als Trenner) -> [0.0, 10.0, 20.0], sortiert, ohne
+    Doppelte. Im Frontend Semikolons benutzen: es macht aus Kommas in Parametern Punkte."""
+    if isinstance(text, (list, tuple)):
+        parts = [str(t) for t in text]
+    else:
+        parts = re.split(r"[;,\s]+", str(text).strip())
+    return sorted({float(part) for part in parts if part})
+
+
+def run_name(prefix, minute: float) -> str:
+    """Laufname wie in tools/kolbe_gc_messplan.py: '<Versuch>_<t> min', t ohne Nachkommastellen,
+    wenn ganzzahlig."""
+    return f"{prefix}_{minute:g} min"
+
+
+def safe_filename(name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(name))
+
+
+def default_save_dir() -> Path:
+    """Gleicher Ordner wie tools/kolbe_gc_messplan.py, damit tools/auswertung.py die Laeufe findet."""
+    today = date.today()
+    return Path("logs") / str(today.year) / str(today.month) / str(today.day) / "microgc"
+
+
+class _Schedule:
+    """Zustand eines laufenden GC-Messplans (ein Plan je Geraet)."""
+    def __init__(self, prefix, tags, minutes, poll_interval, save_dir):
+        self.prefix = prefix
+        self.tags = tags
+        self.minutes = list(minutes)
+        self.poll_interval = float(poll_interval)
+        self.save_dir = Path(save_dir) if save_dir else default_save_dir()
+        self.t0 = time.time()
+        self.timers = []
+        self.due = []            # faellige, noch nicht gestartete Zeitpunkte (min)
+        self.active = None       # Zeitpunkt des gerade laufenden Laufs
+        self.remaining = len(self.minutes)
+        self.done = 0
+        self.failed = 0
+        self.cancelled = False
+        self.loaded = False      # Methode geladen und Geraet wieder im Leerlauf
 
 
 class HTTPJSONParser(BaseParser):
@@ -224,7 +317,7 @@ class HTTPCommandTransport:
         if json_body is not None:
             # Benannter Lauf (runWithName in MicroGCFusionAPI): POST mit JSON-Koerper statt GET.
             d = self.post_json(url, json_body)
-            self.device.log.info(f"Wrote POST {url} {json.dumps(json_body)} to device.")
+            self.device.log.info("Wrote POST {url} {body} to device.", url=url, body=json.dumps(json_body))
         else:
             d = self.get(url)
             self.device.log.info(f"Wrote GET {url} to device.")
@@ -278,6 +371,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                                  {timeout: <Sekunden>}` auf diesem Geraet (s. CommandParameterFactory).
         """
         self.connect_timeout = float(connect_timeout)
+        self._schedule = None
         super().__init__(address, *args, **kwargs)
 
     def base_url(self) -> str:
@@ -383,7 +477,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             run_data_cmd = self.query("RUN_DATA", command_values={"location": location}, **kwargs)
 
             def store(run_data_result):
-                self.update_observables({"last_run_data": run_data_result.json})
+                # 13.10.2026: zusaetzlich die Konzentrationen als einzelne Observablen (gc_H2, ...),
+                # und mit echtem Zeitstempel (der Default-Parameter von update_observables wird nur
+                # einmal beim Import ausgewertet und waere sonst Stunden alt).
+                values = concentrations_from_run_data(run_data_result.json or {})
+                values["last_run_data"] = run_data_result.json
+                self.update_observables(values, time.time())
                 return run_data_result
             run_data_cmd.deferred_result.addCallback(store)
             return run_data_cmd.deferred_result
@@ -391,6 +490,231 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         d = self.query("LAST_RUN_LOCATION", **kwargs).deferred_result
         d.addCallback(fetch_run_data)
         return d
+
+
+    # -----------------------------------------------------------------------------------------
+    # GC-Messplan innerhalb eines Experiments (13.10.2026). Ablauf:
+    #   run_schedule_named() laedt die Methode EINMAL, haelt das Geraet mit busy() bis zum Ende des
+    #   Plans im Busy-Zustand (damit das Experiment erst nach dem letzten Lauf endet) und stellt je
+    #   Zeitpunkt einen Timer. Faellige Laeufe werden NACHEINANDER abgearbeitet (ist der vorige noch
+    #   nicht fertig, startet der naechste sofort danach - "ueberfaellig"). Je Lauf: warten bis das
+    #   Geraet im Leerlauf ist, dataLocation merken, POST cmd.run mit Name/Tags, Status pollen bis der
+    #   Lauf aktiv war und wieder im Leerlauf ist, neue dataLocation holen, Laufdaten laden,
+    #   Konzentrationen als Observablen melden (gc_<Label>) und JSON+CSV wie das Skript ablegen.
+    #   Alle Befehle laufen mit urgent=True: sie werden VOR dem Wartebefehl des Experimentendes in die
+    #   Warteschlange gestellt und auch im Busy-Zustand ausgefuehrt (devicestate.Busy, wie das
+    #   Netzteil-Polling). stop() bricht den Plan ab (Timer weg, kein neuer Befehl mehr); ein am
+    #   Geraet laufender Lauf laeuft dort zu Ende (cmd.abort bewusst nicht benutzt).
+    # -----------------------------------------------------------------------------------------
+
+    def run_schedule_named(self, method_name, prefix, minutes="0;10;20", tags="", poll_interval=5,
+                           save_dir="", **kwargs):
+        """Messplan: zu jedem Zeitpunkt in `minutes` (Minuten ab jetzt, Trenner ';') einen benannten
+        Lauf '<prefix>_<t> min' mit `tags` (Trenner ';') starten. Rueckgabe: Deferred, das feuert,
+        wenn der letzte Lauf abgeholt ist (Geraet war bis dahin Busy).
+        config.yml: [microgc, run_schedule_named, [], {method_name: "...", prefix: "{versuch}",
+                     minutes: "{gc_minutes}", tags: "Kolbe;MP"}]"""
+        times = parse_minutes(minutes)
+        if not times:
+            raise ValueError(f"GC-Messplan ohne Zeitpunkte: {minutes!r}")
+        if self._schedule is not None and not self._schedule.cancelled and self._schedule.remaining:
+            self.log.warn("GC-Messplan laeuft bereits - der alte wird abgebrochen.")
+            self._cancel_schedule("replaced")
+        tag_list = [t.strip() for t in str(tags).split(";") if t.strip()]
+        schedule = self._schedule = _Schedule(prefix, tag_list, times, poll_interval, save_dir)
+        self.log.info("GC-Messplan '{prefix}': {n} Laeufe bei {times} min, Methode {method}, Tags {tags}",
+                      prefix=prefix, n=len(times), times=times, method=method_name, tags=tag_list)
+
+        self.load_method(method_name, **kwargs)
+        condition = ObservableEqualsValueCondition(
+            f"GC-Messplan '{prefix}' beendet", self, SCHEDULE_OBSERVABLE, "finished")
+        wait_command = self.busy(condition)
+        self.update_observables({SCHEDULE_OBSERVABLE: "running", "gc_runs_done": 0,
+                                 "gc_runs_planned": len(times)}, time.time())
+        for minute in times:
+            schedule.timers.append(self.callLater(max(0.0, 60.0 * minute), self._schedule_due, schedule, minute))
+        return wait_command.deferred_result
+
+    def _schedule_due(self, schedule, minute):
+        if schedule.cancelled or schedule is not self._schedule:
+            return
+        schedule.due.append(minute)
+        self._schedule_next(schedule)
+
+    def _schedule_next(self, schedule):
+        if schedule.cancelled or schedule.active is not None:
+            return
+        if not schedule.due:
+            if schedule.remaining == 0:
+                self._schedule_finished(schedule)
+            return
+        minute = schedule.due.pop(0)
+        schedule.active = minute
+        name = run_name(schedule.prefix, minute)
+        late = time.time() - schedule.t0 - 60.0 * minute
+        if late > 30:
+            self.log.warn("GC-Lauf '{name}' startet {late:.0f} s verspaetet (voriger Lauf noch nicht fertig).",
+                          name=name, late=late)
+        d = self._schedule_run(schedule, name, minute)
+        d.addBoth(self._schedule_run_done, schedule, minute, name)
+
+    def _schedule_run_done(self, result, schedule, minute, name):
+        schedule.active = None
+        schedule.remaining -= 1
+        if isinstance(result, failure.Failure):
+            schedule.failed += 1
+            self.log.error("GC-Lauf '{name}' ({minute:g} min) fehlgeschlagen: {err}",
+                           name=name, minute=minute, err=result.getErrorMessage())
+        else:
+            schedule.done += 1
+        if not schedule.cancelled:
+            self.update_observables({"gc_runs_done": schedule.done}, time.time())
+            self._schedule_next(schedule)
+        return None
+
+    def _schedule_finished(self, schedule):
+        self.log.info("GC-Messplan '{prefix}' beendet: {done} Laeufe, {failed} fehlgeschlagen.",
+                      prefix=schedule.prefix, done=schedule.done, failed=schedule.failed)
+        self.update_observables({SCHEDULE_OBSERVABLE: "finished"}, time.time())
+
+    def _cancel_schedule(self, reason):
+        schedule = self._schedule
+        if schedule is None or schedule.cancelled:
+            return
+        if schedule.remaining == 0 and schedule.active is None:
+            return  # regulaer beendet, nichts abzubrechen
+        schedule.cancelled = True
+        for timer in schedule.timers:
+            try:
+                if timer.active():
+                    timer.cancel()
+            except Exception:  # noqa: BLE001
+                pass
+        schedule.timers = []
+        schedule.due = []
+        self.log.info("GC-Messplan '{prefix}' abgebrochen ({reason}): {done} von {n} Laeufen fertig.",
+                      prefix=schedule.prefix, reason=reason, done=schedule.done, n=len(schedule.minutes))
+        self.update_observables({SCHEDULE_OBSERVABLE: "cancelled"}, time.time())
+
+    def stop(self):
+        # Experimentende/"Stop Experiments": Plan abbrechen, dann der normale Abschaltpfad (final_commands).
+        self._cancel_schedule("stop")
+        return super().stop()
+
+    # -- ein einzelner Lauf des Plans (Deferred-Kette, Befehle als urgent) --
+
+    def _urgent_query(self, command_name, **kwargs):
+        return self.query(command_name, urgent=True, run_while_device_busy=True, **kwargs).deferred_result
+
+    def _poll_status(self, schedule, is_done, max_seconds, what):
+        """Status alle poll_interval s abfragen, bis is_done(system, seen_states) wahr ist.
+        Feuert mit dem letzten Systemstatus; Fehler bei Geraetefehler/Zeitueberschreitung/Abbruch."""
+        result = defer.Deferred()
+        seen = []
+        started = time.time()
+
+        def ask():
+            if schedule.cancelled:
+                result.errback(RuntimeError(f"abgebrochen beim Warten auf {what}"))
+                return
+            self._urgent_query("STATUS").addCallbacks(check, result.errback)
+
+        def check(reply):
+            system = str(reply.parameters.get("system", ""))
+            seen.append(system)
+            if system.startswith(ERROR_PREFIX):
+                result.errback(RuntimeError(f"Geraetefehler beim Warten auf {what}: {system}"))
+            elif is_done(system, seen):
+                result.callback(system)
+            elif time.time() - started > max_seconds:
+                result.errback(RuntimeError(f"Zeitueberschreitung ({max_seconds:.0f} s) beim Warten auf {what}, "
+                                            f"letzter Status {system}"))
+            else:
+                self.callLater(schedule.poll_interval, ask)
+            return None
+
+        ask()
+        return result
+
+    def _schedule_run(self, schedule, name, minute):
+        state = {}
+
+        def wait_idle(_):
+            # Nach loadMethod ist das Geraet einige Sekunden in loading-method; ein cmd.run in dieser
+            # Phase startet zwar, verliert aber Name/Tags (13.10.2026). Also erst Leerlauf abwarten.
+            return self._poll_status(schedule, lambda system, seen: system in IDLE_STATES, MAX_LOAD_S,
+                                     f"Leerlauf vor '{name}'")
+
+        def remember_location(_):
+            return self._urgent_query("LAST_RUN_LOCATION").addCallback(
+                lambda reply: state.__setitem__("before", reply.parameters.get("last_run_location")))
+
+        def start_run(_):
+            if schedule.cancelled:
+                raise RuntimeError("abgebrochen vor dem Start")
+            body = {"runWhenReady": True, "annotations": {"name": str(name), "tags": list(schedule.tags)}}
+            self.log.info("GC-Lauf '{name}' ({minute:g} min) wird gestartet.", name=name, minute=minute)
+            return self.write("RUN", command_values={"json_body": body}, urgent=True,
+                              run_while_device_busy=True).deferred_result
+
+        def wait_finished(_):
+            def done(system, seen):
+                was_active = any(s in ACTIVE_STATES for s in seen)
+                return was_active and system in IDLE_STATES
+            return self._poll_status(schedule, done, MAX_RUN_S, f"Ende von '{name}'")
+
+        def fetch_location(_):
+            if schedule.cancelled:
+                raise RuntimeError("abgebrochen nach dem Laufende, Laufdaten werden nicht abgeholt")
+            return self._urgent_query("LAST_RUN_LOCATION").addCallback(
+                lambda reply: reply.parameters.get("last_run_location"))
+
+        def fetch_data(location):
+            if not location or location == state.get("before"):
+                self.log.warn("GC-Lauf '{name}': /v1/lastRun unveraendert - keine neuen Laufdaten am Geraet.",
+                              name=name)
+                return None
+            return self._urgent_query("RUN_DATA", command_values={"location": location}, timeout=60.0
+                                      ).addCallback(lambda reply: reply.json)
+
+        def publish(run_data):
+            if run_data is None:
+                return None
+            self._publish_run_data(schedule, run_data, name, minute)
+            return run_data
+
+        d = defer.succeed(None)
+        d.addCallback(wait_idle)
+        d.addCallback(remember_location)
+        d.addCallback(start_run)
+        d.addCallback(wait_finished)
+        d.addCallback(fetch_location)
+        d.addCallback(fetch_data)
+        d.addCallback(publish)
+        return d
+
+    def _publish_run_data(self, schedule, run_data, name, minute):
+        values = concentrations_from_run_data(run_data)
+        values.update({"gc_run_name": name, "gc_run_minute": float(minute),
+                       "gc_run_timestamp": str(run_data.get("runTimeStamp", ""))})
+        now = time.time()
+        self.update_observables(values, now)
+        annotations = run_data.get("annotations") or {}
+        if annotations.get("name") != name:
+            self.log.warn("GC-Lauf '{name}': Geraet hat den Namen nicht uebernommen (annotations={ann}).",
+                          name=name, ann=annotations)
+        summary = ", ".join(f"{k[3:]}={v:.3g}" for k, v in values.items()
+                            if k.startswith("gc_") and not k.endswith("_norm") and isinstance(v, float)
+                            and k not in ("gc_run_minute",) and v)
+        self.log.info("GC-Lauf '{name}' fertig: {summary}", name=name, summary=summary or "keine Peaks > 0")
+        try:
+            schedule.save_dir.mkdir(parents=True, exist_ok=True)
+            stem = schedule.save_dir / safe_filename(name)
+            stem.with_suffix(".json").write_text(json.dumps(run_data, indent=1), encoding="utf-8")
+            stem.with_suffix(".csv").write_text(run_data_to_csv(run_data), encoding="utf-8")
+        except OSError as error:
+            self.log.error("GC-Lauf '{name}': Laufdaten konnten nicht gespeichert werden: {err}",
+                           name=name, err=error)
 
 
 # ---------------------------------------------------------------------------------------------
