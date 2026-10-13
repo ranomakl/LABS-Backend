@@ -60,7 +60,11 @@ Lauf auf ready/standby. (`kolbe_gc_messung` selbst ist unveraendert; fuer benann
 - `python -m twisted.trial backend.test`: 45 Tests gruen (neu: test_microgc_plan.py, inkl. echter
   Laufdaten vom 13.10.).
 - Am echten Geraet (13.10. vormittags): `test_microgc_status` und `kolbe_gc_messung` ueber das
-  Backend gelaufen (Luft: O2/N2 21/77 %). `run_schedule_named` am Geraet: siehe OFFENE_FRAGEN.md.
+  Backend gelaufen (Luft: O2/N2 21/77 %).
+- Am echten Geraet (13.10., 09:56-10:14): `test_microgc_plan` (Test_0 min) und `kolbe_elektrolyse_gc`
+  als Probelauf (0.1 A, 2 V, 1 min, Pumpe 1 mL/min, GC bei 0 min) -> beide Finished, Name+Tags in den
+  Laufdaten des Geraets, gc_*-Werte im Monitoring und in values.json, Dateien unter logs/.../microgc/.
+  Liquiline-Kanaele meldeten "Bad"/0.0 (Sensoren noch nicht im Medium) - unabhaengig vom Ablauf.
 
 ## Nebenbei behoben
 
