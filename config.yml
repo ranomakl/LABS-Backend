@@ -344,6 +344,28 @@ experiments:
       - [mfc, reset_counter, [], {}]
       - [mfc, measure_for_minutes, [], { minutes: "{minutes}" }]
 
+  # Schritt 8 mit Umwaelzen (13.10.2026, Wunsch Chemiker): Gas zaehlen, waehrend die Pumpe die
+  # Fluessigkeit 'minutes' Minuten mit 'rate' mL/min umwaelzt. Zaehler auf 0, Fluss/Zaehler/Pumpe live,
+  # am Ende stoppt die Pumpe. Frueher beenden mit "Stop Experiments". Technisch = kolbe_n2_spuelung,
+  # eigener Name, damit der Schritt im Laborplan eindeutig ist. Durchgehender Pumpenlauf ueber mehrere
+  # Schritte: docs/vorschlag_pumpe_dauerlauf.md (noch nicht gebaut).
+  kolbe_gas_zaehlen_pumpe:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [mfc, flow, float, mL/min]
+      - [mfc, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [dosing_pump, running, bool, ""]
+    commands:
+      - [mfc, reset_counter, [], {}]
+      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
   # Schritt 6/11: EINE microGC-Messung mit Namen und Tags (Offline-Gasbeutel "26174_rep1" usw.).
   # Nur nutzbar, wenn gerade KEIN anderes Experiment laeuft (Backend = ein Experiment zur Zeit).
   # Fuer die Online-Messungen WAEHREND der Elektrolyse: tools/kolbe_gc_messplan.py im zweiten Terminal.
