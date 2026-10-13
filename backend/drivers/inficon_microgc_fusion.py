@@ -202,19 +202,39 @@ def default_save_dir() -> Path:
     return Path("logs") / str(today.year) / str(today.month) / str(today.day) / "microgc"
 
 
+def plan_times(minutes, until_minutes=None):
+    """Eingabe gc_minutes -> (Zeitpunkte in min, continuous). Liste '0;10;20' = feste Zeitpunkte;
+    EINE Zahl N > 0 = alle N Minuten von 0 bis until_minutes; 0 = Dauermessung (continuous: naechster
+    Lauf sofort, wenn der vorige fertig ist, bis until_minutes). Ohne until_minutes gilt eine
+    einzelne Zahl als einzelner Zeitpunkt (Verhalten bis 13.10.2026 - fuehrte zu einem einzigen Lauf)."""
+    times = parse_minutes(minutes)
+    until = None
+    if until_minutes not in (None, ""):
+        until = float(until_minutes)
+    if len(times) != 1 or until is None or until <= 0:
+        return times, False
+    single = times[0]
+    if single <= 0:
+        return [], True
+    n = int(until // single) + 1
+    return [round(k * single, 6) for k in range(n)], False
+
+
 class _Schedule:
     """Zustand eines laufenden GC-Messplans (ein Plan je Geraet)."""
-    def __init__(self, prefix, tags, minutes, poll_interval, save_dir):
+    def __init__(self, prefix, tags, minutes, poll_interval, save_dir, continuous=False, until_minutes=None):
         self.prefix = prefix
         self.tags = tags
         self.minutes = list(minutes)
+        self.continuous = continuous
+        self.until_s = 60.0 * float(until_minutes) if until_minutes not in (None, "") else None
         self.poll_interval = float(poll_interval)
         self.save_dir = Path(save_dir) if save_dir else default_save_dir()
         self.t0 = time.time()
         self.timers = []
         self.due = []            # faellige, noch nicht gestartete Zeitpunkte (min)
         self.active = None       # Zeitpunkt des gerade laufenden Laufs
-        self.remaining = len(self.minutes)
+        self.remaining = len(self.minutes)   # im Dauermodus: offen (wird bei jedem Start erhoeht)
         self.done = 0
         self.failed = 0
         self.cancelled = False
@@ -508,29 +528,37 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     # -----------------------------------------------------------------------------------------
 
     def run_schedule_named(self, method_name, prefix, minutes="0;10;20", tags="", poll_interval=5,
-                           save_dir="", **kwargs):
+                           save_dir="", until_minutes=None, **kwargs):
         """Messplan: zu jedem Zeitpunkt in `minutes` (Minuten ab jetzt, Trenner ';') einen benannten
         Lauf '<prefix>_<t> min' mit `tags` (Trenner ';') starten. Rueckgabe: Deferred, das feuert,
         wenn der letzte Lauf abgeholt ist (Geraet war bis dahin Busy).
         config.yml: [microgc, run_schedule_named, [], {method_name: "...", prefix: "{versuch}",
                      minutes: "{gc_minutes}", tags: "Kolbe;MP"}]"""
-        times = parse_minutes(minutes)
-        if not times:
+        times, continuous = plan_times(minutes, until_minutes)
+        if not times and not continuous:
             raise ValueError(f"GC-Messplan ohne Zeitpunkte: {minutes!r}")
         if self._schedule is not None and not self._schedule.cancelled and self._schedule.remaining:
             self.log.warn("GC-Messplan laeuft bereits - der alte wird abgebrochen.")
             self._cancel_schedule("replaced")
         tag_list = [t.strip() for t in str(tags).split(";") if t.strip()]
-        schedule = self._schedule = _Schedule(prefix, tag_list, times, poll_interval, save_dir)
-        self.log.info("GC-Messplan '{prefix}': {n} Laeufe bei {times} min, Methode {method}, Tags {tags}",
-                      prefix=prefix, n=len(times), times=times, method=method_name, tags=tag_list)
+        schedule = self._schedule = _Schedule(prefix, tag_list, times, poll_interval, save_dir,
+                                              continuous=continuous, until_minutes=until_minutes)
+        if continuous:
+            self.log.info("GC-Messplan '{prefix}': DAUERMESSUNG, naechster Lauf sobald das Geraet fertig ist, "
+                          "bis {until} min; Methode {method}, Tags {tags}",
+                          prefix=prefix, until=until_minutes, method=method_name, tags=tag_list)
+        else:
+            self.log.info("GC-Messplan '{prefix}': {n} Laeufe bei {times} min, Methode {method}, Tags {tags}",
+                          prefix=prefix, n=len(times), times=times, method=method_name, tags=tag_list)
 
         self.load_method(method_name, **kwargs)
         condition = ObservableEqualsValueCondition(
             f"GC-Messplan '{prefix}' beendet", self, SCHEDULE_OBSERVABLE, "finished")
         wait_command = self.busy(condition)
         self.update_observables({SCHEDULE_OBSERVABLE: "running", "gc_runs_done": 0,
-                                 "gc_runs_planned": len(times)}, time.time())
+                                 "gc_runs_planned": len(times) if not continuous else -1}, time.time())
+        if continuous:
+            schedule.timers.append(self.callLater(0.0, self._schedule_next, schedule))
         for minute in times:
             schedule.timers.append(self.callLater(max(0.0, 60.0 * minute), self._schedule_due, schedule, minute))
         return wait_command.deferred_result
@@ -545,6 +573,16 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         if schedule.cancelled or schedule.active is not None:
             return
         if not schedule.due:
+            if schedule.continuous:
+                elapsed = time.time() - schedule.t0
+                if elapsed < schedule.until_s:
+                    # Dauermessung: naechster Lauf sofort, benannt nach der verstrichenen Minute
+                    schedule.due.append(round(elapsed / 60.0, 1))
+                    schedule.remaining += 1
+                else:
+                    schedule.remaining = 0
+                    self._schedule_finished(schedule)
+                return self._schedule_next(schedule) if schedule.due else None
             if schedule.remaining == 0:
                 self._schedule_finished(schedule)
             return
@@ -552,7 +590,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         schedule.active = minute
         name = run_name(schedule.prefix, minute)
         late = time.time() - schedule.t0 - 60.0 * minute
-        if late > 30:
+        if late > 30 and not schedule.continuous:
             self.log.warn("GC-Lauf '{name}' startet {late:.0f} s verspaetet (voriger Lauf noch nicht fertig).",
                           name=name, late=late)
         d = self._schedule_run(schedule, name, minute)
@@ -581,7 +619,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         schedule = self._schedule
         if schedule is None or schedule.cancelled:
             return
-        if schedule.remaining == 0 and schedule.active is None:
+        if schedule.remaining == 0 and schedule.active is None and not schedule.due:
             return  # regulaer beendet, nichts abzubrechen
         schedule.cancelled = True
         for timer in schedule.timers:

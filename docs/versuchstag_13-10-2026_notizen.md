@@ -16,7 +16,8 @@ Reihenfolge: Pumpe_26175 (kolbe_pumpe_zeit 100 mL/min, 1.5 min) -> Spuelung_2617
   Monitoring. Danach klaeren, was im Frontend-Feld eingetragen wurde (die Liste "0;10;20;..." muss als
   Text ankommen; das Frontend castet nach data_type, `str` ist erlaubt; die Zahl 7.5 spricht dafuer,
   dass eine einzelne Zahl eingegeben wurde).
-- Vorschlag, damit es nicht wieder passieren kann: run_schedule_named soll eine EINZELNE Zahl als
+- UMGESETZT 11:20 (Dummy-getestet, aktiv nach dem naechsten Backend-Neustart): gc_minutes 0 = Dauermessung,
+  Zahl N = alle N Minuten, Liste = feste Zeitpunkte; Parameter until_minutes = `minutes`. Urspruenglicher Vorschlag: run_schedule_named soll eine EINZELNE Zahl als
   "alle N Minuten bis zum Ende von `minutes`" verstehen (N>0) und 0 als Standardplan
   0,10,...,60,80,...,200,219; zusaetzlich im Frontend-Feld einen Hinweistext/Standardwert.
 - Zweitens: Das Experiment endet mit dem letzten GC-Lauf (~11:13), NICHT nach 219 min - weil der

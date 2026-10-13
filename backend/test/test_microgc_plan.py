@@ -130,3 +130,23 @@ class ScheduleCancelTests(unittest.TestCase):
         device = self._device()
         device._cancel_schedule("stop")   # darf nicht werfen
         self.assertEqual(device.updates, [])
+
+
+class PlanTimesTests(unittest.TestCase):
+    """gc_minutes-Eingabe -> Zeitpunkte/Modus (13.10.2026, nach dem 7.5-Vorfall bei Versuch 26175)."""
+
+    def test_list_is_fixed_points(self):
+        self.assertEqual(gc.plan_times("0;10;20", 219), ([0.0, 10.0, 20.0], False))
+
+    def test_single_number_is_interval_until_end(self):
+        self.assertEqual(gc.plan_times("10", 35), ([0.0, 10.0, 20.0, 30.0], False))
+        self.assertEqual(gc.plan_times(7.5, 15), ([0.0, 7.5, 15.0], False))
+
+    def test_zero_is_continuous(self):
+        self.assertEqual(gc.plan_times("0", 219), ([], True))
+        self.assertEqual(gc.plan_times(0, 1), ([], True))
+
+    def test_single_number_without_duration_stays_single_point(self):
+        self.assertEqual(gc.plan_times("7.5", None), ([7.5], False))
+        self.assertEqual(gc.plan_times("7.5", ""), ([7.5], False))
+        self.assertEqual(gc.plan_times("0", None), ([0.0], False))

@@ -10,8 +10,14 @@ Monitoring (Kurven + "Current values"), in values.json und damit im Bericht. Das
 1. Routinen neu laden, damit `kolbe_elektrolyse_gc` und `test_microgc_plan` erscheinen.
 2. `kolbe_elektrolyse_gc` starten, Parameter wie `kolbe_elektrolyse_ph` plus:
    - `versuch`: Versuchsnummer, z.B. `26175` (Laufname am Geraet wird `26175_10 min`)
-   - `gc_minutes`: Messzeitpunkte in Minuten ab Start, **Trenner Semikolon** (das Frontend macht aus
-     Kommas Punkte): `0;10;20;30;40;50;60;80;100;120;140;160;180;200;219`
+   - `gc_minutes`, drei Moeglichkeiten (seit 13.10. mittags, nach dem Vorfall "7.5" bei Versuch 26175):
+     - `0` = **Dauermessung**: der naechste Lauf startet, sobald das Geraet fertig ist (~alle 8 min),
+       bis die Elektrolysezeit `minutes` um ist. Laufname = verstrichene Minute, z.B. `26175_15.3 min`.
+     - eine Zahl, z.B. `10` = alle 10 Minuten von 0 bis `minutes`.
+     - Liste mit **Semikolon** (das Frontend macht aus Kommas Punkte) = feste Zeitpunkte, Versuchsplan:
+       `0;10;20;30;40;50;60;80;100;120;140;160;180;200;219`
+     Eine einzelne Zahl ist also NICHT mehr ein einzelner Zeitpunkt (so kam es am 13.10. zu genau
+     einem Lauf bei 7,5 min). `test_microgc_plan` hat dafuer einen eigenen Parameter `minutes`.
 3. Das Experiment endet erst, wenn der LETZTE GC-Lauf abgeholt ist (letzter Zeitpunkt + ca. 8 min).
    Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab. Die Anzeige "ends ~HH:MM" kennt
    nur `minutes`, nicht die GC-Nachlaufzeit.
