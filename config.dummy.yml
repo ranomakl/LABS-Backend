@@ -92,7 +92,7 @@ devices:
     byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung - muss zur echten Geraetekonfig passen
     channels:                   # Kanalname: Register (0-basiert, = Beginn des AI-Blocks Value/Status/Unit)
       ph_ch1: 0                 # AI1 (am echten Geraet: CH1 "1:1 pH Glas", pH)
-      ph_ch2: 4                 # AI2 (CH2 "1:2 pH Glas", pH)
+      conductivity: 4                 # AI2 (CH2 "1:2 pH Glas", pH)
       temperature: 8            # AI3 (CH1, Temperatur)
 
 #conditions:
@@ -346,7 +346,7 @@ experiments:
       minutes: [float, min]
     observables:
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
       - [dosing_pump, speed_rpm, int, rpm]
@@ -360,7 +360,7 @@ experiments:
     parameters:
     observables:
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
     commands:
       - [liquiline, read_all_channels, [], {}]
@@ -386,7 +386,7 @@ experiments:
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
     commands:
@@ -452,7 +452,7 @@ experiments:
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
       - [microgc, gc_schedule, str, ""]

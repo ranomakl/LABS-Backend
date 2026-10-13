@@ -61,7 +61,7 @@ devices:
     # Anschluss: USB-RS485-Adapter BG01XFU4 (FTDI) an Modul 485MB, Klemmen 95 = B (Data+), 96 = A (Data-),
     # 99 = GND. Geraetemenue: Setup/General settings/Extended setup/Modbus: RTU, 19200, Paritaet gerade,
     # Adresse 247, Byte order 1-0-3-2 (ueber Register 506 Watchdog = 5.0 s bestaetigt), Watchdog 5 s.
-    # Sensoren am Geraet (12.10.2026): CH1 = "1:1 pH Glas", CH2 = "1:2 pH Glas" - KEINE Leitfaehigkeit.
+    # Sensoren am Geraet: CH1 = "1:1 pH Glas"; CH2 = Leitfaehigkeit (seit 13.10.2026, Modbus AI2 meldet mS/cm).
     # Beide zeigen am Display "X --- ---" (kein Messwert) -> Status 2 "Bad", Wert 0.0, bis die
     # Memosens-Sensoren wieder Werte liefern. Protokoll in OFFENE_FRAGEN.md.
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01XFU4-if00-port0
@@ -72,7 +72,7 @@ devices:
     byte_order: "1-0-3-2"       # Geraeteparameter "Byte order", Werkseinstellung, am Geraet bestaetigt (s.o.)
     channels:                   # Kanalname: Register (0-basiert = Beginn des AI-Blocks Value/Status/Unit)
       ph_ch1: 0                 # AI1 = CH1 "1:1 pH Glas", Messwert pH       (am Geraet gesetzt 12.10.2026)
-      ph_ch2: 4                 # AI2 = CH2 "1:2 pH Glas", Messwert pH
+      conductivity: 4           # AI2 = CH2, seit 13.10.2026 Leitfaehigkeitssensor (Geraet meldet Einheit mS/cm; vorher "1:2 pH Glas")
       temperature: 8            # AI3 = CH1 "1:1 pH Glas", Messwert Temperatur
     # Dummy-Umgebung (LABS-DeviceDummys): address 127.0.0.1:12353, bus_address 1, siehe config.dummy.yml
     # Ethernet des Geraets (Register 509-513): aktiv, IP 169.254.233.247/24 (Link-Local), kein Gateway.
@@ -241,7 +241,7 @@ experiments:
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
       - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
 
-  # Wie kolbe_elektrolyse, zusaetzlich pH (beide Glaselektroden) und Temperatur vom Liquiline alle 2 s.
+  # Wie kolbe_elektrolyse, zusaetzlich pH (CH1), Leitfaehigkeit (CH2, seit 13.10.) und Temperatur vom Liquiline alle 2 s.
   # Eigenes Experiment, weil das Frontend neue Observablen nicht in bereits geladene Routinen uebernimmt.
   # Hinweis 12.10.2026: Die Sensoren zeigen am Geraet "X --- ---" -> Status "Bad", Wert 0.0, bis die
   # Memosens-Sensoren wieder Werte liefern; das Experiment laeuft davon unabhaengig weiter.
@@ -262,7 +262,7 @@ experiments:
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
     commands:
@@ -299,7 +299,7 @@ experiments:
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
       - [microgc, gc_schedule, str, ""]
@@ -434,7 +434,7 @@ experiments:
     parameters:
     observables:
       - [liquiline, ph_ch1_value, float, pH]
-      - [liquiline, ph_ch2_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
     commands:
       - [liquiline, read_all_channels, [], {}]
