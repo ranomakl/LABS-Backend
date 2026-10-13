@@ -24,12 +24,17 @@ Geraet brauchen, fehlen dann bis zum naechsten Backend-Start. Spaeter eingeschal
 
 ## 2. Pi: Backend und Frontend starten
 
-Am Pi zwei Terminalfenster oeffnen (oder zwei SSH-Verbindungen).
+Am Pi (Raspberry-PI-MP-002, Benutzer pohlma, Bildschirm/Tastatur im Labor) zwei Terminalfenster
+oeffnen: Terminal-Symbol in der Leiste oben, oder Strg+Alt+T; fuer das zweite Fenster nochmal.
+(Alternativ zwei SSH-Verbindungen vom Laptop: `ssh pohlma@141.65.150.197`.)
 
 Fenster 1, Backend:
 
     cd ~/LABS/LABS-Backend
+    git pull
     .venv/bin/python main.py
+
+(`git pull` holt den neuesten Stand von GitHub; ohne Internet einfach weglassen.)
 
 Im Log muss fuer JEDES Geraet eine Zeile `State of Device changed to: Ready` kommen und am Ende
 `changed to: Paused`. Steht bei einem Geraet `Error` oder fehlt es: Geraet pruefen, Strg+C, neu starten.
@@ -37,14 +42,22 @@ Im Log muss fuer JEDES Geraet eine Zeile `State of Device changed to: Ready` kom
 Fenster 2, Frontend:
 
     cd ~/LABS/LABS-User-Interface
+    git pull
     .venv/bin/flask run --host=0.0.0.0
+
+Richtig ist die Zeile `Running on http://0.0.0.0:5000`.
 
 `--host=0.0.0.0` ist noetig, damit andere Rechner im Labornetz die Seite sehen. Beide Fenster
 offen lassen, solange der Versuch laeuft. Beenden jeweils mit Strg+C (erst nach dem Versuch!).
 
 ## 3. Im Browser anmelden
 
-Beliebiger Rechner im selben Netz: `http://<IP-des-Pi>:5000` (am Pi selbst: `http://localhost:5000`).
+Am Pi selbst: Chromium oeffnen (Weltkugel-Symbol in der Leiste), Adresse `http://localhost:5000`.
+Vom Laptop im WLAN "ufz-m2m": `http://141.65.150.197:5000` (WLAN-Adresse des Pi, Stand 13.10.2026;
+sie kommt per DHCP und kann sich irgendwann aendern - dann am Pi im Terminal `hostname -I` eingeben,
+die Adresse der Form 141.65.x.x nehmen. Die zweite Adresse 169.254.x.x ist das Kabel zum microGC.)
+
+Zugangsdaten fuer LABS: ______________________________ (hier eintragen oder beim Admin erfragen).
 Oben rechts **Login**. Wer noch kein Konto hat: **Register**, dann dem Admin Bescheid geben.
 Designs sind pro Benutzer: jeder sieht nur seine eigenen und die, die ihm geteilt wurden.
 
@@ -123,6 +136,15 @@ der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 
 ## 8. Nach dem Versuch
 
+- Bericht und Tabellen im Terminal erzeugen (Backend darf dabei laufen):
+
+      cd ~/LABS/LABS-Backend
+      .venv/bin/python tools/auswertung.py --liste                            # alle Laeufe mit Datum
+      .venv/bin/python tools/auswertung.py --html --tag 2026-10-14             # Tagesbericht (Datum anpassen)
+      .venv/bin/python tools/auswertung.py "<Run-ID>" --csv werte.csv --takt 600   # Tabelle alle 10 min, Excel
+
+  Die Run-ID ist der Ordnername unter logs (steht in `--liste`). Der HTML-Bericht ist eine einzelne
+  Datei: Kurven, Kennzahlen, 10-Minuten-Tabelle, GC-Tabelle, Knopf fuer alle Rohwerte als CSV.
 - Daten liegen am Pi unter `~/LABS/LABS-Backend/logs/<Jahr>/<Monat>/<Tag>/<Run-ID>/`:
   `values.json` (alle Messwerte), `lauf.json` (Parameter, Start/Ende, Endzustand),
   `bericht.html` (automatischer Bericht mit Kurven), `log.txt`.
@@ -141,3 +163,13 @@ der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 | Kollege sieht die Seite nicht | Frontend ohne `--host=0.0.0.0` gestartet, oder falsche IP; Login noetig |
 | Liquiline-Werte 0.0, Status "Bad" | Sensor liefert nichts (Display "X --- ---"): Memosens-Stecker pruefen |
 | GC-Lauf "verspaetet" im Log | Normal bei dicht gesetzten Zeitpunkten; der Lauf startet, sobald das Geraet frei ist |
+| Browser: "Seite nicht erreichbar" | Frontend laeuft nicht (Fenster 2, Abschnitt 2) oder falsche Adresse (Abschnitt 3) |
+| Frontend: Station antwortet nicht / Senden schlaegt fehl | Backend laeuft nicht (Fenster 1) |
+| gc-Werte kommen nicht | Der erste Wert kommt erst nach einem ganzen GC-Lauf (~8 min). Im Fenster 1 nach "GC-Lauf" suchen |
+| mfc.flow und mfc.counter bleiben bei 0, obwohl Strom fliesst | Gas kommt nicht am Zaehler an: Leck oder Hahn zwischen Zelle und MFC pruefen; LABS misst richtig (13.10. so gesehen) |
+| Leitfaehigkeit zappelt, kurz 0 / "Uncertain" | Gasblasen an der Leitfaehigkeitszelle oder Sensor kurz ohne Medium; pH-Einbruch fuer Sekunden ebenso (13.10.) |
+| Netzteil bleibt an | Strg+C in Fenster 1, dann Netzschalter am grauen Kasten |
+
+Normale Werte waehrend der Elektrolyse (08.10./13.10.): psu.current 0.55 A, psu.voltage 4-6 V,
+mfc.flow 1-3 mL/min und mfc.counter stetig steigend (Ende ~220 mLn), ph_ch1_value 6-9,
+conductivity_value ~50 mS/cm, temperature_value steigend auf ~25 degC; Luft am GC = O2 21 %, N2 78 %.
