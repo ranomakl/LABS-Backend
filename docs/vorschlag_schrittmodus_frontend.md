@@ -53,6 +53,51 @@ immer auf Paused -> Senden startet nie etwas, nur der Knopf.
 
 Backend + Dummy-Test ca. 1 h, Frontend-Hinweis ca. 0,5 h.
 
+## Ergaenzungen nach Durchsicht des Codes (13.10. nachmittags)
+
+Drei Punkte, die im Vorschlag oben fehlen; ohne 1. ist der Schrittmodus nicht sicher.
+
+1. **Die Falle kommt durch die Hintertuer zurueck.** `Setup.start()` setzt Ready; `Ready.enter()` faengt
+   bei leerer Warteschlange den IndexError und laesst den Zustand auf Ready stehen. Drueckt jemand
+   "Start Experiments" ohne wartenden Schritt, startet das naechste GESENDETE Experiment sofort beim
+   Senden (`Ready.insert_experiment_after()` ruft `enter()`). Noetig im Schrittmodus:
+   - `Ready.enter()`: bei leerer Schlange zurueck auf Paused (statt Ready bleiben);
+   - `Ready.insert_experiment_after()`: im Schrittmodus NICHT `enter()` aufrufen, nur einreihen.
+   Regel danach: Es gibt genau einen Weg, ein Experiment zu starten - den Knopf.
+2. **Paused meldet das alte Experiment als laufend.** `Paused` erbt von `Busy`, `get_current_experiment()`
+   liefert das Experiment am aktuellen Index = das gerade beendete. `station_overview` meldet es als
+   `running_experiment_name`, `get_updates` liefert `experiment_started`/`experiment_planned_end` des
+   alten Laufs, und `live_values.js` laesst die Laufzeit weiterticken. Noetig:
+   - `station_overview` im Paused-Zustand: `running_experiment_name` leer, neues Feld
+     `next_experiment_name` (naechster in `experiment_id_order` nach dem aktuellen Index, oder leer),
+     `current_run_number` = Zahl der fertigen Schritte;
+   - `get_updates` im Paused-Zustand: `current_experiment` leer, `experiment_started` leer. Die
+     Observablen des letzten Schritts duerfen weiter geliefert werden (Werte bleiben sichtbar);
+   - Frontend `monitoring/views.py` (Zeile ~112 "Paused - Not started"): wenn `current_run_number` > 0,
+     Text "Paused - Schritt N von M fertig, naechster: <next_experiment_name>, Start Experiments
+     druecken".
+3. **Stop und Failed unveraendert:** danach Backend neu starten (wie heute). Nicht Teil dieser Aenderung.
+
+Weitere Hinweise:
+- `step_mode` in config.yml UND config.dummy.yml auf true, damit der Dummy-Test dasselbe Verhalten
+  prueft. Standard, wenn der Schluessel fehlt: false (Verhalten wie heute), damit alte Configs weiterlaufen.
+- Test an den Dummys (zweites Backend auf dem Pi, Port 11124, wie beim microGC-Messplan): vier
+  Experimente senden -> nach jedem Finished Paused, naechstes nur per /api/start; /api/start bei leerer
+  Schlange -> Paused; Senden im Paused-Zustand startet nichts; Stop -> Stopped wie bisher.
+- Aktiv erst beim naechsten Backend-Start (NICHT waehrend eines Laufs). Vorher
+  docs/ablauf_versuch_im_labor.md Abschnitt 6 anpassen: nach jedem Schritt "Start Experiments" druecken.
+
+### Heutiges Verhalten, zur Einordnung (Frage 13.10.: "Submit Stage startet das Experiment sofort?")
+
+Ja, und zwar immer dann, wenn das Backend auf **Ready mit leerer Warteschlange** steht - das ist der
+Zustand nach dem letzten fertigen Experiment ("Ready - Queue finished"). Waehrend ein Experiment laeuft
+(Busy) wird ein gesendeter Schritt nur eingereiht und startet, sobald der laufende fertig ist. Nach
+dem Backend-Start (Paused) wird nur eingereiht, bis "Start Experiments" gedrueckt wird. Das ist das
+urspruengliche LABS-Verhalten (Warteschlange laeuft von selbst durch), nicht fuer den Laborbetrieb
+gedacht. Fuer HEUTE heisst das: Nach dem Ende der Elektrolyse (~14:37) steht das Backend auf Ready;
+der naechste gesendete Schritt (Gas zaehlen, Nachspuelen) startet SOFORT beim Senden - also erst
+senden, wenn der Aufbau dafuer steht.
+
 ## Entscheidung (offen)
 
 a) `step_mode` fest in config.yml - im Labor immer ein Klick pro Schritt. Einfachste, sicherste Variante.
