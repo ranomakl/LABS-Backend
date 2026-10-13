@@ -1,5 +1,9 @@
 # Laborversuch 08.10.2026 - Kolbe-Elektrolyse im Flow: Fragen und Einzelschritte
 
+> BEDIENUNG (Geraete an, Backend/Frontend starten, Browser, Routinen holen, Werte, Stop, Bericht):
+> **docs/ANLEITUNG_versuchstag.md** (13.10.2026). Seit 13.10. laufen die microGC-Messungen IM
+> Elektrolyse-Experiment `kolbe_elektrolyse_gc` (gc_minutes 0 = Dauermessung), Schritt 6 unten entfaellt.
+
 Grundlage: docs/Maximal_Workflow_-_Kolbe_electrolysis_-_Flow.pdf (Max Pohl, Version 2).
 Stand 07.10.2026. Vereinbart: das Backend faehrt EINZELNE Schritte, die der Reihe nach von Hand
 angestossen werden, kein durchgeschriebener Gesamtablauf. Werte werden beim Start eingegeben.
