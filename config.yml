@@ -14,6 +14,11 @@
 listen port: 11123
 destination port: 32111
 log_level: info
+# 13.10.2026 Schrittmodus (docs/vorschlag_schrittmodus_frontend.md): true = nach jedem fertigen Experiment
+# anhalten (Paused); der naechste Schritt startet erst mit "Start Experiments", Senden startet nie etwas.
+# false = Warteschlange laeuft von selbst durch (Verhalten bis 13.10.). GEBAUT, aber im Labor NOCH NICHT
+# eingeschaltet (Entscheidung Rafael 13.10.); Aenderung wird erst mit dem naechsten Backend-Start wirksam.
+step_mode: false
 
 devices:
 

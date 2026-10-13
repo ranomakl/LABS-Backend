@@ -4,7 +4,15 @@ Wunsch (Rafael, 13.10.): Alle Schritte eines Versuchs (z.B. Pumpe, Spuelung, Ele
 mit allen Werten im Frontend vorladen und senden. Danach soll JEDER Schritt erst starten, wenn jemand
 im Frontend einen Knopf drueckt. Kein Terminal.
 
-Status: Vorschlag, nicht umgesetzt. Entscheidung offen (siehe unten).
+Status 13.10.2026 nachmittags: **GEBAUT, aber im Labor NICHT eingeschaltet** (Entscheidung Rafael: fuer den
+Versuch morgen noch nicht benutzen). Schalter `step_mode` in config.yml, dort auf `false` -> Verhalten
+wie bisher. Einschalten = `step_mode: true` setzen und das Backend neu starten (nicht waehrend eines Laufs).
+Getestet: 6 Unit-Tests (backend/test/test_schrittmodus.py) und der Durchstich an den Dummys (zweites
+Backend, config.dummy.yml hat step_mode: true): Senden startet nichts, Start = genau ein Schritt, danach
+Paused mit finished_runs/next_experiment_name, Start bei leerer Schlange bleibt Paused, Senden im
+Paused-Zustand startet nichts. Frontend zeigt im Schrittmodus "Paused - step N of M done, next: X - press
+Start Experiments" (LABS-User-Interface app/monitoring/views.py). Nebenbei behoben: ein unbekannter
+Experimenttyp hinterliess eine ID ohne Experiment in der Schlange (jeder spaetere Start scheiterte).
 
 ## Wie es heute laeuft
 

@@ -124,6 +124,11 @@ Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
      Konzentrationen (gc_H2, gc_CO2, ...) springen nach jedem Lauf auf den neuen Wert.
 4. Seite neu laden ist jederzeit erlaubt (F5), die Kurven bauen sich wieder auf.
 
+Hinweis Schrittmodus (gebaut 13.10., noch AUS): Mit `step_mode: true` in config.yml haelt das Backend
+nach jedem Schritt an, und jeder weitere Schritt startet erst mit "Start Experiments"; Senden startet
+dann nie etwas. Solange der Schalter auf false steht, gilt der Absatz oben (alles laeuft durch, und ein
+Schritt, der bei leerer Schlange gesendet wird, startet sofort).
+
 Was NICHT geht: ein zweites Experiment, waehrend eines laeuft (z.B. eine GC-Einzelmessung waehrend
 der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 

@@ -27,8 +27,16 @@ class SetupState(IState, ABC):
                     new_index = index + 1
             if not new_index > self.setup.current_experiment_index:
                 raise ExperimentOrderError("Experiment can't be inserted before current running experiment.")
+        # 13.10.2026: Factory ZUERST holen. Vorher wurde die ID schon eingereiht und erst dann die
+        # Factory nachgeschlagen - bei unbekanntem Experimenttyp blieb eine ID ohne Experiment in der
+        # Schlange zurueck, und jeder spaetere Start scheiterte mit KeyError auf diese ID.
+        try:
+            factory = self.setup.experimentfactories[experiment_type]
+        except KeyError:
+            raise SetupStateError(f"Unknown experiment type {experiment_type!r} "
+                                  f"(known: {sorted(self.setup.experimentfactories)})") from None
+        experiment = factory.get_experiment(experiment_id, **kwargs)
         self.setup.experiment_id_order.insert(new_index, experiment_id)
-        experiment = self.setup.experimentfactories[experiment_type].get_experiment(experiment_id, **kwargs)
         self.setup.experiments[experiment_id] = experiment
 
     def get_current_experiment(self):
@@ -48,6 +56,10 @@ class Ready(SetupState):
         try:
             self.setup.current_experiment_index += 1
         except IndexError:
+            # 13.10.2026 Schrittmodus: leere Warteschlange -> zurueck auf Paused, sonst wuerde das
+            # naechste GESENDETE Experiment sofort beim Senden starten (insert_experiment_after).
+            if self.setup.step_mode:
+                self.setup.state = Paused
             return
         else:
             self.setup.state = Busy
@@ -55,7 +67,8 @@ class Ready(SetupState):
 
     def insert_experiment_after(self, existing_id: Optional[str], experiment_id: str, experiment_type: str, **kwargs):
         super().insert_experiment_after(existing_id, experiment_id, experiment_type, **kwargs)
-        self.enter()
+        if not self.setup.step_mode:   # Schrittmodus: nur einreihen, Start ausschliesslich per /api/start
+            self.enter()
 
 
 class Busy(SetupState):
@@ -68,7 +81,12 @@ class Busy(SetupState):
 
 
 class Paused(Busy):
-    pass
+    def get_current_experiment(self):
+        # Schrittmodus: im Paused-Zustand laeuft nichts (das Experiment am aktuellen Index ist das
+        # gerade beendete) - sonst meldet station_overview/get_updates es weiter als laufend.
+        if self.setup.step_mode:
+            return None
+        return super().get_current_experiment()
 
 
 class Shutdown(SetupState):

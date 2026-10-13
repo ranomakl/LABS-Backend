@@ -32,6 +32,10 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
 
     def __init__(self, config: dict):
         self.config = config
+        # 13.10.2026 Schrittmodus (docs/vorschlag_schrittmodus_frontend.md): true = nach jedem fertigen
+        # Experiment Paused statt Ready; das naechste startet erst mit "Start Experiments" (/api/start),
+        # Senden startet nie etwas. Standard false = Warteschlange laeuft wie bisher von selbst durch.
+        self.step_mode = bool(config.get("step_mode", False))
         logpath = Path("logs/")
         logpath.mkdir(parents=True, exist_ok=True)
         initialize_logger(self.config["log_level"], logpath / "log.json")
@@ -109,20 +113,21 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         return self.add_experiment(experiment_id, experiment_type, **kwargs)
 
     def remote_station_overview(self):
-        try:
-            return {
-                "status": self.state.__name__,
-                "running_experiment_name": self.current_experiment.id,
-                "total_experiments_queued": len(self.experiment_id_order),
-                "current_run_number": self.current_experiment_index + 1
-            }
-        except AttributeError:
-            return {
-                "status": self.state.__name__,
-                "running_experiment_name": "",
-                "total_experiments_queued": len(self.experiment_id_order),
-                "current_run_number": ""
-            }
+        # 13.10.2026: zusaetzlich step_mode, finished_runs (fertige Schritte) und next_experiment_name
+        # (naechster wartender Schritt), damit das Frontend im Schrittmodus "Schritt N von M fertig,
+        # naechster: X" zeigen kann. Die alten Felder bleiben unveraendert.
+        index = self._current_experiment_index
+        order = self.experiment_id_order
+        current = self.current_experiment
+        return {
+            "status": self.state.__name__,
+            "running_experiment_name": current.id if current is not None else "",
+            "total_experiments_queued": len(order),
+            "current_run_number": index + 1 if current is not None else "",
+            "step_mode": self.step_mode,
+            "finished_runs": index + 1 if current is None else index,
+            "next_experiment_name": order[index + 1] if index + 1 < len(order) else "",
+        }
 
     def remote_get_experiment_types(self):
         experiment_types = {}
@@ -284,9 +289,14 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         experiment.subscribe(self)
         deferred = experiment.execute()
         deferred.addBoth(stop_observing, experiment)
-        deferred.addCallbacks(self.set_state, self.set_state, callbackArgs=[Ready], errbackArgs=[Failed])
+        deferred.addCallbacks(self._experiment_finished, self.set_state, errbackArgs=[Failed])
         deferred.addErrback(lambda failure: self.log.error("Experiment {id} failed: {err}",
                                                            id=experiment.id, err=failure.getErrorMessage()))
+
+    def _experiment_finished(self, result):
+        # Schrittmodus: anhalten, bis "Start Experiments" den naechsten Schritt freigibt.
+        self.state = Paused if self.step_mode else Ready
+        return result
 
     def update(self, observable, observable_key, updated_value, timestamp):
         pass
