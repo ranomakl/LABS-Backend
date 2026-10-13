@@ -282,16 +282,21 @@ class DevicesStateEqualsCondition(ABCondition):
         )
 
     def check_condition(self) -> bool:
+        # 13.10.2026: Die Markierung "schon ausgeloest" gilt PRO BEDINGUNG, nicht pro Geraet. Vorher
+        # (ein Attribut triggered_condition am Zustandsobjekt) blockierte eine fremde, liegengebliebene
+        # Bedingung auf denselben Geraeten die eigene: nach "Stop Experiments" (15:44) feuerte beim Ende
+        # der naechsten Spuelung (15:47) die alte Bedingung, die der Spuelung nie - der Lauf blieb Running.
         correct_states = True
         for device in self.observable_objects:
             correct_states = (
                 correct_states and device.state == self.target_state
-                and not hasattr(
-                    device.stateobject, "triggered_condition")
+                and self not in getattr(device.stateobject, "triggered_conditions", ())
             )
         if correct_states:
             for device in self.observable_objects:
-                device.stateobject.triggered_condition = True
+                if not hasattr(device.stateobject, "triggered_conditions"):
+                    device.stateobject.triggered_conditions = set()
+                device.stateobject.triggered_conditions.add(self)
         return correct_states
 
     @classmethod

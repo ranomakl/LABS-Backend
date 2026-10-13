@@ -166,6 +166,10 @@ der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 
 ## Haeufige Stolpersteine
 
+- **Lauf bleibt nach seiner Zeit auf "Running", obwohl Pumpe/Netzteil schon aus sind** (13.10. nach
+  "Stop Experiments" gesehen): einmal Stop Experiments druecken, Messwerte sind gespeichert, dann Start
+  fuer den naechsten Schritt. Mit dem Backend-Stand ab 13.10. abends behoben.
+
 | Symptom | Ursache / Abhilfe |
 |---|---|
 | Routine fehlt in der Liste | Geraet war beim Backend-Start aus -> Geraet an, Backend neu starten, Routinen neu laden |

@@ -58,3 +58,19 @@ Reihenfolge: Pumpe_26175 (kolbe_pumpe_zeit 100 mL/min, 1.5 min) -> Spuelung_2617
 - Backend steht seit 14:37 auf Ready mit leerer Schlange: der naechste gesendete Schritt startet sofort.
   Neuer Treiber-/Config-Stand (gc_minutes-Modi, conductivity, step_mode-Schalter) wird erst mit dem
   naechsten Backend-Start aktiv.
+
+## Nachmittag: Gas zaehlen mit Pumpe, Bug nach "Stop Experiments" (15:05-15:52)
+- Backend 15:00:48 neu gestartet (neuer Stand aktiv), neuer Schritt kolbe_gas_zaehlen_pumpe (f08bd39).
+- Ansaeuerung_26175 (30 min, 70 mL/min): 15:06-15:36 regulaer Finished.
+- Ansaeuerung_26175_2 (30 min): 15:36:46 gestartet, 15:44:21 per Stop Experiments beendet.
+- gasSpuelung_26175 (kolbe_n2_spuelung 1 min): 15:46:22 gestartet, Pumpe/MFC nach 60 s gestoppt, Lauf blieb
+  aber "Running" -> 15:50:22 per Stop beendet.
+- URSACHE (Log): Stop Experiments laesst die Bedingung "Devices stopped by <Lauf>" im ConditionHandler
+  liegen (finish_experiment setzt die Geraete sofort auf Ready, die Bedingung wird nie wahr). Beim
+  naechsten regulaeren Laufende feuert die alte Bedingung zuerst und markiert die Geraete als "schon
+  ausgeloest" (Markierung war pro Geraet, nicht pro Bedingung) -> die eigene Bedingung des neuen Laufs
+  feuert nie, der Lauf bleibt Running. Jeder manuelle Stop = ein haengender Folgelauf.
+- FIX (Commit nach f08bd39): Markierung pro Bedingung; finish_experiment entfernt die eigene offene
+  Stoppbedingung. 2 neue Unit-Tests (test_stoppbedingung_leiche), ohne Fix rot, mit Fix gruen; 57 gruen.
+  Aktiv ab dem naechsten Backend-Start (14.10. frueh). Am 13.10. NICHT mehr eingespielt (Pi wird
+  ausgeschaltet).

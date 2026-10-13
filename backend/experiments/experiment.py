@@ -39,6 +39,7 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         self.commands = commands
         self.subexperiments = subexperiments
         self.command_index = 0
+        self._stop_condition = None   # Bedingung aus _stop_devices, s. finish_experiment
         self.deferred_success = defer.Deferred()
         for exp in subexperiments:
             exp.superexperiment = self
@@ -125,12 +126,22 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         for condition, deferreds in self.stopcondition_deferreds.items():
             for deferred in deferreds:
                 self.factory.setup.conditionhandler.remove_deferred_for_condition(deferred, condition)
+        # 13.10.2026: Nach "Stop Experiments" (Failed/Stopped.enter) laeuft finish_experiment sofort, die
+        # Geraete gehen auf Ready, bevor ihre Abschaltserie bestaetigt ist - die Bedingung "Devices
+        # stopped by ..." aus _stop_devices wird dann nie erfuellt und blieb im ConditionHandler liegen.
+        # Beim naechsten regulaeren Laufende feuerte sie anstelle der eigenen Bedingung des neuen Laufs,
+        # der blieb fuer immer Running (Versuch 26175, 13.10. 15:47). Deshalb hier aufraeumen.
+        if self._stop_condition is not None:
+            if self.factory.setup.conditionhandler.remove_condition(self._stop_condition):
+                self.log.info("Removed pending stop condition {cond}", cond=self._stop_condition)
+            self._stop_condition = None
         for device in self.devices_and_channels.values():
             device.state = devicestate.Ready
             device.unsubscribe(self)
 
     def _stop_devices(self, result):
         condition = DevicesStateEqualsCondition(f"Devices stopped by {self.log_name}", self.devices_and_channels.values(), devicestate.Stopped)
+        self._stop_condition = condition
         for name, device in self.devices_and_channels.items():
             # 08.10.2026: Ein Geraet, dessen stop() eine Ausnahme wirft (z.B. Error-Zustand), darf nicht
             # verhindern, dass die UEBRIGEN Geraete abgeschaltet werden (Dummy-Test: MFC warf, Pumpe lief weiter).

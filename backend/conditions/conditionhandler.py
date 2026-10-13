@@ -38,6 +38,10 @@ class ConditionHandler(IObserver):
             self._conditions.pop(condition)
 
 
+    def remove_condition(self, condition: ABCondition) -> bool:
+        """Bedingung samt Deferreds verwerfen (ohne Callback). True, wenn sie noch registriert war."""
+        return self._conditions.pop(condition, None) is not None
+
     def check_conditions_and_callback(self, condition_dict):
         if not self._busy:
             true_conditions = []
