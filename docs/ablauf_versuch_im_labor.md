@@ -155,11 +155,13 @@ der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 
   Die Run-ID ist der Ordnername unter logs (steht in `--liste`). Der HTML-Bericht ist eine einzelne
   Datei: Kurven, Kennzahlen, 10-Minuten-Tabelle, GC-Tabelle, Knopf fuer alle Rohwerte als CSV.
+  Bei langen Laeufen (ueber 2 MB Rohwerte) liegt die Rohwerte-CSV als `<Run-ID>_rohwerte.csv` NEBEN
+  dem Bericht - beim Kopieren/Verschicken beide Dateien mitnehmen.
 - Daten liegen am Pi unter `~/LABS/LABS-Backend/logs/<Jahr>/<Monat>/<Tag>/<Run-ID>/`:
   `values.json` (alle Messwerte), `lauf.json` (Parameter, Start/Ende, Endzustand),
   `bericht.html` (automatischer Bericht mit Kurven), `log.txt`.
 - GC-Laufdaten zusaetzlich unter `logs/<Jahr>/<Monat>/<Tag>/microgc/<Name>.csv`.
-- Tagesbericht: `logs/<Jahr>/<Monat>/<Tag>/bericht.html`.
+- Tagesbericht (automatisch nach jedem Lauf): `logs/<Jahr>/<Monat>/<Tag>/versuchstag_<Datum>.html`.
 - Backend (Fenster 1) und Frontend (Fenster 2) mit Strg+C beenden, Geraete ausschalten.
 
 ## Haeufige Stolpersteine

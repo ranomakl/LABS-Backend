@@ -19,7 +19,9 @@ Aufruf aus der Repo-Wurzel:
 Der HTML-Bericht ist eine einzelne Datei ohne Internet-Abhaengigkeiten: Kopf (Typ, Parameter, Start,
 Ende, Dauer), Kennzahlen je Observable, eine Kurve je Observable (mit Fadenkreuz beim Ueberfahren),
 die Messwerttabelle im Raster --takt (Standard 10 s) und ein Knopf, der ALLE Rohwerte als CSV
-herunterlaedt. Im Browser oeffnen, drucken oder per Mail verschicken.
+herunterlaedt. Im Browser oeffnen, drucken oder per Mail verschicken. Ausnahme bei langen Laeufen:
+Rohwerte ueber 2 MB liegen als <ID>_rohwerte.csv NEBEN dem Bericht (sonst wird die HTML-Datei
+riesig, 13.10.2026: 93 MB) - beim Verschicken beide Dateien mitnehmen oder nur den Bericht.
 
 Raster: pro Zeile steht der jeweils LETZTE Wert vor dem Rasterzeitpunkt (wie im Frontend);
 "-" = noch kein Wert bis dahin. Geraetezustaende ("state") sind keine Spalte, nur eine Zaehlung.
@@ -36,6 +38,8 @@ import math
 import os
 import re
 import sys
+
+ROH_EINBETTEN_MAX = 2 * 1024 * 1024   # Rohwerte-CSV bis 2 MB im HTML einbetten, darueber als Datei daneben
 
 _HIER = os.path.dirname(os.path.abspath(__file__))
 LOGS = os.path.join(os.path.dirname(_HIER), "logs")
@@ -375,7 +379,7 @@ def sicher_gc(lauf):
     return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in lauf.id)
 
 
-def _abschnitt(lauf, takt, nr):
+def _abschnitt(lauf, takt, nr, ordner=None):
     p = lauf.info.get("parameters") or {}
     param_html = ("<dl class='params'>" + "".join(
         f"<dt>{html.escape(k)}</dt><dd>{html.escape(str(v['value']))} {html.escape(v['unit'] or '')}</dd>" for k, v in p.items()
@@ -431,14 +435,26 @@ def _abschnitt(lauf, takt, nr):
                    f"<p class='dl'><a download='{sicher_gc(lauf)}_microgc.csv' href='data:text/csv;base64,{gc_csv}'>GC-Tabelle als CSV</a></p>"
                    f"<div class='scroll'>{''.join(gc_tab)}</div>")
     _, alle = tabelle(lauf, 0)
-    roh_csv = base64.b64encode(csv_text(lauf, spalten, alle).encode("utf-8")).decode("ascii")
-    raster_csv = base64.b64encode(csv_text(lauf, spalten, zeilen).encode("utf-8")).decode("ascii")
     sicher = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in lauf.id)
+    roh_text = csv_text(lauf, spalten, alle)
+    if len(roh_text) > ROH_EINBETTEN_MAX and ordner is not None:
+        # 13.10.2026: Beim 3,7-h-Lauf 26175 (2-s-Takt, ~80 Spalten) wurde die eingebettete Rohwerte-CSV
+        # 85 MB gross (Base64 im HTML) - der Bericht war 93 MB und im Browser kaum zu oeffnen.
+        # Grosse Rohwerte liegen deshalb als eigene Datei NEBEN dem Bericht, der Knopf verweist darauf.
+        roh_datei = f"{sicher}_rohwerte.csv"
+        with open(os.path.join(ordner, roh_datei), "w", encoding="utf-8") as f:
+            f.write(roh_text)
+        roh_link = (f"<a href='{roh_datei}' download>Alle Rohwerte als CSV ({len(alle)} Zeilen, "
+                    f"{len(roh_text) / 1048576:.0f} MB, Datei neben dem Bericht)</a>")
+    else:
+        roh_csv = base64.b64encode(roh_text.encode("utf-8")).decode("ascii")
+        roh_link = f"<a download='{sicher}_rohwerte.csv' href='data:text/csv;base64,{roh_csv}'>Alle Rohwerte als CSV ({len(alle)} Zeilen)</a>"
+    raster_csv = base64.b64encode(csv_text(lauf, spalten, zeilen).encode("utf-8")).decode("ascii")
     takt_txt = f"alle {takt:g} s" if takt > 0 else "jeder Messwert"
     return (f"<section id='l{nr}'><h2>{html.escape(lauf.id)}</h2>{kopf}<h3>Parameter</h3>{param_html}"
             f"<h3>Kennzahlen</h3>{''.join(kz)}<h3>Verlauf</h3><div class='charts'>{kurven}</div>{gc_html}"
             f"<h3>Messwerte ({takt_txt}, {len(zeilen)} Zeilen)</h3>"
-            f"<p class='dl'><a download='{sicher}_rohwerte.csv' href='data:text/csv;base64,{roh_csv}'>Alle Rohwerte als CSV ({len(alle)} Zeilen)</a> "
+            f"<p class='dl'>{roh_link} "
             f"<a download='{sicher}_tabelle.csv' href='data:text/csv;base64,{raster_csv}'>Diese Tabelle als CSV</a></p>"
             f"<div class='scroll'>{''.join(tab)}</div></section>")
 
@@ -500,14 +516,15 @@ def schreibe_html(laeufe, pfad, takt, titel):
         teile.append("<nav><h3>Laeufe</h3><ol>" + "".join(
             f"<li><a href='#l{i}'>{html.escape(l.id)}</a> <span class='muted'>{html.escape(l.typ)}, {_lokal(l.start)}, {_fmt_zeit(l.dauer)}</span></li>"
             for i, l in enumerate(laeufe)) + "</ol></nav>")
-    teile.extend(_abschnitt(l, takt, i) for i, l in enumerate(laeufe))
+    ordner = os.path.dirname(os.path.abspath(pfad))
+    os.makedirs(ordner, exist_ok=True)
+    teile.extend(_abschnitt(l, takt, i, ordner) for i, l in enumerate(laeufe))
     erzeugt = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     doc = (f"<!doctype html><html lang='de'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
            f"<title>{html.escape(titel)}</title><style>{_CSS}</style></head><body><main>"
            f"<h1>{html.escape(titel)}</h1><p class='muted'>LABS-Versuchslog, erzeugt {erzeugt} mit tools/auswertung.py. "
            f"Kurven: Fadenkreuz beim Ueberfahren. Zeitachse = Versuchszeit ab Start (min:s).</p>"
            f"{''.join(teile)}</main><script>{_JS}</script></body></html>")
-    os.makedirs(os.path.dirname(os.path.abspath(pfad)), exist_ok=True)
     with open(pfad, "w", encoding="utf-8") as f:
         f.write(doc)
     print(f"Bericht geschrieben: {pfad} ({os.path.getsize(pfad) / 1024:.0f} kB, {len(laeufe)} Lauf/Laeufe)")
