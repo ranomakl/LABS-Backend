@@ -31,6 +31,22 @@ Monitoring (Kurven + "Current values"), in values.json und damit im Bericht. Das
    planmaessige Lauf misst dann schon nach dem Ende. `gc_runs_planned` zaehlt die Abschlussmessung
    mit. "Stop Experiments" bricht auch die Abschlussmessung ab. Tests:
    backend/test/test_microgc_abschlussmessung.py.
+   **Warum das Experiment nach dem Ende bis zu ~16 min weiterlaeuft (Entscheidung Rafael 16.10.: so
+   lassen):** Ein GC-Lauf dauert ~7,6 min, die Gasprobe wird am ANFANG des Laufs gezogen, und ein
+   laufender GC-Lauf wird nie abgebrochen. Startet ein planmaessiger Lauf kurz vor dem Ende, laeuft er
+   ueber das Ende hinaus; seine Probe stammt von VOR dem Ende und ersetzt die Abschlussmessung nicht.
+   Die Abschlussmessung wartet deshalb, bis er fertig ist. Beispiel Elektrolyse 219 min, Zeitpunkt 215:
+
+   | Zeit | Was passiert |
+   |---|---|
+   | 215 min | planmaessiger Lauf startet (Probe von 215 min) |
+   | 219 min | Netzteil aus, Pumpe stopp; Lauf laeuft noch |
+   | ~222,6 min | Lauf fertig, Geraet bereit -> Abschlussmessung startet (Probe NACH dem Ende) |
+   | ~230 min | Abschlussmessung abgeholt, Experiment Finished |
+
+   Normalfall mit "alle 10 min" bei 219 min: letzter Zeitpunkt 210, fertig ~217,6, Abschlussmessung ab
+   219, Finished ~226,6 - also nur EIN Lauf nach dem Ende. Bei Dauermessung (gc_minutes 0) ist am Ende
+   fast immer ein Lauf offen, dann ~15 min. Es gibt in jedem Fall genau EINE Abschlussmessung.
 4. "Stop Experiments" bricht den Plan ab (keine weiteren Laeufe); ein am Geraet laufender Lauf laeuft
    dort zu Ende (cmd.abort wird bewusst nicht benutzt).
 

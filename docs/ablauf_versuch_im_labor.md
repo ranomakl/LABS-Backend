@@ -124,7 +124,11 @@ Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
    - rot: Stopped/Failed/offline -> Abschnitt 7.
 3. Waehrend ein Run laeuft:
    - "Current experiment" mit Laufzeit und **voraussichtlichem Ende** (`ends ~HH:MM`). Bei
-     `kolbe_elektrolyse_gc` kennt die Anzeige nur `minutes`, nicht den GC-Nachlauf.
+     `kolbe_elektrolyse_gc` kennt die Anzeige nur `minutes`, nicht den GC-Nachlauf: nach dem Ende der
+     Elektrolyse (Netzteil aus) misst der GC noch EINMAL (Abschlussmessung `<versuch>_Ende <t> min`,
+     seit 16.10.2026), vorher wartet er ggf. einen noch laufenden Lauf ab. Das Experiment ist also
+     erst ~8 bis ~16 min nach `ends` fertig - das ist gewollt, nicht haengen geblieben. Details:
+     docs/microgc_messplan_im_experiment_13-10-2026.md, Bedienung Punkt 3.
    - Tabelle **Current values**: alle Messwerte mit Alter der letzten Aktualisierung.
    - Kurven darunter, X-Achse = Uhrzeit. Knoepfe **last 10 min / last hour / whole run** fuer den
      Zeitausschnitt.
