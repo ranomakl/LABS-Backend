@@ -186,6 +186,13 @@ def parse_minutes(text) -> list:
     return sorted({float(part) for part in parts if part})
 
 
+def _truthy(value) -> bool:
+    """config.yml-Schalter: True/'true'/'ja'/'1' -> True; False/''/'false'/'nein'/'0'/None -> False."""
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "ja", "on")
+    return bool(value)
+
+
 def run_name(prefix, minute: float) -> str:
     """Laufname wie in tools/kolbe_gc_messplan.py: '<Versuch>_<t> min', t ohne Nachkommastellen,
     wenn ganzzahlig."""
@@ -222,7 +229,8 @@ def plan_times(minutes, until_minutes=None):
 
 class _Schedule:
     """Zustand eines laufenden GC-Messplans (ein Plan je Geraet)."""
-    def __init__(self, prefix, tags, minutes, poll_interval, save_dir, continuous=False, until_minutes=None):
+    def __init__(self, prefix, tags, minutes, poll_interval, save_dir, continuous=False, until_minutes=None,
+                 final_run=False):
         self.prefix = prefix
         self.tags = tags
         self.minutes = list(minutes)
@@ -239,6 +247,21 @@ class _Schedule:
         self.failed = 0
         self.cancelled = False
         self.loaded = False      # Methode geladen und Geraet wieder im Leerlauf
+        # 16.10.2026 Abschlussmessung (Wunsch Rafael): nach dem Ende der Elektrolyse (until_minutes) und
+        # nach dem letzten planmaessigen Lauf noch EIN Lauf "<prefix>_Ende <t> min". Nur mit until_minutes.
+        # Entfaellt, wenn ein planmaessiger Zeitpunkt ohnehin >= until_minutes liegt (der misst schon
+        # nach dem Ende). final_due: until_minutes sind um (Timer); final_pending: Lauf steht an
+        # (verstrichene Minute); final_done: gelaufen, uebersprungen oder nicht gewuenscht.
+        self.final_run = bool(final_run) and self.until_s is not None
+        if self.final_run and not continuous and any(60.0 * m >= self.until_s for m in self.minutes):
+            self.final_run = False
+        self.final_due = False
+        self.final_pending = None
+        self.final_done = not self.final_run
+
+    def is_open(self) -> bool:
+        """Noch nicht regulaer beendet: Laeufe offen, einer aktiv, oder die Abschlussmessung steht aus."""
+        return bool(self.remaining or self.due or self.active is not None or not self.final_done)
 
 
 class HTTPJSONParser(BaseParser):
@@ -528,21 +551,25 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     # -----------------------------------------------------------------------------------------
 
     def run_schedule_named(self, method_name, prefix, minutes="0;10;20", tags="", poll_interval=5,
-                           save_dir="", until_minutes=None, **kwargs):
+                           save_dir="", until_minutes=None, final_run=False, **kwargs):
         """Messplan: zu jedem Zeitpunkt in `minutes` (Minuten ab jetzt, Trenner ';') einen benannten
         Lauf '<prefix>_<t> min' mit `tags` (Trenner ';') starten. Rueckgabe: Deferred, das feuert,
         wenn der letzte Lauf abgeholt ist (Geraet war bis dahin Busy).
+        final_run=True (16.10.2026): nach Ablauf von `until_minutes` (= Elektrolyseende) und nach dem
+        letzten planmaessigen Lauf noch eine Abschlussmessung '<prefix>_Ende <t> min'; das Experiment
+        endet erst danach. Entfaellt, wenn ein planmaessiger Zeitpunkt schon >= until_minutes liegt.
         config.yml: [microgc, run_schedule_named, [], {method_name: "...", prefix: "{versuch}",
-                     minutes: "{gc_minutes}", tags: "Kolbe;MP"}]"""
+                     minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true}]"""
         times, continuous = plan_times(minutes, until_minutes)
         if not times and not continuous:
             raise ValueError(f"GC-Messplan ohne Zeitpunkte: {minutes!r}")
-        if self._schedule is not None and not self._schedule.cancelled and self._schedule.remaining:
+        if self._schedule is not None and not self._schedule.cancelled and self._schedule.is_open():
             self.log.warn("GC-Messplan laeuft bereits - der alte wird abgebrochen.")
             self._cancel_schedule("replaced")
         tag_list = [t.strip() for t in str(tags).split(";") if t.strip()]
         schedule = self._schedule = _Schedule(prefix, tag_list, times, poll_interval, save_dir,
-                                              continuous=continuous, until_minutes=until_minutes)
+                                              continuous=continuous, until_minutes=until_minutes,
+                                              final_run=_truthy(final_run))
         if continuous:
             self.log.info("GC-Messplan '{prefix}': DAUERMESSUNG, naechster Lauf sobald das Geraet fertig ist, "
                           "bis {until} min; Methode {method}, Tags {tags}",
@@ -550,17 +577,28 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         else:
             self.log.info("GC-Messplan '{prefix}': {n} Laeufe bei {times} min, Methode {method}, Tags {tags}",
                           prefix=prefix, n=len(times), times=times, method=method_name, tags=tag_list)
+        if schedule.final_run:
+            self.log.info("GC-Messplan '{prefix}': dazu eine Abschlussmessung nach {until} min, sobald der "
+                          "letzte planmaessige Lauf fertig ist.", prefix=prefix, until=until_minutes)
+        elif _truthy(final_run):
+            self.log.info("GC-Messplan '{prefix}': keine gesonderte Abschlussmessung - "
+                          "{reason}.", prefix=prefix,
+                          reason="until_minutes fehlt" if schedule.until_s is None
+                          else "ein planmaessiger Lauf liegt schon am Ende")
 
         self.load_method(method_name, **kwargs)
         condition = ObservableEqualsValueCondition(
             f"GC-Messplan '{prefix}' beendet", self, SCHEDULE_OBSERVABLE, "finished")
         wait_command = self.busy(condition)
+        planned = -1 if continuous else len(times) + (1 if schedule.final_run else 0)
         self.update_observables({SCHEDULE_OBSERVABLE: "running", "gc_runs_done": 0,
-                                 "gc_runs_planned": len(times) if not continuous else -1}, time.time())
+                                 "gc_runs_planned": planned}, time.time())
         if continuous:
             schedule.timers.append(self.callLater(0.0, self._schedule_next, schedule))
         for minute in times:
             schedule.timers.append(self.callLater(max(0.0, 60.0 * minute), self._schedule_due, schedule, minute))
+        if schedule.final_run:
+            schedule.timers.append(self.callLater(schedule.until_s, self._schedule_final_due, schedule))
         return wait_command.deferred_result
 
     def _schedule_due(self, schedule, minute):
@@ -569,30 +607,67 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         schedule.due.append(minute)
         self._schedule_next(schedule)
 
+    def _schedule_final_due(self, schedule):
+        # until_minutes sind um (Elektrolyse zu Ende): die Abschlussmessung ist faellig. Sie startet,
+        # sobald kein planmaessiger Lauf mehr offen ist (_schedule_next).
+        if schedule.cancelled or schedule is not self._schedule:
+            return
+        schedule.final_due = True
+        self.log.info("GC-Messplan '{prefix}': Elektrolyse zu Ende, Abschlussmessung folgt{wait}.",
+                      prefix=schedule.prefix,
+                      wait=" nach dem laufenden Lauf" if schedule.active is not None or schedule.due else "")
+        self._schedule_next(schedule)
+
+    def _queue_final_run(self, schedule):
+        """Abschlussmessung einreihen, wenn sie faellig ist und alle planmaessigen Laeufe durch sind."""
+        if schedule.final_done or schedule.final_pending is not None or not schedule.final_due:
+            return False
+        schedule.final_pending = round((time.time() - schedule.t0) / 60.0, 1)
+        schedule.remaining += 1
+        return True
+
     def _schedule_next(self, schedule):
         if schedule.cancelled or schedule.active is not None:
             return
-        if not schedule.due:
+        if not schedule.due and schedule.final_pending is None:
             if schedule.continuous:
                 elapsed = time.time() - schedule.t0
                 if elapsed < schedule.until_s:
                     # Dauermessung: naechster Lauf sofort, benannt nach der verstrichenen Minute
                     schedule.due.append(round(elapsed / 60.0, 1))
                     schedule.remaining += 1
+                elif not schedule.final_done:
+                    # Dauermessung vorbei; die Abschlussmessung ist ab until_s faellig (Timer kann noch
+                    # ausstehen, wenn der letzte Lauf genau am Ende fertig wurde) -> hier direkt faellig.
+                    schedule.final_due = True
+                    if not self._queue_final_run(schedule):
+                        return
                 else:
                     schedule.remaining = 0
                     self._schedule_finished(schedule)
-                return self._schedule_next(schedule) if schedule.due else None
+                    return
+                return self._schedule_next(schedule)
             if schedule.remaining == 0:
+                if not schedule.final_done:
+                    if self._queue_final_run(schedule):
+                        return self._schedule_next(schedule)
+                    return   # Abschlussmessung noch nicht faellig: Timer _schedule_final_due wartet
                 self._schedule_finished(schedule)
             return
-        minute = schedule.due.pop(0)
+        if schedule.due:
+            minute = schedule.due.pop(0)
+            name = run_name(schedule.prefix, minute)
+            late = time.time() - schedule.t0 - 60.0 * minute
+            if late > 30 and not schedule.continuous:
+                self.log.warn("GC-Lauf '{name}' startet {late:.0f} s verspaetet (voriger Lauf noch nicht fertig).",
+                              name=name, late=late)
+        else:
+            minute = schedule.final_pending
+            schedule.final_pending = None
+            schedule.final_done = True
+            name = f"{schedule.prefix}_Ende {minute:g} min"
+            self.log.info("GC-Abschlussmessung '{name}' nach dem Ende der Elektrolyse.", name=name)
         schedule.active = minute
-        name = run_name(schedule.prefix, minute)
-        late = time.time() - schedule.t0 - 60.0 * minute
-        if late > 30 and not schedule.continuous:
-            self.log.warn("GC-Lauf '{name}' startet {late:.0f} s verspaetet (voriger Lauf noch nicht fertig).",
-                          name=name, late=late)
         d = self._schedule_run(schedule, name, minute)
         d.addBoth(self._schedule_run_done, schedule, minute, name)
 
@@ -619,7 +694,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         schedule = self._schedule
         if schedule is None or schedule.cancelled:
             return
-        if schedule.remaining == 0 and schedule.active is None and not schedule.due:
+        if not schedule.is_open():
             return  # regulaer beendet, nichts abzubrechen
         schedule.cancelled = True
         for timer in schedule.timers:

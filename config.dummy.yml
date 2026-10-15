@@ -505,4 +505,4 @@ experiments:
       - [mfc, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
       - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
-      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP" }]
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true }]

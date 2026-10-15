@@ -21,6 +21,16 @@ Monitoring (Kurven + "Current values"), in values.json und damit im Bericht. Das
 3. Das Experiment endet erst, wenn der LETZTE GC-Lauf abgeholt ist (letzter Zeitpunkt + ca. 8 min).
    Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab. Die Anzeige "ends ~HH:MM" kennt
    nur `minutes`, nicht die GC-Nachlaufzeit.
+   **Abschlussmessung (seit 16.10.2026, Wunsch Rafael):** `kolbe_elektrolyse_gc` hat in config.yml
+   `final_run: true`. Damit misst der GC nach dem Ende der Elektrolyse (`minutes` um, Netzteil aus)
+   noch EINMAL: er wartet, bis der letzte planmaessige Lauf fertig und das Geraet wieder im Leerlauf
+   ist, startet dann den Lauf `<versuch>_Ende <t> min` (t = verstrichene Minute, z.B. `26175_Ende
+   221.3 min`), holt die Werte ab, und erst danach endet das Experiment. Das gilt fuer alle drei
+   `gc_minutes`-Modi. Liegt ein planmaessiger Zeitpunkt ohnehin bei oder nach `minutes` (z.B. Liste
+   mit 219 bei 219 min Elektrolyse), gibt es KEINE zusaetzliche Abschlussmessung - der letzte
+   planmaessige Lauf misst dann schon nach dem Ende. `gc_runs_planned` zaehlt die Abschlussmessung
+   mit. "Stop Experiments" bricht auch die Abschlussmessung ab. Tests:
+   backend/test/test_microgc_abschlussmessung.py.
 4. "Stop Experiments" bricht den Plan ab (keine weiteren Laeufe); ein am Geraet laufender Lauf laeuft
    dort zu Ende (cmd.abort wird bewusst nicht benutzt).
 
