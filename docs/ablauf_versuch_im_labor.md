@@ -113,7 +113,15 @@ Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
 
 1. **Monitoring** -> Station -> **See Details**. Oben steht die Warteschlange (Name, Routine, Parameter).
 2. **Start Experiments** druecken. Das Backend steht nach dem Start immer auf "Paused" und wartet
-   auf diesen Knopf. Danach laufen alle gesendeten Runs nacheinander ab, ohne weiteres Zutun.
+   auf diesen Knopf. **Schrittmodus (seit 16.10.2026 eingeschaltet, `step_mode: true` in config.yml):**
+   jeder Klick startet genau EINEN Schritt der Warteschlange. Ist er fertig, haelt das Backend an
+   (Netzteil aus, Pumpe stopp, MFC-Ventil auf) und wartet auf den naechsten Klick. Senden aus dem
+   Frontend startet nie etwas, nur dieser Knopf. Die Statuszeile ueber den Knoepfen zeigt, was dran ist:
+   - gruen, Start-Knopf pulsiert: "Paused - step N of M done, next: <Name> - press Start Experiments"
+     (oder vor dem ersten Schritt "Paused - not started, N step(s) queued") -> **Start Experiments**;
+   - blau: "Running - step N of M: <Name>" -> laufen lassen;
+   - grau: "Paused - all N steps done" -> naechsten Schritt senden, dann Start;
+   - rot: Stopped/Failed/offline -> Abschnitt 7.
 3. Waehrend ein Run laeuft:
    - "Current experiment" mit Laufzeit und **voraussichtlichem Ende** (`ends ~HH:MM`). Bei
      `kolbe_elektrolyse_gc` kennt die Anzeige nur `minutes`, nicht den GC-Nachlauf.
@@ -124,10 +132,9 @@ Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
      Konzentrationen (gc_H2, gc_CO2, ...) springen nach jedem Lauf auf den neuen Wert.
 4. Seite neu laden ist jederzeit erlaubt (F5), die Kurven bauen sich wieder auf.
 
-Hinweis Schrittmodus (gebaut 13.10., noch AUS): Mit `step_mode: true` in config.yml haelt das Backend
-nach jedem Schritt an, und jeder weitere Schritt startet erst mit "Start Experiments"; Senden startet
-dann nie etwas. Solange der Schalter auf false steht, gilt der Absatz oben (alles laeuft durch, und ein
-Schritt, der bei leerer Schlange gesendet wird, startet sofort).
+Schrittmodus ausschalten (`step_mode: false`, Backend neu starten): dann laufen alle gesendeten Schritte
+in einem Rutsch durch, und ein Schritt, der bei leerer Schlange gesendet wird, startet SOFORT beim Senden.
+Im Labor nicht empfohlen.
 
 Was NICHT geht: ein zweites Experiment, waehrend eines laeuft (z.B. eine GC-Einzelmessung waehrend
 der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
