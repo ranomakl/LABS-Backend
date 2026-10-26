@@ -193,6 +193,10 @@ def _truthy(value) -> bool:
     return bool(value)
 
 
+def _stream_prefix(prefix, stream) -> str:
+    return f"{prefix}_{stream}" if stream is not None else str(prefix)
+
+
 def run_name(prefix, minute: float) -> str:
     """Laufname wie in tools/kolbe_gc_messplan.py: '<Versuch>_<t> min', t ohne Nachkommastellen,
     wenn ganzzahlig."""
@@ -230,8 +234,15 @@ def plan_times(minutes, until_minutes=None):
 class _Schedule:
     """Zustand eines laufenden GC-Messplans (ein Plan je Geraet)."""
     def __init__(self, prefix, tags, minutes, poll_interval, save_dir, continuous=False, until_minutes=None,
-                 final_run=False):
+                 final_run=False, streams=None):
         self.prefix = prefix
+        # 26.10.2026 Drei Zellen an einem GC (docs/gc_rundlauf_3_zellen_26-10-2026.md): `streams` = Namen
+        # der Gasstroeme (z.B. Z1;Z2;Z3), die im Kreis gemessen werden - jeder faellige Lauf misst den
+        # NAECHSTEN Strom; die Abschlussmessung laeuft einmal je Strom. Leer = ein Strom, wie bisher.
+        self.streams = [str(x) for x in (streams or [])]
+        self.stream_index = 0
+        self.last_stream = None      # zuletzt gemessener Strom (Ventile stehen noch so)
+        self.final_streams = []      # Abschlussmessungen, die noch anstehen (Stromnamen oder [None])
         self.tags = tags
         self.minutes = list(minutes)
         self.continuous = continuous
@@ -261,7 +272,16 @@ class _Schedule:
 
     def is_open(self) -> bool:
         """Noch nicht regulaer beendet: Laeufe offen, einer aktiv, oder die Abschlussmessung steht aus."""
-        return bool(self.remaining or self.due or self.active is not None or not self.final_done)
+        return bool(self.remaining or self.due or self.active is not None or not self.final_done
+                    or self.final_streams)
+
+    def next_stream(self):
+        """Naechster Strom im Kreis (None ohne Streams)."""
+        if not self.streams:
+            return None
+        stream = self.streams[self.stream_index % len(self.streams)]
+        self.stream_index += 1
+        return stream
 
 
 class HTTPJSONParser(BaseParser):
@@ -404,10 +424,16 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         "RUN_DATA": [PATH_RUN_DATA_PREFIX, ParserParameterFactory(parserclass=HTTPJSONParser)],
     }
 
-    def __init__(self, address, *args, connect_timeout: float = 5.0, **kwargs):
+    def __init__(self, address, *args, connect_timeout: float = 5.0, streams=None, flush_s: float = 0.0,
+                 **kwargs):
         """
         :param address: feste IP (oder IP:Port, z.B. fuer die Dummy-Umgebung) des Geraets im
                          Netzwerk - kein serieller Port.
+        :param streams: (26.10.2026, drei Zellen an einem GC) Gasstroeme, die der Messplan im Kreis
+                         messen kann: Liste von {name: Z1, valves: {ventilname: A|B, ...}} aus config.yml.
+                         Die Ventile sind eigene Geraete (z.B. raspi_gpio_relay_valve); Setup reicht sie
+                         nach dem Verbinden ueber link_devices() herein.
+        :param flush_s: Spuelzeit in Sekunden nach dem Umschalten der Ventile, bevor der Lauf startet.
         :param connect_timeout: TCP-Verbindungsaufbau-Timeout in Sekunden (aus config.yml).
                                  Das Antwort-Timeout pro Anfrage kommt ueber den bestehenden,
                                  generischen Mechanismus aus config.yml: `command_parameters:
@@ -415,7 +441,45 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         """
         self.connect_timeout = float(connect_timeout)
         self._schedule = None
+        self.streams = {}            # Stromname -> {Ventilname: Position}
+        for entry in streams or []:
+            try:
+                self.streams[str(entry["name"])] = {str(k): str(v) for k, v in dict(entry["valves"]).items()}
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(f"microgc streams: Eintrag {entry!r} braucht 'name' und 'valves'") from error
+        self.flush_s = float(flush_s)
+        self._valves = {}            # Ventilname -> Geraet (nach link_devices)
         super().__init__(address, *args, **kwargs)
+
+    def link_devices(self, devices_and_channels):
+        """Von Setup nach dem Verbinden aller Geraete aufgerufen: Ventile der Gasstroeme aufloesen.
+        Fehlende Ventile werden protokolliert; ein Messplan mit diesem Strom scheitert dann beim Start."""
+        wanted = {valve for positions in self.streams.values() for valve in positions}
+        for valve in sorted(wanted):
+            try:
+                self._valves[valve] = devices_and_channels[valve]
+            except KeyError:
+                self.log.error("Gasstrom-Ventil {valve} ist kein verbundenes Geraet - Messplaene mit Stroemen "
+                               "scheitern, bis es in config.yml eingetragen und erreichbar ist.", valve=valve)
+
+    def _stream_names(self, streams) -> list:
+        """'Z1;Z2' -> ['Z1', 'Z2']; 'alle'/'all' -> alle konfigurierten; ''/None -> [] (ein Strom, wie bisher).
+        Unbekannte Stroeme oder nicht verbundene Ventile sind ein Fehler (das Experiment scheitert sofort,
+        statt stundenlang die falsche Zelle zu messen)."""
+        text = str(streams or "").strip()
+        if not text:
+            return []
+        if text.lower() in ("alle", "all", "*"):
+            names = list(self.streams)
+        else:
+            names = [x.strip() for x in text.split(";") if x.strip()]
+        unknown = [x for x in names if x not in self.streams]
+        if unknown:
+            raise ValueError(f"GC-Messplan: unbekannte Gasstroeme {unknown}; konfiguriert sind {list(self.streams)}")
+        missing = sorted({valve for x in names for valve in self.streams[x] if valve not in self._valves})
+        if missing:
+            raise ValueError(f"GC-Messplan: Ventile {missing} sind nicht verbunden")
+        return names
 
     def base_url(self) -> str:
         if self.port is None:
@@ -551,7 +615,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     # -----------------------------------------------------------------------------------------
 
     def run_schedule_named(self, method_name, prefix, minutes="0;10;20", tags="", poll_interval=5,
-                           save_dir="", until_minutes=None, final_run=False, **kwargs):
+                           save_dir="", until_minutes=None, final_run=False, streams="", **kwargs):
         """Messplan: zu jedem Zeitpunkt in `minutes` (Minuten ab jetzt, Trenner ';') einen benannten
         Lauf '<prefix>_<t> min' mit `tags` (Trenner ';') starten. Rueckgabe: Deferred, das feuert,
         wenn der letzte Lauf abgeholt ist (Geraet war bis dahin Busy).
@@ -559,8 +623,13 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         letzten planmaessigen Lauf noch eine Abschlussmessung '<prefix>_Ende <t> min'; das Experiment
         endet erst danach. Entfaellt, wenn ein planmaessiger Zeitpunkt schon >= until_minutes liegt.
         config.yml: [microgc, run_schedule_named, [], {method_name: "...", prefix: "{versuch}",
-                     minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true}]"""
+                     minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true}]
+        streams="Z1;Z2;Z3" (26.10.2026): die Gasstroeme aus `streams:` des Geraets werden im Kreis gemessen
+        (jeder faellige Lauf = naechster Strom, Name '<prefix>_<Strom> <t> min', Tag <Strom>, Konzentrationen
+        als gc_<Strom>_<Label>); vor jedem Lauf werden die Ventile des Stroms gestellt und flush_s gewartet.
+        "alle" = alle konfigurierten Stroeme in Reihenfolge."""
         times, continuous = plan_times(minutes, until_minutes)
+        stream_names = self._stream_names(streams)
         if not times and not continuous:
             raise ValueError(f"GC-Messplan ohne Zeitpunkte: {minutes!r}")
         if self._schedule is not None and not self._schedule.cancelled and self._schedule.is_open():
@@ -569,7 +638,10 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         tag_list = [t.strip() for t in str(tags).split(";") if t.strip()]
         schedule = self._schedule = _Schedule(prefix, tag_list, times, poll_interval, save_dir,
                                               continuous=continuous, until_minutes=until_minutes,
-                                              final_run=_truthy(final_run))
+                                              final_run=_truthy(final_run), streams=stream_names)
+        if stream_names:
+            self.log.info("GC-Messplan '{prefix}': {n} Gasstroeme im Kreis: {streams} (Spuelzeit {flush:g} s)",
+                          prefix=prefix, n=len(stream_names), streams=stream_names, flush=self.flush_s)
         if continuous:
             self.log.info("GC-Messplan '{prefix}': DAUERMESSUNG, naechster Lauf sobald das Geraet fertig ist, "
                           "bis {until} min; Methode {method}, Tags {tags}",
@@ -590,7 +662,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         condition = ObservableEqualsValueCondition(
             f"GC-Messplan '{prefix}' beendet", self, SCHEDULE_OBSERVABLE, "finished")
         wait_command = self.busy(condition)
-        planned = -1 if continuous else len(times) + (1 if schedule.final_run else 0)
+        planned = -1 if continuous else len(times) + (max(1, len(stream_names)) if schedule.final_run else 0)
         self.update_observables({SCHEDULE_OBSERVABLE: "running", "gc_runs_done": 0,
                                  "gc_runs_planned": planned}, time.time())
         if continuous:
@@ -623,7 +695,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         if schedule.final_done or schedule.final_pending is not None or not schedule.final_due:
             return False
         schedule.final_pending = round((time.time() - schedule.t0) / 60.0, 1)
-        schedule.remaining += 1
+        schedule.final_streams = list(schedule.streams) or [None]
+        schedule.remaining += len(schedule.final_streams)
         return True
 
     def _schedule_next(self, schedule):
@@ -656,19 +729,22 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             return
         if schedule.due:
             minute = schedule.due.pop(0)
-            name = run_name(schedule.prefix, minute)
+            stream = schedule.next_stream()
+            name = run_name(_stream_prefix(schedule.prefix, stream), minute)
             late = time.time() - schedule.t0 - 60.0 * minute
             if late > 30 and not schedule.continuous:
                 self.log.warn("GC-Lauf '{name}' startet {late:.0f} s verspaetet (voriger Lauf noch nicht fertig).",
                               name=name, late=late)
         else:
             minute = schedule.final_pending
-            schedule.final_pending = None
-            schedule.final_done = True
-            name = f"{schedule.prefix}_Ende {minute:g} min"
+            stream = schedule.final_streams.pop(0) if schedule.final_streams else None
+            if not schedule.final_streams:
+                schedule.final_pending = None
+                schedule.final_done = True
+            name = f"{_stream_prefix(schedule.prefix, stream)}_Ende {minute:g} min"
             self.log.info("GC-Abschlussmessung '{name}' nach dem Ende der Elektrolyse.", name=name)
         schedule.active = minute
-        d = self._schedule_run(schedule, name, minute)
+        d = self._schedule_run(schedule, name, minute, stream=stream)
         d.addBoth(self._schedule_run_done, schedule, minute, name)
 
     def _schedule_run_done(self, result, schedule, minute, name):
@@ -749,8 +825,35 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         ask()
         return result
 
-    def _schedule_run(self, schedule, name, minute):
+    def _schedule_run(self, schedule, name, minute, stream=None):
         state = {}
+
+        def switch_stream(_):
+            # Ventile auf den Gasstrom der Zelle stellen, dann Spuelzeit abwarten. Stehen die Ventile
+            # schon so (gleicher Strom wie beim vorigen Lauf), entfaellt beides.
+            if stream is None or stream == schedule.last_stream:
+                return None
+            if schedule.cancelled:
+                raise RuntimeError("abgebrochen vor dem Umschalten")
+            positions = self.streams[stream]
+            self.log.info("GC-Lauf '{name}': Gasstrom {stream}, Ventile {valves}, dann {flush:g} s spuelen.",
+                          name=name, stream=stream, valves=positions, flush=self.flush_s)
+            writes = [self._valves[valve].set_position(position).deferred_result
+                      for valve, position in positions.items()]
+            d = defer.gatherResults(writes, consumeErrors=True)
+            d.addErrback(lambda f: failure.Failure(RuntimeError(
+                f"Ventil fuer Gasstrom {stream} konnte nicht gestellt werden: {f.value.subFailure.getErrorMessage()}")))
+
+            def flushed(_):
+                schedule.last_stream = stream
+                self.update_observables({"gc_stream": stream}, time.time())
+                if self.flush_s <= 0:
+                    return None
+                waited = defer.Deferred()
+                self.callLater(self.flush_s, waited.callback, None)
+                return waited
+            d.addCallback(flushed)
+            return d
 
         def wait_idle(_):
             # Nach loadMethod ist das Geraet einige Sekunden in loading-method; ein cmd.run in dieser
@@ -765,7 +868,8 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         def start_run(_):
             if schedule.cancelled:
                 raise RuntimeError("abgebrochen vor dem Start")
-            body = {"runWhenReady": True, "annotations": {"name": str(name), "tags": list(schedule.tags)}}
+            tags = list(schedule.tags) + ([str(stream)] if stream is not None else [])
+            body = {"runWhenReady": True, "annotations": {"name": str(name), "tags": tags}}
             self.log.info("GC-Lauf '{name}' ({minute:g} min) wird gestartet.", name=name, minute=minute)
             return self.write("RUN", command_values={"json_body": body}, urgent=True,
                               run_while_device_busy=True).deferred_result
@@ -793,11 +897,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         def publish(run_data):
             if run_data is None:
                 return None
-            self._publish_run_data(schedule, run_data, name, minute)
+            self._publish_run_data(schedule, run_data, name, minute, stream=stream)
             return run_data
 
         d = defer.succeed(None)
         d.addCallback(wait_idle)
+        d.addCallback(switch_stream)
         d.addCallback(remember_location)
         d.addCallback(start_run)
         d.addCallback(wait_finished)
@@ -806,8 +911,12 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         d.addCallback(publish)
         return d
 
-    def _publish_run_data(self, schedule, run_data, name, minute):
+    def _publish_run_data(self, schedule, run_data, name, minute, stream=None):
         values = concentrations_from_run_data(run_data)
+        if stream is not None:
+            # je Zelle eigene Observablen (gc_Z1_H2, ...), damit das Monitoring die Zellen nebeneinander zeigt
+            values = {f"gc_{stream}_{key[3:]}": value for key, value in values.items()}
+            values["gc_stream"] = str(stream)
         values.update({"gc_run_name": name, "gc_run_minute": float(minute),
                        "gc_run_timestamp": str(run_data.get("runTimeStamp", ""))})
         now = time.time()

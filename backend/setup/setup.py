@@ -67,6 +67,7 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         # consumeErrors: ein Geraet, das nicht verbindet, darf den Start der uebrigen nicht blockieren.
         # Der Fehler ist in get_device_or_channel bereits protokolliert.
         deferred_devices = defer.DeferredList(deferred_devices, consumeErrors=True)
+        deferred_devices.addCallback(self._link_devices)
         deferred_devices.addCallback(self._get_experimentfactories)
         deferred_devices.addCallback(self.set_state, Paused)
 
@@ -239,6 +240,19 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
                            name=name, reason=reason.getErrorMessage())
             return reason
         return deferred_device_or_channel.addCallback(observe_and_add, name).addErrback(log_unavailable, name)
+
+    def _link_devices(self, result):
+        """26.10.2026: Geraete, die andere Geraete brauchen (der microGC stellt vor jedem Lauf die Ventile
+        seiner Gasstroeme), bekommen nach dem Verbinden aller Geraete die Geraeteliste gereicht."""
+        for name, device in list(self.devices_and_channels.items()):
+            link = getattr(device, "link_devices", None)
+            if link is None:
+                continue
+            try:
+                link(self.devices_and_channels)
+            except Exception:  # noqa: BLE001
+                self.log.failure("Geraet {name}: link_devices fehlgeschlagen.", name=name)
+        return result
 
     def _missing_references(self, experimentconfig: dict) -> list[str]:
         """Geraete/Teilexperimente, die ein Experiment braucht, aber die beim Start nicht verfuegbar sind

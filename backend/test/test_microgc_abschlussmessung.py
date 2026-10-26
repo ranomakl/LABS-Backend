@@ -50,7 +50,7 @@ def _device():
     device.update_observables = lambda values, timestamp=None: device.updates.append(values)
     device.log = _Log()
 
-    def fake_run(schedule, name, minute):
+    def fake_run(schedule, name, minute, stream=None):
         d = _FakeDeferred()
         device.runs.append((name, minute))
         device.pending.append(d)

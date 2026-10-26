@@ -60,7 +60,7 @@ devices:
     address: 127.0.0.1:12347
     channel: 4
 
-  psu:
+  psu1:
     driver: tdk_lambda_zplus
     address: 127.0.0.1:12346
 
@@ -68,7 +68,7 @@ devices:
     driver: omnicoll
     address: 127.0.0.1:12349
 
-  mfc:
+  mfc1:
     driver: bronkhorst_mfc
     address: 127.0.0.1:12351
     node: "03"                # muss zur Node-Adresse passen, die der Dummy zurueckechot (beliebig, Dummy ist node-agnostisch)
@@ -89,7 +89,14 @@ devices:
     connect_timeout: 5.0
     command_parameters:
       timeout: 10.0
-
+    # 26.10.2026 drei Zellen an einem GC (docs/gc_rundlauf_3_zellen_26-10-2026.md): Gasstroeme, die der
+    # Messplan im Kreis misst (run_schedule_named ... streams: "alle"). Je Strom die Ventilstellungen, die
+    # den Gasweg dieser Zelle zum GC oeffnen und die anderen schliessen. flush_s = Spuelzeit nach dem Umschalten.
+    flush_s: 30
+    streams:
+      - { name: Z1, valves: { ventil_z1: B, ventil_z2: A, ventil_z3: A } }
+      - { name: Z2, valves: { ventil_z1: A, ventil_z2: B, ventil_z3: A } }
+      - { name: Z3, valves: { ventil_z1: A, ventil_z2: A, ventil_z3: B } }
   liquiline:
     driver: endress_hauser_liquiline
     address: 127.0.0.1:12353
@@ -107,6 +114,48 @@ devices:
   # during the experiments initialization.
 #  prerun_condition:
 #    [DevicesWaitingCondition, [prerun_condition, [purge_pump]], {}]
+
+  # 26.10.2026 Drei Zellen parallel (Dummy-Ports in LABS-DeviceDummys/main.py)
+  psu2:
+    driver: tdk_lambda_zplus
+    address: 127.0.0.1:12361
+  psu3:
+    driver: tdk_lambda_zplus
+    address: 127.0.0.1:12362
+  mfc2:
+    driver: bronkhorst_mfc
+    address: 127.0.0.1:12356
+    node: "03"
+    max_flow_ml_min: 50.0
+  mfc3:
+    driver: bronkhorst_mfc
+    address: 127.0.0.1:12357
+    node: "03"
+    max_flow_ml_min: 20.0
+  ventil_z1:
+    driver: raspi_gpio_relay_valve
+    address: "GPIO17"
+    pin: 17                  # ANNAHME, beim Verkabeln pruefen
+    inverted: true
+    safe_state: "A"            # A = Gasweg Zelle 1 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
+    simulate: true             # Dummy-Umgebung: gpiozero-Mock
+
+  ventil_z2:
+    driver: raspi_gpio_relay_valve
+    address: "GPIO27"
+    pin: 27                  # ANNAHME, beim Verkabeln pruefen
+    inverted: true
+    safe_state: "A"            # A = Gasweg Zelle 2 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
+    simulate: true             # Dummy-Umgebung: gpiozero-Mock
+
+  ventil_z3:
+    driver: raspi_gpio_relay_valve
+    address: "GPIO22"
+    pin: 22                  # ANNAHME, beim Verkabeln pruefen
+    inverted: true
+    safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
+    simulate: true             # Dummy-Umgebung: gpiozero-Mock
+
 
 experiments:
   # Experimentname:
@@ -216,10 +265,10 @@ experiments:
       current: [float, A]
       max_voltage: [float, V]
     observables:
-      - [psu, current, float, A]
-      - [psu, voltage, float, V]
+      - [psu1, current, float, A]
+      - [psu1, voltage, float, V]
     commands:
-      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+      - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
 
   stop_psu_output:
     conditions:
@@ -227,7 +276,7 @@ experiments:
     parameters:
     observables:
     commands:
-      - [psu, stop_current, [], {}]
+      - [psu1, stop_current, [], {}]
 
   # ---- new: exercise the simulated Bronkhorst MFC directly ----
 
@@ -239,11 +288,11 @@ experiments:
     parameters:
       minutes: [float, min]
     observables:
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, mLn]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
     commands:
-      - [mfc, reset_counter, [], {}]
-      - [mfc, measure_for_minutes, [], { minutes: "{minutes}" }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, measure_for_minutes, [], { minutes: "{minutes}" }]
 
   # Fehlerpfad-Test mit ZWEI Geraeten: Pumpe laeuft, MFC wird stumm -> Pumpe muss trotzdem
   # gestoppt werden (final_commands), MFC bekommt den Abschaltbefehl (open_valve) trotz Error.
@@ -253,12 +302,12 @@ experiments:
     parameters:
       minutes: [float, min]
     observables:
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, mLn]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
     commands:
-      - [mfc, reset_counter, [], {}]
-      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: 100, minutes: "{minutes}" }]
 
   # Schritt 8 mit Umwaelzen (13.10.2026, Wunsch Chemiker): Gas zaehlen, waehrend die Pumpe die
@@ -273,14 +322,14 @@ experiments:
       minutes: [float, min]
       rate: [float, mL/min]
     observables:
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, mLn]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [dosing_pump, running, bool, ""]
     commands:
-      - [mfc, reset_counter, [], {}]
-      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
 
   demo_live_monitoring:
@@ -291,12 +340,12 @@ experiments:
       rate: [float, mL/min]
       volume: [float, mL]
     observables:
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, ""]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, ""]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
     commands:
-      - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc1, set_setpoint, [], { flow_ml_min: "{flow}" }]
       # KEIN stop_flow am Ende: dispense blockiert nur das Pumpen-Geraet, nicht die Befehlsliste -
       # ein nachfolgender stop_flow liefe sofort und setzte den Setpoint zurueck auf 0.
       # Das Aufraeumen (Setpoint 0, Pumpenstopp) erledigt das Experimentende selbst.
@@ -329,20 +378,20 @@ experiments:
     parameters:
       flow: [float, mL/min]
     observables:
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, ""]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, ""]
     commands:
-      - [mfc, set_setpoint, [], { flow_ml_min: "{flow}" }]
-      - [mfc, measure_flow, [], {}]
+      - [mfc1, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc1, measure_flow, [], {}]
 
   test_mfc_counter:
     conditions:
     stopconditions:
     parameters:
     observables:
-      - [mfc, counter, float, ""]
+      - [mfc1, counter, float, ""]
     commands:
-      - [mfc, read_counter, [], {}]
+      - [mfc1, read_counter, [], {}]
 
   stop_mfc:
     conditions:
@@ -350,7 +399,7 @@ experiments:
     parameters:
     observables:
     commands:
-      - [mfc, stop_flow, [], {}]
+      - [mfc1, stop_flow, [], {}]
 
   # ---- new: exercise the simulated Endress+Hauser Liquiline CM44x directly ----
 
@@ -405,11 +454,11 @@ experiments:
       minutes: [float, min]
       rate: [float, mL/min]
     observables:
-      - [psu, current, float, A]
-      - [psu, voltage, float, V]
-      - [psu, amount_of_charge, float, C]
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, mLn]
+      - [psu1, current, float, A]
+      - [psu1, voltage, float, V]
+      - [psu1, amount_of_charge, float, C]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
@@ -418,10 +467,10 @@ experiments:
       - [liquiline, ph_ch1_status, str, ""]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [mfc, reset_counter, [], {}]
-      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
-      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+      - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
 
   # 13.10.2026: GC-Messplan OHNE andere Geraete, zum Testen von run_schedule_named am Geraet.
   # gc_minutes: 0 = DAUERMESSUNG (naechster Lauf sobald das Geraet fertig ist, bis `minutes` um sind);
@@ -475,11 +524,11 @@ experiments:
       minutes: [float, min]
       rate: [float, mL/min]
     observables:
-      - [psu, current, float, A]
-      - [psu, voltage, float, V]
-      - [psu, amount_of_charge, float, C]
-      - [mfc, flow, float, mL/min]
-      - [mfc, counter, float, mLn]
+      - [psu1, current, float, A]
+      - [psu1, voltage, float, V]
+      - [psu1, amount_of_charge, float, C]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
@@ -501,8 +550,170 @@ experiments:
       - [microgc, gc_n_Heptane, float, "%"]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [mfc, reset_counter, [], {}]
-      - [mfc, start_measuring, [], { interval: 1.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
-      - [psu, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+      - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true }]
+
+  # ---- 26.10.2026 Drei Zellen parallel (docs/gc_rundlauf_3_zellen_26-10-2026.md) ----
+  # Ein Experiment fuer alle drei Zellen: psu1-3 und mfc1-3 je Zelle, EINE Pumpe fuer alle, EINE Liquiline,
+  # EIN microGC, der die Gasstroeme Z1/Z2/Z3 im Kreis misst (Ventile ventil_z1-3, streams am Geraet).
+
+  kolbe_pumpe_zeit_3x:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+    commands:
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  kolbe_n2_spuelung_3x:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  kolbe_elektrolyse_3x:
+    conditions:
+    stopconditions:
+    parameters:
+      versuch: [str, ""]
+      gc_minutes: [str, ""]
+      current_z1: [float, A]
+      current_z2: [float, A]
+      current_z3: [float, A]
+      max_voltage: [float, V]
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [psu1, current, float, A]
+      - [psu1, voltage, float, V]
+      - [psu1, amount_of_charge, float, C]
+      - [psu2, current, float, A]
+      - [psu2, voltage, float, V]
+      - [psu2, amount_of_charge, float, C]
+      - [psu3, current, float, A]
+      - [psu3, voltage, float, V]
+      - [psu3, amount_of_charge, float, C]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
+      - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [ventil_z1, position, str, ""]
+      - [ventil_z2, position, str, ""]
+      - [ventil_z3, position, str, ""]
+      - [microgc, gc_schedule, str, ""]
+      - [microgc, gc_runs_done, int, ""]
+      - [microgc, gc_run_name, str, ""]
+      - [microgc, gc_stream, str, ""]
+      - [microgc, gc_Z1_H2, float, "%"]
+      - [microgc, gc_Z1_O2, float, "%"]
+      - [microgc, gc_Z1_N2, float, "%"]
+      - [microgc, gc_Z1_CO2, float, "%"]
+      - [microgc, gc_Z1_Ethylene, float, "%"]
+      - [microgc, gc_Z1_Ethane, float, "%"]
+      - [microgc, gc_Z1_1_Penten, float, "%"]
+      - [microgc, gc_Z1_n_Pentan, float, "%"]
+      - [microgc, gc_Z1_n_Hexane, float, "%"]
+      - [microgc, gc_Z1_n_Heptane, float, "%"]
+      - [microgc, gc_Z2_H2, float, "%"]
+      - [microgc, gc_Z2_O2, float, "%"]
+      - [microgc, gc_Z2_N2, float, "%"]
+      - [microgc, gc_Z2_CO2, float, "%"]
+      - [microgc, gc_Z2_Ethylene, float, "%"]
+      - [microgc, gc_Z2_Ethane, float, "%"]
+      - [microgc, gc_Z2_1_Penten, float, "%"]
+      - [microgc, gc_Z2_n_Pentan, float, "%"]
+      - [microgc, gc_Z2_n_Hexane, float, "%"]
+      - [microgc, gc_Z2_n_Heptane, float, "%"]
+      - [microgc, gc_Z3_H2, float, "%"]
+      - [microgc, gc_Z3_O2, float, "%"]
+      - [microgc, gc_Z3_N2, float, "%"]
+      - [microgc, gc_Z3_CO2, float, "%"]
+      - [microgc, gc_Z3_Ethylene, float, "%"]
+      - [microgc, gc_Z3_Ethane, float, "%"]
+      - [microgc, gc_Z3_1_Penten, float, "%"]
+      - [microgc, gc_Z3_n_Pentan, float, "%"]
+      - [microgc, gc_Z3_n_Hexane, float, "%"]
+      - [microgc, gc_Z3_n_Heptane, float, "%"]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [psu1, output_constant_current, [], { current: "{current_z1}", max_voltage: "{max_voltage}" }]
+      - [psu2, output_constant_current, [], { current: "{current_z2}", max_voltage: "{max_voltage}" }]
+      - [psu3, output_constant_current, [], { current: "{current_z3}", max_voltage: "{max_voltage}" }]
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true, streams: "alle" }]
+
+  kolbe_gas_zaehlen_pumpe_3x:
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+      rate: [float, mL/min]
+    observables:
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [dosing_pump, running, bool, ""]
+    commands:
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]

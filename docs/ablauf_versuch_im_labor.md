@@ -200,3 +200,14 @@ der Elektrolyse). Alles wartet in der Reihenfolge der Warteschlange.
 Normale Werte waehrend der Elektrolyse (08.10./13.10.): psu.current 0.55 A, psu.voltage 4-6 V,
 mfc.flow 1-3 mL/min und mfc.counter stetig steigend (Ende ~220 mLn), ph_ch1_value 6-9,
 conductivity_value ~50 mS/cm, temperature_value steigend auf ~25 degC; Luft am GC = O2 21 %, N2 78 %.
+
+## Drei Zellen parallel (ab 26.10.2026)
+
+Fuer den Lauf mit drei Zellen gibt es eigene Routinen mit Endung `_3x`: `kolbe_pumpe_zeit_3x`
+(Dichtheitstest), `kolbe_n2_spuelung_3x`, `kolbe_elektrolyse_3x` (Strom je Zelle: current_z1/z2/z3,
+GC misst Z1, Z2, Z3 im Kreis und am Ende je Zelle einmal), `kolbe_gas_zaehlen_pumpe_3x`. Einmalig im
+Frontend: Administration -> Routines -> "Download Experiments from Station", dann die Routinen anlegen.
+Vor dem Start muessen alle drei Netzteile und alle drei Bronkhorst an sein (Steckplaetze nicht
+umstecken!). Im Monitoring stehen die Zellen in der Tabelle "Cells" nebeneinander (Spalten Z1/Z2/Z3),
+die Kurven zeigen je Observable drei Linien (rot Z1, blau Z2, gruen Z3).
+Details, Geraetezuordnung und offene Punkte (Ventile!): docs/gc_rundlauf_3_zellen_26-10-2026.md
