@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LABS starten
+Comment=Backend + Frontend starten und Browser oeffnen
+Exec=lxterminal --title="LABS starten" -e bash /home/pohlma/LABS/LABS-Backend/tools/labs_start.sh
+Icon=system-run
+Terminal=false
+Categories=Science;

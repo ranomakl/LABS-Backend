@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LABS beenden
+Comment=Geraete abschalten, Backend und Frontend beenden
+Exec=lxterminal --title="LABS beenden" -e bash /home/pohlma/LABS/LABS-Backend/tools/labs_stop.sh
+Icon=system-shutdown
+Terminal=false
+Categories=Science;
