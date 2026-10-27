@@ -55,6 +55,9 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         # Geraete mit `enabled: false` in config.yml bleiben eingetragen, werden aber nicht verbunden;
         # Experimente, die sie benutzen, werden in _get_experimentfactories uebersprungen.
         self.disabled_devices = []
+        # 27.10.2026: Geraete, die beim Start nicht verbinden (Name -> Fehlertext), fuer /api/device_states
+        # und das Statusfenster tools/geraete_fenster.py. Sie fehlen in devices_and_channels.
+        self.unavailable_devices = {}
         deferred_devices = []
         for name, parameters in self.config["devices"].items():
             parameters = dict(parameters)
@@ -212,6 +215,36 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
             components_list.append(component_details)
         return components_list
 
+    # Geraetezustaende, in denen das Geraet NICHT benutzbar ist (fuer "ok" in remote_device_states).
+    _DEVICE_STATES_NOT_OK = ("Error", "Shutdown", "NotReady", "Initializing", "CollectingCommands")
+
+    def remote_device_states(self):
+        """27.10.2026: Zustand jedes in config.yml eingetragenen Geraets, in Config-Reihenfolge, fuer das
+        Statusfenster nach dem Start (tools/geraete_fenster.py). Anders als station_components stehen hier
+        auch Geraete drin, die nicht verbunden sind (fehlen in devices_and_channels) oder deaktiviert sind.
+        ok: True = verbunden und benutzbar; state: Geraetezustand bzw. "nicht verbunden"/"deaktiviert";
+        reason: Fehlertext, wenn nicht ok."""
+        states = []
+        for name, parameters in self.config["devices"].items():
+            entry = {"name": name, "driver": str(parameters.get("driver", "")),
+                     "address": str(parameters.get("address", "")), "ok": False, "state": "", "reason": ""}
+            if name in self.disabled_devices:
+                entry.update(state="deaktiviert", reason="enabled: false in config.yml")
+            elif name in self.unavailable_devices:
+                entry.update(state="nicht verbunden", reason=self.unavailable_devices[name])
+            else:
+                component = self.devices_and_channels.get(name)
+                if component is None:
+                    entry.update(state="nicht verbunden", reason="Verbindungsaufbau noch nicht abgeschlossen")
+                else:
+                    device = getattr(component, "device", component)
+                    state = device.state.__name__
+                    entry.update(state=state, ok=state not in self._DEVICE_STATES_NOT_OK)
+                    if not entry["ok"]:
+                        entry["reason"] = f"Geraet im Zustand {state}"
+            states.append(entry)
+        return states
+
     def get_device_or_channel(self, name, parameters):
         try:
             deferred_device_or_channel = self._device_factory.construct_device(conditionhandler=self.conditionhandler,
@@ -219,6 +252,7 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         except Exception:
             # z.B. serieller Pfad existiert nicht (Adapter nicht eingesteckt) - SerialPort() wirft sofort.
             self.log.failure("Geraet {name} konnte nicht angelegt werden und wird uebersprungen.", name=name)
+            self.unavailable_devices[name] = f"konnte nicht angelegt werden: {sys.exc_info()[1]}"
             return defer.fail()
 
         def observe_and_add(device_or_channel, name):
@@ -238,6 +272,7 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
         def log_unavailable(reason, name):
             self.log.error("Geraet {name} nicht verfuegbar, wird uebersprungen: {reason}",
                            name=name, reason=reason.getErrorMessage())
+            self.unavailable_devices[name] = reason.getErrorMessage() or reason.type.__name__
             return reason
         return deferred_device_or_channel.addCallback(observe_and_add, name).addErrback(log_unavailable, name)
 

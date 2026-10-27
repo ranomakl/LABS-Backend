@@ -52,6 +52,9 @@ else
   done
 fi
 
+echo "--- Geraetestatus-Fenster oeffnen (gruener Haken = an, rotes Kreuz = aus) ---"
+nohup "$BACKEND/.venv/bin/python" "$BACKEND/tools/geraete_fenster.py" >/dev/null 2>&1 &
+
 echo "--- Browser oeffnen: $URL ---"
 nohup chromium "$URL" >/dev/null 2>&1 &
 echo

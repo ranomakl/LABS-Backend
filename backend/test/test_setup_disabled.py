@@ -42,3 +42,19 @@ class SetupDisabledDevicesTest(unittest.TestCase):
             "braucht_tot": ["Geraet tot"],
             "verschachtelt": ["Experiment braucht_aus"],
         })
+
+    @defer.inlineCallbacks
+    def test_device_states_fuer_statusfenster(self):
+        # 27.10.2026: /api/device_states listet ALLE Geraete aus der Config, auch die nicht verbundenen.
+        setup = Setup(CONFIG)
+        yield task.deferLater(reactor, 0.5, lambda: None)
+        states = setup.remote_device_states()
+        self.assertEqual([s["name"] for s in states], ["aus", "tot"])
+        aus, tot = states
+        self.assertFalse(aus["ok"])
+        self.assertEqual(aus["state"], "deaktiviert")
+        self.assertFalse(tot["ok"])
+        self.assertEqual(tot["state"], "nicht verbunden")
+        self.assertTrue(tot["reason"])                      # Fehlertext vorhanden
+        self.assertEqual(tot["address"], "127.0.0.1:1")
+        self.assertEqual(setup.unavailable_devices.keys(), {"tot"})
