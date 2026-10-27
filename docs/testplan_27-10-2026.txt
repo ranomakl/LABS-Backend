@@ -127,3 +127,19 @@ ANOLYT-PUMPE AM GERAET, 14:34         [BESTANDEN]
      test_anolyte_lauf (rate, minutes) nutzen, Commit 3d5a753 (ab naechstem Neustart).
    - Offen: ob "nach rechts" in der Anlage zum Anolytraum foerdert, haengt von der Schlauchfuehrung
      ab - beim Einbau pruefen, sonst Vorzeichen der Rate (negativ = andere Richtung).
+
+4. TROCKENLAUF kolbe_elektrolyse_3x, 14:38-15:08          [BESTANDEN]
+   - Parameter: trocken2710, gc_minutes 0, 0 A x3, max_voltage 2, minutes 1, rate 0, rate_anolyte 0.
+   - Netzteile: alle drei 0 A / 2,00 V / Ausgang an um 14:38:12, Ausgang aus um 14:39:12 (60 s). Spannung
+     im Monitoring bleibt nach dem Abschalten beim letzten Messwert 2,0 V stehen (Messung endet mit dem
+     Ausgang) - kein Fehler, nur zur Einordnung.
+   - GC: 4 Laeufe, 0 fehlgeschlagen: trocken2710_Z1_0 min, dann Abschluss Z1_Ende / Z2_Ende / Z3_Ende je
+     7,6 min mit Ventilumschaltung + 30 s Spuelen. Dateien: logs/2026/10/27/microgc/trocken2710_*.json/.csv.
+   - AUFFAELLIG: H2 steigt von Lauf zu Lauf (4,9 / 5,2 / 8,9 / 16,7 %), O2/N2 sinken, obwohl keine Leitung
+     am GC haengt (Raumluft; Messung davor: 21/78 %). Morgen beim ersten echten Lauf pruefen (Restgas in
+     der Probenleitung? Integrationsfehler? Traegergas?).
+   - BEHOBEN danach: die Ventile ventil_z1-3 fehlten in values.json/Bericht des Laufs, weil das Experiment
+     nur Geraete mit eigenem Befehl abonnierte (die Ventile stellt der GC). Jetzt werden Geraete, die nur
+     unter observables stehen, mitaufgezeichnet (nicht gestoppt/abgewartet). Dummy-Durchlauf: Positionen
+     Z1 B->A, Z2 A->B->A, Z3 A->B aufgezeichnet. Live-Monitoring war davon nie betroffen.
+     Gilt ab dem naechsten Backend-Neustart.

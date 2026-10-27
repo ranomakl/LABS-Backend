@@ -16,7 +16,8 @@ from .experimentstates import *
 
 
 class Experiment(StateMachineMixIn, BaseObservable, IObserver):
-    def __init__(self, factory, commands: list[tuple[Callable, list, dict]], experiment_id: str, devices_and_channels: dict, parameters: dict, stopconditions: list, log_name: str, subexperiments: list):
+    def __init__(self, factory, commands: list[tuple[Callable, list, dict]], experiment_id: str, devices_and_channels: dict, parameters: dict, stopconditions: list, log_name: str, subexperiments: list,
+                 observed_only_devices: Optional[dict] = None):
         self.id = experiment_id
         self.factory = factory
         self.observable_details = factory.experiment_observable_details
@@ -33,8 +34,12 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
         self.text_log_observer = None
         self._log_path = None
         self.devices_and_channels = devices_and_channels
-        self._device_to_name = {device: devicename for devicename, device in self.devices_and_channels.items()}
-        self.observed_updates = {devicename: defaultdict(list) for devicename in self.devices_and_channels.keys()}
+        # 27.10.2026: nur beobachtete Geraete (observables ohne eigenen Befehl, z.B. GC-Ventile) - werden
+        # abonniert und aufgezeichnet, aber nicht gestoppt/abgewartet (s. ExperimentFactory).
+        self.observed_only_devices = dict(observed_only_devices or {})
+        self.observed_devices = {**self.devices_and_channels, **self.observed_only_devices}
+        self._device_to_name = {device: devicename for devicename, device in self.observed_devices.items()}
+        self.observed_updates = {devicename: defaultdict(list) for devicename in self.observed_devices.keys()}
         super().__init__(initial_stateclass=Waiting)
         self.commands = commands
         self.subexperiments = subexperiments
@@ -137,6 +142,8 @@ class Experiment(StateMachineMixIn, BaseObservable, IObserver):
             self._stop_condition = None
         for device in self.devices_and_channels.values():
             device.state = devicestate.Ready
+            device.unsubscribe(self)
+        for device in self.observed_only_devices.values():
             device.unsubscribe(self)
 
     def _stop_devices(self, result):

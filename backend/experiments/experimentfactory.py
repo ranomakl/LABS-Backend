@@ -36,6 +36,15 @@ class ExperimentFactory:
                     if device not in self.devices_and_channels.values():
                         self.devices_and_channels[devicename] = device
 
+        # 27.10.2026: Geraete, die nur unter observables stehen (z.B. die GC-Ventile in kolbe_elektrolyse_3x -
+        # der microGC stellt sie selbst), bekamen keine Updates in values.json/Bericht des Laufs, weil nur
+        # Befehlsgeraete abonniert wurden. Sie werden jetzt mitbeobachtet, aber NICHT gestoppt/abgewartet.
+        self.observed_only_devices = {}
+        for details in self.experiment_observable_details:
+            devicename = details[0]
+            if devicename not in self.devices_and_channels and devicename not in self.observed_only_devices:
+                self.observed_only_devices[devicename] = self.setup.devices_and_channels[devicename]
+
         # then get commandconfig ready
         for command_or_subexp in commandconfig:
             if len(command_or_subexp) == 4:
@@ -98,7 +107,8 @@ class ExperimentFactory:
                     new_kwargs[key] = self._parse_value(value, conditionfactory, **values)
                 commandlist.append((method, new_args, new_kwargs))
         log_name = f"{self.experiment_name} {experiment_id}"
-        return self, commandlist, experiment_id, self.devices_and_channels, parameters, stopconditions, log_name, subexperiments
+        return (self, commandlist, experiment_id, self.devices_and_channels, parameters, stopconditions, log_name,
+                subexperiments, self.observed_only_devices)
 
     def get_experiment(self, experiment_id: str = None, **values) -> Experiment:
         return Experiment(*self._get_experiment_parameters(experiment_id, **values))

@@ -25,7 +25,7 @@ class Running(ExperimentState):
         self.experiment.start_log_observer()
         self.experiment.starting_time = time.time()
         self.experiment.save_run_info()
-        for device in self.experiment.devices_and_channels.values():
+        for device in self.experiment.observed_devices.values():   # Befehls- UND nur beobachtete Geraete
             device.subscribe(self.experiment)
 
 class Finished(ExperimentState):
