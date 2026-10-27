@@ -3,4 +3,5 @@ PyYAML==6.0.2
 Twisted==22.10.0
 pyserial==3.5
 gpiozero==2.0.1.post3
-lgpio; platform_machine == "aarch64"   # 27.10.2026 Pi 5: Pin-Factory fuer gpiozero (Relais-Ventile); unter Windows nicht noetig
+# lgpio (Pi 5, Pin-Factory fuer gpiozero/Relais-Ventile): pip-Build braucht swig. Stattdessen 27.10.2026 das System-
+# Paket python3-lgpio per Symlink ins venv geholt (lgpio.py + _lgpio*.so aus /usr/lib/python3/dist-packages).

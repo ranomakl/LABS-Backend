@@ -188,15 +188,7 @@ devices:
   # simulate: true nutzt gpiozeros Mock-Pinfactory statt echter GPIO-Hardware (fuer Entwicklung
   # ohne Pi, z.B. unter Windows). Fuer den echten Pi weglassen oder auf false setzen - sonst
   # schaltet der Treiber KEIN echtes Relais, auch wenn er sich unauffaellig verhaelt!
-  demo_gpio_valve:
-    driver: raspi_gpio_relay_valve
-    enabled: false       # 07.10.2026: Relaisplatine wird beim Versuch am 08.10. noch nicht gebraucht (nicht verkabelt).
-                         # Eintrag bleibt als Vorlage. Zum Aktivieren: enabled auf true, simulate entfernen, Pins pruefen.
-    address: "GPIO17"    # frei waehlbar, muss pro Ventil eindeutig sein (hier: Pin als Adresse)
-    pin: 17              # BCM-Pinnummer (gpiozero-Zaehlung) - ANNAHME, siehe Treiber-Docstring
-    inverted: true        # Platine wie im obigen Kommentar beschrieben
-    safe_state: "A"        # Ruheposition (spannungslos) beim Start/Stop
-    simulate: true         # Windows-Entwicklung ohne Pi - auf dem Pi entfernen!
+  # demo_gpio_valve (Vorlage, enabled: false) am 27.10.2026 entfernt - die echten Ventile sind ventil_z1-3.
 
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
@@ -789,24 +781,6 @@ experiments:
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Test;LABS" }]
 
   # ---- Relais-Ventile (GPIO) ----
-
-  test_gpio_valve_a:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [demo_gpio_valve, position, str, ""]
-    commands:
-      - [demo_gpio_valve, set_position, ["A"], {}]
-
-  test_gpio_valve_b:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [demo_gpio_valve, position, str, ""]
-    commands:
-      - [demo_gpio_valve, set_position, ["B"], {}]
 
   # 27.10.2026: GC-Ventile einzeln stellen (Platine an Header-Pins 11/13/15). position = A (Ruhelage, Gasweg
   # zum GC zu) oder B (offen). Solange simulate: true an den Ventilen steht, schaltet kein echtes Relais!
