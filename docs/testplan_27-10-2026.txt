@@ -118,3 +118,12 @@ NAECHSTE SCHRITTE
       test_psu2/3_output, stop_psu2/3_output) anlegen.
    d) test_anolyte_speed mit rpm 60 starten -> dreht der Kopf? Drehrichtung notieren. stop_anolyte.
    e) Dann Trockenlauf (Punkt 4).
+
+ANOLYT-PUMPE AM GERAET, 14:34         [BESTANDEN]
+   - kolbe_pumpe_zeit_3x mit rate 0 / rate_anolyte 60 / minutes 1: nur die Anolyt-Pumpe laeuft,
+     Kopf dreht nach rechts (Treiber clockwise=True = Richtung 1), Geraet meldet 68 rpm, laeuft.
+     Katholyt-Pumpe bekam bei rate 0 keinen Startbefehl (Schritt uebersprungen) - wie vorgesehen.
+   - test_anolyte_speed endet sofort (Experimentende stoppt alle Geraete) -> fuer sichtbare Laeufe
+     test_anolyte_lauf (rate, minutes) nutzen, Commit 3d5a753 (ab naechstem Neustart).
+   - Offen: ob "nach rechts" in der Anlage zum Anolytraum foerdert, haengt von der Schlauchfuehrung
+     ab - beim Einbau pruefen, sonst Vorzeichen der Rate (negativ = andere Richtung).
