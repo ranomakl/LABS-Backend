@@ -1,0 +1,8 @@
+## Messstand I
+
+- [ ] Entfernen des Amount-of-Charge - Plots
+- [ ] Entfernen der Plots ohne Floats
+
+- [ ] 3er-Parallelschaltung / Durchführung
+  - [ ] Da wir ja nur eine microGC haben, baue ich einen "Gaswechseler für die GC", der dafür sorgt, dass der Gasstrom der Gase immer abwechselnd an der microGC anliegt. Für dich hier wichtig: du kannst drei GPIO-Pins schonmal definieren, wo der dran soll. Dann kannst du jedem Versuch einen Pin zuordnen. Es darf immer nur ein Pin an sein, aber der, der an ist, leitet den Gasstrom der Reaktion an die microGC! Die microGC-kann im Prinzip ganz normal dann messen, nur das quasi 30 s nachdem jede Messung gestartet ist, das Gas durchwechseln sollte & die Beschriftung der microGC-Messung entsprechend anzupassen ist!
+  - [ ] Anmerkungen: Es wird für alle 3 der pH-Wert gemessen, aber nur für 1 die Leitfähigkeit
