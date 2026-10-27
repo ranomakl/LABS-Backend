@@ -3,3 +3,4 @@ PyYAML==6.0.2
 Twisted==22.10.0
 pyserial==3.5
 gpiozero==2.0.1.post3
+lgpio; platform_machine == "aarch64"   # 27.10.2026 Pi 5: Pin-Factory fuer gpiozero (Relais-Ventile); unter Windows nicht noetig

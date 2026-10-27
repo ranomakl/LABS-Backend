@@ -154,7 +154,7 @@ devices:
     pin: 17                  # BCM 17 = Header-Pin 11 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 1 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
-    simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
+    # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
   ventil_z2:
     driver: raspi_gpio_relay_valve
@@ -162,7 +162,7 @@ devices:
     pin: 27                  # BCM 27 = Header-Pin 13 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 2 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
-    simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
+    # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
   ventil_z3:
     driver: raspi_gpio_relay_valve
@@ -170,7 +170,7 @@ devices:
     pin: 22                  # BCM 22 = Header-Pin 15 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
-    simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
+    # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
   # 16-Kanal-Relaisplatine (12V) an den GPIO-Pins eines Raspberry Pi, schaltet 3/2-Wege-Haehne.
   # Kein Protokoll, keine Rueckmeldung vom Geraet - ein GPIO-Pin wird nur high/low gesetzt.
