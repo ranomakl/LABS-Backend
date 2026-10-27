@@ -152,7 +152,8 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO17"
     pin: 17                  # BCM 17 = Header-Pin 11 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: true
+    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
+                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
     safe_state: "A"            # A = Gasweg Zelle 1 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -160,7 +161,8 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO27"
     pin: 27                  # BCM 27 = Header-Pin 13 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: true
+    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
+                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
     safe_state: "A"            # A = Gasweg Zelle 2 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -168,7 +170,8 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO22"
     pin: 22                  # BCM 22 = Header-Pin 15 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: true
+    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
+                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
     safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -178,8 +181,8 @@ devices:
   # Treiber: backend/drivers/raspi_gpio_relay_valve.py (Basis: relay_3_2_valve_base.py)
   #
   # KRITISCH - Signalinvertierung (siehe grosser Kommentar im Treiber fuer Details/Quelle):
-  #   inverted: true  => .off() schaltet Strom (so verifiziert an dieser Platine)
-  #   inverted: false => normale Platine, .on() schaltet Strom
+  #   inverted: true  => .off() schaltet Strom (Platine eines Kollegen; NICHT die hier verbaute)
+  #   inverted: false => normale Platine, .on() schaltet Strom (DIE HIER VERBAUTE, geprueft 27.10.2026)
   #   Kein Default - vor dem ersten echten Betrieb gegen die tatsaechliche Platine pruefen!
   #
   # safe_state: Position ("A" oder "B"), die beim Start UND bei jedem stop()/shutdown() angefahren
