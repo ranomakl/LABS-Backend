@@ -100,8 +100,16 @@ ANOLYT-PUMPE (zweite WT600-2J), 13:20
    - Meldet "laeuft, 60 rpm, Richtung 1", Kopf dreht sich laut Rafael aber nicht -> erst der echte
      Startbefehl aus dem Backend zeigt, ob sie foerdert.
    - Eingetragen in config.yml: Geraet anolyte_pump (Schlauch 3.2x6.4 = ANNAHME) + Routinen
-     test_anolyte_speed (rpm) / stop_anolyte. Rolle im Ablauf (Dauerumwaelzen? Schritte? Rate?) OFFEN,
-     sagt Rafael spaeter.
+     test_anolyte_speed (rpm) / stop_anolyte.
+   - Rolle laut docs/neuePumpe.txt (13:40): laeuft IMMER, wenn die erste Pumpe laeuft, gleich lang,
+     eigene Rate; bei 3 Zellen je Pumpe eine Rate fuer alle. Umgesetzt in den vier _3x-Routinen:
+     neuer Parameter rate_anolyte (mL/min), Befehl anolyte_pump run_for_minutes mit derselben
+     Dauer, Observables speed_rpm/flow_ml_min. Dummy-Durchlauf kolbe_pumpe_zeit_3x (rate 100,
+     rate_anolyte 200, 0,2 min): beide Pumpen gleichzeitig an (113 / 225 rpm), beide aus, Finished.
+     Pumpenbereich 60-600 rpm = 53-533 mL/min, kleinere Raten werden auf 60 rpm angehoben!
+   - Frontend: nach dem Neustart "Download Experiments from Station" wiederholen; die vier
+     _3x-Routinen muessen den neuen Parameter rate_anolyte bekommen (sonst Routine loeschen und
+     neu anlegen). Einzel-Zellen-Routinen (ohne _3x) sind unveraendert, ohne Anolyt-Pumpe.
 
 NAECHSTE SCHRITTE
    a) Kasten 1 komplett aus und wieder ein (antwortet seit 12:04 nicht).

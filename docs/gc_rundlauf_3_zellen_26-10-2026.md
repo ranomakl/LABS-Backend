@@ -85,6 +85,12 @@ Laeufe 26180_Z1_0 min, 26180_Z2_0.7 min, ... im Kreis mit Ventilumschaltung, dan
 Z1/Z2/Z3, dann Finished. Unit-Tests: backend/test/test_microgc_gasstroeme.py (11), die alten
 test_microgc_abschlussmessung.py (15) laufen weiter.
 
+## Zweite Pumpe (Anolyt), 27.10.2026
+
+Geraet `anolyte_pump` (zweite WT600-2J, Adapter BG01W2OJ). In allen `_3x`-Routinen laeuft sie parallel zur
+`dosing_pump` mit derselben Dauer `minutes` und eigener Rate `rate_anolyte` (Vorgabe docs/neuePumpe.txt).
+Dummy: Port 12358.
+
 ## Offen
 
 - Ventile verkabeln (Relaisplatine), Pins/Invertierung/Ruhelage pruefen, `simulate` entfernen.

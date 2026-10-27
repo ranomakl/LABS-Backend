@@ -701,10 +701,13 @@ experiments:
     stopconditions:
     parameters:
       rate: [float, mL/min]
+      rate_anolyte: [float, mL/min]     # 27.10.2026 zweite Pumpe (Anolyt): eigene Rate, gleiche Dauer
       minutes: [float, min]
     observables:
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
       - [mfc1, flow, float, mL/min]
       - [mfc1, counter, float, mLn]
       - [mfc2, flow, float, mL/min]
@@ -719,12 +722,14 @@ experiments:
       - [mfc3, reset_counter, [], {}]
       - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
 
   kolbe_n2_spuelung_3x:
     conditions:
     stopconditions:
     parameters:
       rate: [float, mL/min]
+      rate_anolyte: [float, mL/min]     # 27.10.2026 zweite Pumpe (Anolyt): eigene Rate, gleiche Dauer
       minutes: [float, min]
     observables:
       - [mfc1, flow, float, mL/min]
@@ -735,6 +740,8 @@ experiments:
       - [mfc3, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
     commands:
       - [mfc1, reset_counter, [], {}]
       - [mfc1, start_measuring, [], { interval: 1.0 }]
@@ -743,6 +750,7 @@ experiments:
       - [mfc3, reset_counter, [], {}]
       - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
 
   kolbe_elektrolyse_3x:
     conditions:
@@ -756,6 +764,7 @@ experiments:
       max_voltage: [float, V]
       minutes: [float, min]
       rate: [float, mL/min]
+      rate_anolyte: [float, mL/min]     # 27.10.2026 zweite Pumpe (Anolyt): eigene Rate, gleiche Dauer
     observables:
       - [psu1, current, float, A]
       - [psu1, voltage, float, V]
@@ -774,6 +783,8 @@ experiments:
       - [mfc3, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
       - [liquiline, ph_ch1_value, float, pH]
       - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
@@ -824,6 +835,7 @@ experiments:
       - [mfc3, reset_counter, [], {}]
       - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
       - [psu1, output_constant_current, [], { current: "{current_z1}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
       - [psu2, output_constant_current, [], { current: "{current_z2}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
       - [psu3, output_constant_current, [], { current: "{current_z3}", max_voltage: "{max_voltage}", minutes: "{minutes}" }]
@@ -835,6 +847,7 @@ experiments:
     parameters:
       minutes: [float, min]
       rate: [float, mL/min]
+      rate_anolyte: [float, mL/min]     # 27.10.2026 zweite Pumpe (Anolyt): eigene Rate, gleiche Dauer
     observables:
       - [mfc1, flow, float, mL/min]
       - [mfc1, counter, float, mLn]
@@ -844,7 +857,10 @@ experiments:
       - [mfc3, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
       - [dosing_pump, running, bool, ""]
+      - [anolyte_pump, running, bool, ""]
     commands:
       - [mfc1, reset_counter, [], {}]
       - [mfc1, start_measuring, [], { interval: 1.0 }]
@@ -853,3 +869,4 @@ experiments:
       - [mfc3, reset_counter, [], {}]
       - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
