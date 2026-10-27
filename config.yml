@@ -105,26 +105,26 @@ devices:
   # Bronkhorst. Steckplaetze am 26.10. mit tools/lese_netzteil.py bzw. tools/lese_mfc.py geprueft - NICHT umstecken.
   psu2:
     driver: joyit_dpm86
-    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.1:1.0-port0      # Hub-Buchse 2.1 (26.10.2026)
+    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.1:1.0-port0      # Hub-Buchse 2.1 (26.10.2026) = Kasten mit Etikett "2" (bestaetigt 27.10.)
     dpm_address: "01"
     voltage_limit: 48.0
     current_limit: 5.0
   psu3:
     driver: joyit_dpm86
-    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.2.1:1.0-port0    # Hub-Buchse 2.2.1 (26.10.2026)
+    address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:2.2.1:1.0-port0    # Hub-Buchse 2.2.1 (26.10.2026) = Kasten mit Etikett "3" (bestaetigt 27.10.)
     dpm_address: "01"
     voltage_limit: 48.0
     current_limit: 5.0
   mfc2:
     driver: bronkhorst_mfc
-    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B1W6-if00-port0   # M18212352C, 50 mln/min N2
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B1W6-if00-port0   # M18212352C, 50 mln/min N2 = Etikett "2" (bestaetigt 27.10.)
     node: "03"
     max_flow_ml_min: 50.0
     serial_parameters:
       baudrate: 38400
   mfc3:
     driver: bronkhorst_mfc
-    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B8RX-if00-port0   # M18216421B, 20 mln/min N2 (Geraet meldet 20000 uln/min)
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B8RX-if00-port0   # M18216421B, 20 mln/min N2 (Geraet meldet 20000 uln/min) = Etikett "3" (bestaetigt 27.10.)
     node: "03"
     max_flow_ml_min: 20.0
     serial_parameters:

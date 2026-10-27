@@ -1,0 +1,83 @@
+TESTPLAN 27.10.2026 - Vorbereitung auf den 3x-Lauf am 28.10.2026
+=================================================================
+
+Stand heute Vormittag:
+- Desktop-Symbole "LABS starten" / "LABS beenden" getestet, funktionieren.
+- Neu: Statusfenster "LABS Geraete" nach dem Start (gruener Haken = an, rotes Kreuz = aus).
+  Erscheint ab dem naechsten "LABS beenden" + "LABS starten".
+- Beim Start um 11:04 waren alle drei Netzteile AUS, alles andere war verbunden.
+- Relaisplatine (3 Ventile fuer die Gaswege Bronkhorst -> microGC) kommt spaeter,
+  bis dahin simulate: true in config.yml. Der GC-Rundlauf laeuft trotzdem.
+
+Empfohlene Reihenfolge: 1 -> 3 -> 4 (blockieren sonst den Start morgen),
+danach 2 und 5 (Sicherheit, Genauigkeit), 6 ist eine Entscheidung.
+
+
+1. ERSTER START AM ECHTEN AUFBAU MIT ALLEN GERAETEN AN          [BESTANDEN 11:41 - alle 12 Ready, kolbe_elektrolyse_3x verfuegbar]
+   - Alle drei Netzteile UND alle drei Bronkhorst einschalten (MFC 3 braucht sein Steckernetzteil).
+   - "LABS beenden", dann "LABS starten".
+   - Statusfenster muss komplett gruen sein. Echte Geraete sind 9:
+       3x Netzteil (psu1-3), 3x Bronkhorst (mfc1-3), Pumpe, Liquiline, microGC.
+     Dazu zeigt das Fenster 3 simulierte GC-Ventile (ventil_z1-3), die sind immer gruen,
+     weil noch keine Relaisplatine dran ist. demo_gpio_valve grau = ok (deaktiviert).
+   - Damit ist auch bestaetigt, dass die Netzteil-Steckplaetze noch stimmen:
+     psu1 = Hub 2.4.2, psu2 = Hub 2.1, psu3 = Hub 2.2.1. USB-Stecker NICHT umstecken.
+   - Hintergrund: das neue 3x-Backend lief am 26.10. nur mit Dummys.
+
+ZUORDNUNG GERAETE <-> ZELLEN (Etiketten von Rafael, 27.10.)
+   - Bronkhorst: BESTAETIGT nach Seriennummer. Etikett 1 = mfc1 (M18212352B, 50), Etikett 2 = mfc2
+     (M18212352C, 50), Etikett 3 = mfc3 (M18216421B, 20). Bronkhorst haben kein Display.
+   - Netzteile: BESTAETIGT 12:05. Kaesten haben kein Display, deshalb Kasten "2" ausgeschaltet und LABS
+     neu gestartet -> psu2 rot, psu1/psu3 gruen. Etikett 1 = psu1 (Buchse 2.4.2), Etikett 2 = psu2 (2.1),
+     Etikett 3 = psu3 (2.2.1). Kasten 2 danach wieder einschalten und LABS neu starten!
+   - Routinen test_psu2_output / stop_psu2_output / test_psu3_output / stop_psu3_output (Commit 62f90d4)
+     gibt es jetzt trotzdem, fuer Einzeltests der Netzteile (im Frontend noch per "Download Experiments
+     from Station" holen).
+
+2. NETZTEIL-KURZTEST JE ZELLE, OHNE ZELLE
+   - test_psu_output mit 2 V nacheinander fuer psu1, psu2, psu3; am Display pruefen,
+     dass das RICHTIGE Netzteil reagiert. Danach stop_psu_output.
+   - Fehlerpfad gleich mitpruefen: bei einem laufenden test_psu_output kurz das USB-Kabel ziehen.
+     Erwartung: Backend meldet Fehler, Netzteil-Ausgang geht aus, Experiment endet als Failed.
+     (Dieser Test am echten Geraet steht seit 08.10. offen, bisher nur mit Dummys.)
+
+3. ROUTINEN IM FRONTEND ANLEGEN          [ERLEDIGT ~11:50 - 4 Routinen in der Frontend-DB, Parameter + Station stimmen]
+   - Administration -> Routines -> "Download Experiments from Station".
+   - Dann die vier Routinen anlegen:
+       kolbe_pumpe_zeit_3x
+       kolbe_n2_spuelung_3x
+       kolbe_elektrolyse_3x
+       kolbe_gas_zaehlen_pumpe_3x
+   - Ohne diese Routinen kann morgen nichts gestartet werden.
+
+4. KURZER TROCKENLAUF kolbe_elektrolyse_3x
+   - Ohne Zellen. Parameter im Frontend:
+       versuch      = trocken2710     (Name der GC-Laeufe)
+       gc_minutes   = 0               (Dauermessung: GC misst Z1, Z2, Z3 im Kreis)
+       current_z1/2/3 = 0             (0 A ist im Treiber erlaubt)
+       max_voltage  = 2               (Ausgang geht AN; ohne Zelle liegt diese Spannung an
+                                       den Klemmen - deshalb klein halten, nicht 48!)
+       minutes      = 1
+       rate         = 0               (Pumpe ueberspringt den Schritt bei 0 mL/min)
+   - Dauer: ein GC-Lauf dauert ca. 7,6 min. Waehrend der 1 min Elektrolyse laeuft Z1 an, danach
+     Abschlussmessung je Zelle Z1/Z2/Z3 plus 30 s Spuelzeit -> insgesamt ca. 30-35 min, bis das
+     Experiment "Finished" meldet. Nicht vorher stoppen, sonst fehlt der Abschluss-Test.
+   - Pruefen: Namen der GC-Laeufe (trocken2710_Z1 ..., trocken2710_Z1_Ende ...), Monitoring zeigt
+     drei Linien je Observable und die Tabelle "Cells" mit Z1/Z2/Z3, Netzteil-Ausgaenge nach 1 min
+     wieder aus, Log ohne "nicht verfuegbar" / "uebersprungen" / "Gasstrom-Ventil".
+   - Ventile sind simuliert (position-Observable wechselt A/B, aber kein Relais schaltet).
+
+5. 20er-MFC (mfc3): ZAEHLER-EINHEIT PRUEFEN
+   - Bekanntes Gasvolumen durch mfc3 lassen und mit der gezaehlten Zahl vergleichen.
+   - Das Geraet meldet seinen Bereich in uln/min, der Treiber rechnet mit max_flow_ml_min 20.0.
+   - Ein Faktor 1000 wuerde morgen die Gasbilanz von Zelle 3 verfaelschen.
+
+6. LIQUILINE-KANAELE (Entscheidung)
+   - Wie viele pH-Sensoren sind morgen dran? Aktuell liest das Backend nur Zelle 1
+     (ph_ch1, conductivity, temperature).
+   - Jeder weitere Sensor = ein Eintrag in config.yml unter liquiline/channels.
+
+
+BEENDEN AM ENDE DES TAGES
+   - Erst "LABS beenden" (schaltet Netzteile ab, MFC-Ventile in Ruhelage),
+     dann Pi herunterfahren, dann Geraete aus. Nur das Terminalfenster schliessen reicht NICHT.
