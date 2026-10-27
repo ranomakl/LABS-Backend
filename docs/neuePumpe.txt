@@ -1,0 +1,3 @@
+2. pumpe: für jede Reaktion 2 pumpkanäle für anolyt katolyt sollen gleich lang laufen, ziel ist pumpgeschwindigkeit unabhängig zu wählen, bei 3 parallel versuchen ist katolyt anolyt die gleiche. wir brauchen 6 kanäle bei 2 kammer Setup. Veränderung von 1 kammer auf 2 kammer.
+
+vereinfacht gesagt! wir haben eine neue pumpe die soll auch immer laufen wenn die andere läuft, soll aber eigens eingestellt werden!
