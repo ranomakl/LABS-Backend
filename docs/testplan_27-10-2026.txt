@@ -81,3 +81,32 @@ ZUORDNUNG GERAETE <-> ZELLEN (Etiketten von Rafael, 27.10.)
 BEENDEN AM ENDE DES TAGES
    - Erst "LABS beenden" (schaltet Netzteile ab, MFC-Ventile in Ruhelage),
      dann Pi herunterfahren, dann Geraete aus. Nur das Terminalfenster schliessen reicht NICHT.
+
+
+ZWISCHENSTAND 12:15 (vor der Pause)
+   - Kasten 1 (psu1, Buchse 2.4.2) antwortet seit dem Start 12:04:58 nicht mehr, auch nicht bei der direkten
+     Abfrage mit tools/lese_netzteil.py (0/9 Antworten; Kasten 2 und 3: 9/9, 0 V / 0 A / 26 degC).
+     USB-Wandler ist sichtbar, das Netzteilmodul dahinter schweigt -> Spannung am 48-V-Eingang pruefen,
+     Kasten 1 komplett aus und wieder ein, dann LABS neu starten.
+   - dmesg 12:09:56: "usb 3-2.2-port1: disabled by hub (EMI?)" und 12:09:59 USB-Disconnect an 2.4.2,
+     jeweils waehrend am Kasten geschaltet wurde. Ein-/Ausschalten der Kaesten stoert den USB-Hub.
+     REGEL fuer morgen: erst alle Kaesten einschalten, dann LABS starten; waehrend des Laufs nicht an
+     den Netzteilen schalten.
+   - Backend um 12:11 aus (LABS beenden).
+
+ANOLYT-PUMPE (zweite WT600-2J), 13:20
+   - Adapter BG01W2OJ jetzt an Hub 2.2.3. Lese-Scan: 1200 Baud 8E1, Adresse 1, 10/10 Antworten -> das
+     Antwortproblem vom 06.10. ist weg (vermutlich Masse jetzt dran).
+   - Meldet "laeuft, 60 rpm, Richtung 1", Kopf dreht sich laut Rafael aber nicht -> erst der echte
+     Startbefehl aus dem Backend zeigt, ob sie foerdert.
+   - Eingetragen in config.yml: Geraet anolyte_pump (Schlauch 3.2x6.4 = ANNAHME) + Routinen
+     test_anolyte_speed (rpm) / stop_anolyte. Rolle im Ablauf (Dauerumwaelzen? Schritte? Rate?) OFFEN,
+     sagt Rafael spaeter.
+
+NAECHSTE SCHRITTE
+   a) Kasten 1 komplett aus und wieder ein (antwortet seit 12:04 nicht).
+   b) "LABS beenden" / "LABS starten" -> Statusfenster: alle gruen inkl. anolyte_pump.
+   c) Frontend: "Download Experiments from Station", Routinen test_anolyte_speed, stop_anolyte (und
+      test_psu2/3_output, stop_psu2/3_output) anlegen.
+   d) test_anolyte_speed mit rpm 60 starten -> dreht der Kopf? Drehrichtung notieren. stop_anolyte.
+   e) Dann Trockenlauf (Punkt 4).

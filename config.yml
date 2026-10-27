@@ -58,6 +58,18 @@ devices:
       3.2x6.4: 0.8883          # Laborangabe: Standardschlauch, 60-600 rpm = 53,3-533 mL/min
     # Alter Dummy-Eintrag (LABS-DeviceDummys): address: 127.0.0.1:12352
 
+  # 27.10.2026 zweite WT600-2J fuer den Anolyten (Rolle im Ablauf noch offen - Rafael sagt spaeter, ob
+  # Dauerumwaelzen oder Befuellen, in welchen Schritten, welche Rate). Adapter BG01W2OJ an Hub 2.2.3,
+  # Scan 27.10. 13:20: 1200 Baud 8E1, Adresse 1, antwortet stabil (10/10). Meldet "laeuft 60 rpm", obwohl
+  # der Kopf steht - echter Start erst mit test_anolyte_speed pruefen.
+  anolyte_pump:
+    driver: longer_wt600
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01W2OJ-if00-port0
+    pump_address: 1
+    tubing: "3.2x6.4"          # ANNAHME: gleicher Schlauch wie dosing_pump - beim Einbau pruefen!
+    tubing_table:
+      3.2x6.4: 0.8883
+
   liquiline:
     driver: endress_hauser_liquiline
     # 12.10.2026: LAEUFT. Modbus RTU, 19200 Baud, 8E1, Adresse 247, Adapter BG01XFU4 - am Geraet
@@ -548,6 +560,28 @@ experiments:
     observables:
     commands:
       - [dosing_pump, stop_pumping, [], {}]
+
+  # 27.10.2026: dieselben Tests fuer die Anolyt-Pumpe (zweite WT600-2J)
+  test_anolyte_speed:
+    conditions:
+    stopconditions:
+    parameters:
+      rpm: [float, rpm]
+    observables:
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
+    commands:
+      - [anolyte_pump, set_speed, [], { rpm: "{rpm}" }]
+      - [anolyte_pump, start_pumping, [], {}]
+      - [anolyte_pump, read_speed, [], {}]
+
+  stop_anolyte:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [anolyte_pump, stop_pumping, [], {}]
 
   # ---- Liquiline (Endress+Hauser CM448), Modbus RTU, seit 12.10.2026 am Geraet verifiziert ----
 
