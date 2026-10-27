@@ -143,3 +143,9 @@ ANOLYT-PUMPE AM GERAET, 14:34         [BESTANDEN]
      unter observables stehen, mitaufgezeichnet (nicht gestoppt/abgewartet). Dummy-Durchlauf: Positionen
      Z1 B->A, Z2 A->B->A, Z3 A->B aufgezeichnet. Live-Monitoring war davon nie betroffen.
      Gilt ab dem naechsten Backend-Neustart.
+
+GASWECHSLER VARIANTE B, 15:35          [UMGESETZT, Dummy-Durchlauf OK]
+   - Entscheidung Rafael: 60 s nach dem Start eines GC-Laufs schon auf den naechsten Gasstrom umschalten
+     (config.yml microgc switch_after_s: 60). Naechster Lauf ohne Umschalten/Spuelzeit.
+   - Gilt ab dem naechsten Backend-Neustart. Morgen im Log pruefen: Zeile "Probenahme vorbei - Ventile
+     schon auf Gasstrom ..." ~60 s nach "wird gestartet", und der Folgelauf startet ohne "dann 30 s spuelen".

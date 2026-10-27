@@ -100,6 +100,9 @@ devices:
     # Messplan im Kreis misst (run_schedule_named ... streams: "alle"). Je Strom die Ventilstellungen, die
     # den Gasweg dieser Zelle zum GC oeffnen und die anderen schliessen. flush_s = Spuelzeit nach dem Umschalten.
     flush_s: 30
+    switch_after_s: 10       # Dummy: 10 s (ein Dummy-Lauf dauert nur ~40 s); echt 60 s. 27.10.2026 Variante B (Rafael): 60 s nach dem Start eines Laufs schon auf den
+                             # naechsten Gasstrom umschalten (Probenahme vorbei, Leitung spuelt waehrend der
+                             # 7,6 min Trennung). 0 = wie vorher (erst vor dem Lauf umschalten + flush_s warten).
     streams:
       - { name: Z1, valves: { ventil_z1: B, ventil_z2: A, ventil_z3: A } }
       - { name: Z2, valves: { ventil_z1: A, ventil_z2: B, ventil_z3: A } }

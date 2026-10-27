@@ -85,6 +85,16 @@ Laeufe 26180_Z1_0 min, 26180_Z2_0.7 min, ... im Kreis mit Ventilumschaltung, dan
 Z1/Z2/Z3, dann Finished. Unit-Tests: backend/test/test_microgc_gasstroeme.py (11), die alten
 test_microgc_abschlussmessung.py (15) laufen weiter.
 
+## Vorgezogenes Umschalten (Variante B), 27.10.2026
+
+`switch_after_s: 60` am microgc (config.yml): 60 s nach dem Start eines Laufs stellt der Treiber die Ventile
+schon auf den Gasstrom, den der naechste Lauf voraussichtlich misst (`_peek_next_stream`: naechster im Kreis,
+sonst Beginn der Abschlussserie). Die Probenahme des GC ist dann vorbei, die Leitung spuelt waehrend der
+7,6 min Trennung; der naechste Lauf schaltet nicht mehr um und wartet kein `flush_s`. Nur solange der Lauf,
+der den Timer gesetzt hat, noch der aktive ist. Trifft die Vorhersage nicht zu (z.B. Dauermessung endet
+waehrend des Laufs), schaltet der naechste Lauf wie bisher um und wartet `flush_s`. `switch_after_s: 0` =
+altes Verhalten. Dummy-Config: 10 s, weil ein Dummy-Lauf nur ~40 s dauert.
+
 ## Zweite Pumpe (Anolyt), 27.10.2026
 
 Geraet `anolyte_pump` (zweite WT600-2J, Adapter BG01W2OJ). In allen `_3x`-Routinen laeuft sie parallel zur

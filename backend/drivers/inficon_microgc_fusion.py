@@ -253,6 +253,7 @@ class _Schedule:
         self.timers = []
         self.due = []            # faellige, noch nicht gestartete Zeitpunkte (min)
         self.active = None       # Zeitpunkt des gerade laufenden Laufs
+        self.active_name = None  # Name des gerade laufenden Laufs (fuer das vorgezogene Umschalten)
         self.remaining = len(self.minutes)   # im Dauermodus: offen (wird bei jedem Start erhoeht)
         self.done = 0
         self.failed = 0
@@ -425,7 +426,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     }
 
     def __init__(self, address, *args, connect_timeout: float = 5.0, streams=None, flush_s: float = 0.0,
-                 **kwargs):
+                 switch_after_s: float = 0.0, **kwargs):
         """
         :param address: feste IP (oder IP:Port, z.B. fuer die Dummy-Umgebung) des Geraets im
                          Netzwerk - kein serieller Port.
@@ -434,6 +435,11 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                          Die Ventile sind eigene Geraete (z.B. raspi_gpio_relay_valve); Setup reicht sie
                          nach dem Verbinden ueber link_devices() herein.
         :param flush_s: Spuelzeit in Sekunden nach dem Umschalten der Ventile, bevor der Lauf startet.
+        :param switch_after_s: (27.10.2026, "Variante B", Entscheidung Rafael) > 0: so viele Sekunden nach dem
+                         Start eines Laufs werden die Ventile SCHON auf den naechsten Gasstrom gestellt - die
+                         Probenahme des microGC ist dann vorbei, und die Leitung spuelt waehrend der Trennzeit.
+                         Beim naechsten Lauf stehen die Ventile bereits, Umschalten + flush_s entfallen.
+                         0 = wie bisher: erst vor dem Lauf umschalten und flush_s warten.
         :param connect_timeout: TCP-Verbindungsaufbau-Timeout in Sekunden (aus config.yml).
                                  Das Antwort-Timeout pro Anfrage kommt ueber den bestehenden,
                                  generischen Mechanismus aus config.yml: `command_parameters:
@@ -448,6 +454,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             except (KeyError, TypeError, ValueError) as error:
                 raise ValueError(f"microgc streams: Eintrag {entry!r} braucht 'name' und 'valves'") from error
         self.flush_s = float(flush_s)
+        self.switch_after_s = float(switch_after_s)
         self._valves = {}            # Ventilname -> Geraet (nach link_devices)
         super().__init__(address, *args, **kwargs)
 
@@ -744,11 +751,13 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             name = f"{_stream_prefix(schedule.prefix, stream)}_Ende {minute:g} min"
             self.log.info("GC-Abschlussmessung '{name}' nach dem Ende der Elektrolyse.", name=name)
         schedule.active = minute
+        schedule.active_name = name
         d = self._schedule_run(schedule, name, minute, stream=stream)
         d.addBoth(self._schedule_run_done, schedule, minute, name)
 
     def _schedule_run_done(self, result, schedule, minute, name):
         schedule.active = None
+        schedule.active_name = None
         schedule.remaining -= 1
         if isinstance(result, failure.Failure):
             schedule.failed += 1
@@ -825,6 +834,49 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         ask()
         return result
 
+    def _peek_next_stream(self, schedule):
+        """Gasstrom, den der NAECHSTE Lauf voraussichtlich misst (None: keiner mehr / keine Streams)."""
+        if schedule.cancelled or not schedule.streams:
+            return None
+        if schedule.final_pending is not None:          # Abschlussmessungen laufen gerade der Reihe nach
+            return schedule.final_streams[0] if schedule.final_streams else None
+        more_regular = bool(schedule.due)
+        if schedule.continuous:
+            more_regular = more_regular or (schedule.until_s is not None
+                                            and time.time() - schedule.t0 < schedule.until_s)
+        else:
+            more_regular = more_regular or schedule.remaining > 1   # remaining zaehlt den aktiven Lauf mit
+        if more_regular:
+            return schedule.streams[schedule.stream_index % len(schedule.streams)]
+        if not schedule.final_done:                      # als naechstes kommt die Abschlussserie, Beginn Z1
+            return schedule.streams[0]
+        return None
+
+    def _preswitch_stream(self, schedule, name):
+        """27.10.2026 Variante B: switch_after_s nach dem Start von Lauf `name` die Ventile schon auf den
+        naechsten Gasstrom stellen (Probenahme ist vorbei, Leitung spuelt waehrend der Trennzeit). Nur,
+        wenn dieser Lauf noch der aktive ist. Trifft die Vorhersage nicht zu, schaltet switch_stream im
+        naechsten Lauf wie bisher um (mit flush_s)."""
+        if schedule.cancelled or schedule.active_name != name:
+            return None
+        stream = self._peek_next_stream(schedule)
+        if stream is None or stream == schedule.last_stream:
+            return None
+        positions = self.streams[stream]
+        self.log.info("GC-Lauf '{name}': Probenahme vorbei - Ventile schon auf Gasstrom {stream} {valves} "
+                      "(Leitung spuelt waehrend der Trennung).", name=name, stream=stream, valves=positions)
+        writes = [self._valves[valve].set_position(position).deferred_result
+                  for valve, position in positions.items()]
+        d = defer.gatherResults(writes, consumeErrors=True)
+
+        def switched(_):
+            schedule.last_stream = stream
+        d.addCallback(switched)
+        d.addErrback(lambda f: self.log.error(
+            "GC-Lauf '{name}': vorgezogenes Umschalten auf {stream} fehlgeschlagen: {err} - wird vor dem "
+            "naechsten Lauf nachgeholt.", name=name, stream=stream, err=f.value.subFailure.getErrorMessage()))
+        return d
+
     def _schedule_run(self, schedule, name, minute, stream=None):
         state = {}
 
@@ -874,6 +926,14 @@ class Device(BaseDevice, SinglechannelBaseDevice):
             return self.write("RUN", command_values={"json_body": body}, urgent=True,
                               run_while_device_busy=True).deferred_result
 
+        def arm_preswitch(result):
+            # 27.10.2026 Variante B (s. _preswitch_stream): Timer ab Laufstart
+            if self.switch_after_s > 0 and stream is not None:
+                timer = self.callLater(self.switch_after_s, self._preswitch_stream, schedule, name)
+                if hasattr(timer, "active"):
+                    schedule.timers.append(timer)
+            return result
+
         def wait_finished(_):
             def done(system, seen):
                 was_active = any(s in ACTIVE_STATES for s in seen)
@@ -905,6 +965,7 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         d.addCallback(switch_stream)
         d.addCallback(remember_location)
         d.addCallback(start_run)
+        d.addCallback(arm_preswitch)
         d.addCallback(wait_finished)
         d.addCallback(fetch_location)
         d.addCallback(fetch_data)

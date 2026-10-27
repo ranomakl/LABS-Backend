@@ -113,6 +113,7 @@ def _real_run_device(flush_s=7.0):
     device.update_observables = lambda values, timestamp=None: device.updates.append(dict(values))
     device.log = _Log()
     device.flush_s = flush_s
+    device.switch_after_s = 0.0
     device.valve_log = []
     device.v1, device.v2 = _FakeValve(device.valve_log), _FakeValve(device.valve_log)
     device.streams = {"Z1": {"ventil_1": "A", "ventil_2": "B"}, "Z2": {"ventil_1": "B", "ventil_2": "A"}}
@@ -179,6 +180,66 @@ class SwitchStreamTests(unittest.TestCase):
         self.assertEqual(device.v1.positions, ["A", "B"])
         self.assertEqual(device.v2.positions, ["B", "A"])
         self.assertEqual(device.waits, [])   # flush_s 0: kein Warten
+
+
+class PreswitchTests(unittest.TestCase):
+    """27.10.2026 Variante B: switch_after_s nach dem Laufstart stehen die Ventile schon auf dem naechsten
+    Strom; der naechste Lauf schaltet dann nicht mehr um und wartet kein flush_s."""
+
+    def _schedule(self, device, **kwargs):
+        schedule = gc._Schedule("26180", [], [0, 10], 5, self.mktemp(), until_minutes=30, streams=["Z1", "Z2"], **kwargs)
+        return schedule
+
+    def test_valves_switch_to_next_stream_after_start(self):
+        device = _real_run_device(flush_s=7.0)
+        device.switch_after_s = 60.0
+        schedule = self._schedule(device)
+        schedule.next_stream()                       # wie _schedule_next: Z1 ist dran, Z2 kommt als naechstes
+        schedule.active_name = "a"
+        device._schedule_run(schedule, "a", 0, stream="Z1")
+        self.assertEqual(device.v1.positions, ["A", "B"])   # Z1, dann vorgezogen Z2
+        self.assertEqual(device.v2.positions, ["B", "A"])
+        self.assertEqual(device.waits, [7.0, 60.0])          # einmal flush, dann der Umschalt-Timer
+        self.assertEqual(schedule.last_stream, "Z2")
+        # naechster Lauf Z2: Ventile stehen schon -> kein Umschalten, kein flush; nach dem Start wird
+        # wieder vorgezogen auf den dann naechsten Strom (Z1) gestellt
+        schedule.next_stream()
+        schedule.active_name = "b"
+        device._schedule_run(schedule, "b", 10, stream="Z2")
+        self.assertEqual(device.v1.positions, ["A", "B", "A"])
+        self.assertEqual(device.waits, [7.0, 60.0, 60.0])    # nur ein weiterer Timer, kein zweites flush
+        self.assertEqual(schedule.last_stream, "Z1")
+
+    def test_disabled_by_default(self):
+        device = _real_run_device(flush_s=0.0)
+        schedule = self._schedule(device)
+        schedule.active_name = "a"
+        device._schedule_run(schedule, "a", 0, stream="Z1")
+        self.assertEqual(device.v1.positions, ["A"])
+        self.assertEqual(device.waits, [])
+
+    def test_ignored_when_run_is_no_longer_active(self):
+        device = _real_run_device(flush_s=0.0)
+        device.switch_after_s = 60.0
+        schedule = self._schedule(device)
+        schedule.active_name = "anderer Lauf"
+        device._schedule_run(schedule, "a", 0, stream="Z1")
+        self.assertEqual(device.v1.positions, ["A"])         # kein vorgezogenes Umschalten
+        self.assertEqual(schedule.last_stream, "Z1")
+
+    def test_peek_next_stream(self):
+        device = _real_run_device()
+        schedule = self._schedule(device, final_run=True)
+        schedule.next_stream()
+        self.assertEqual(device._peek_next_stream(schedule), "Z2")       # Listenmodus, remaining 2
+        schedule.remaining = 1
+        self.assertEqual(device._peek_next_stream(schedule), "Z1")       # danach Abschlussserie ab Z1
+        schedule.final_done = True
+        self.assertIsNone(device._peek_next_stream(schedule))            # nichts mehr
+        schedule.final_pending = 30.0; schedule.final_streams = ["Z2"]
+        self.assertEqual(device._peek_next_stream(schedule), "Z2")       # Abschluss: naechster der Reihe
+        schedule.cancelled = True
+        self.assertIsNone(device._peek_next_stream(schedule))
 
 
 class StreamNamesTests(unittest.TestCase):
