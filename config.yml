@@ -151,7 +151,7 @@ devices:
   ventil_z1:
     driver: raspi_gpio_relay_valve
     address: "GPIO17"
-    pin: 17                  # ANNAHME, beim Verkabeln pruefen
+    pin: 17                  # BCM 17 = Header-Pin 11 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 1 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
@@ -159,7 +159,7 @@ devices:
   ventil_z2:
     driver: raspi_gpio_relay_valve
     address: "GPIO27"
-    pin: 27                  # ANNAHME, beim Verkabeln pruefen
+    pin: 27                  # BCM 27 = Header-Pin 13 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 2 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
@@ -167,7 +167,7 @@ devices:
   ventil_z3:
     driver: raspi_gpio_relay_valve
     address: "GPIO22"
-    pin: 22                  # ANNAHME, beim Verkabeln pruefen
+    pin: 22                  # BCM 22 = Header-Pin 15 (Rafael 27.10.2026: Platine an Pins 11/13/15)
     inverted: true
     safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     simulate: true             # Ventile noch nicht verkabelt (26.10.2026) - auf dem Pi entfernen, sobald sie dran sind!
@@ -541,6 +541,104 @@ experiments:
     commands:
       - [mfc1, stop_flow, [], {}]
 
+  # 27.10.2026: dieselben Tests fuer mfc2 (Etikett 2, 50 mln/min) und mfc3 (Etikett 3, 20 mln/min), dazu je ein
+  # Zaehlschritt mit Dauer (test_mfcN_zaehlen) - damit laesst sich die Zaehler-Einheit des 20ers pruefen:
+  # bekanntes Volumen durchlassen, Zaehler (mLn) vergleichen.
+
+  test_mfc1_zaehlen:         # Zaehler auf 0, dann 'minutes' lang Fluss + Zaehler lesen (Ventil bleibt offen)
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+    commands:
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, measure_for_minutes, [], { minutes: "{minutes}" }]
+
+  test_mfc2_setpoint:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+    observables:
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, ""]
+    commands:
+      - [mfc2, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc2, measure_flow, [], {}]
+
+  test_mfc2_counter:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [mfc2, counter, float, ""]
+    commands:
+      - [mfc2, read_counter, [], {}]
+
+  stop_mfc2:                 # ACHTUNG: schliesst das Ventil = Gasweg zu
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [mfc2, stop_flow, [], {}]
+
+  test_mfc2_zaehlen:         # Zaehler auf 0, dann 'minutes' lang Fluss + Zaehler lesen (Ventil bleibt offen)
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+    commands:
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, measure_for_minutes, [], { minutes: "{minutes}" }]
+
+  test_mfc3_setpoint:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+    observables:
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, ""]
+    commands:
+      - [mfc3, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc3, measure_flow, [], {}]
+
+  test_mfc3_counter:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [mfc3, counter, float, ""]
+    commands:
+      - [mfc3, read_counter, [], {}]
+
+  stop_mfc3:                 # ACHTUNG: schliesst das Ventil = Gasweg zu
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [mfc3, stop_flow, [], {}]
+
+  test_mfc3_zaehlen:         # Zaehler auf 0, dann 'minutes' lang Fluss + Zaehler lesen (Ventil bleibt offen)
+    conditions:
+    stopconditions:
+    parameters:
+      minutes: [float, min]
+    observables:
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+    commands:
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, measure_for_minutes, [], { minutes: "{minutes}" }]
+
   # ---- Pumpe (Longer WT600-2J) ----
 
   test_wt600_speed:
@@ -709,6 +807,39 @@ experiments:
       - [demo_gpio_valve, position, str, ""]
     commands:
       - [demo_gpio_valve, set_position, ["B"], {}]
+
+  # 27.10.2026: GC-Ventile einzeln stellen (Platine an Header-Pins 11/13/15). position = A (Ruhelage, Gasweg
+  # zum GC zu) oder B (offen). Solange simulate: true an den Ventilen steht, schaltet kein echtes Relais!
+  test_ventil_z1:
+    conditions:
+    stopconditions:
+    parameters:
+      position: [str, ""]
+    observables:
+      - [ventil_z1, position, str, ""]
+    commands:
+      - [ventil_z1, set_position, [], { position: "{position}" }]
+
+  test_ventil_z2:
+    conditions:
+    stopconditions:
+    parameters:
+      position: [str, ""]
+    observables:
+      - [ventil_z2, position, str, ""]
+    commands:
+      - [ventil_z2, set_position, [], { position: "{position}" }]
+
+  test_ventil_z3:
+    conditions:
+    stopconditions:
+    parameters:
+      position: [str, ""]
+    observables:
+      - [ventil_z3, position, str, ""]
+    commands:
+      - [ventil_z3, set_position, [], { position: "{position}" }]
+
 
   # ---- 26.10.2026 Drei Zellen parallel (docs/gc_rundlauf_3_zellen_26-10-2026.md) ----
   # Ein Experiment fuer alle drei Zellen: psu1-3 und mfc1-3 je Zelle, EINE Pumpe fuer alle, EINE Liquiline,
