@@ -1,0 +1,4 @@
+bevor exp. losgeht muss zelle gefüllt werden mit lösung dann vorbereitungsschritte (gas etc)
+pumpe ist nur remote steuerbar (?), es gibt manuelle schritte
+
+- massefluss von bronkhorst muss live einsehbar sein, Spannung und Stromstärke, timer wie lange versuch, ph wert und Leitfähigkeit Temperatur (liquiline), flussrate der pumpe 
