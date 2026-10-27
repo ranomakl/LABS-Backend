@@ -583,6 +583,21 @@ experiments:
     commands:
       - [anolyte_pump, stop_pumping, [], {}]
 
+  # 27.10.2026: test_anolyte_speed endet sofort (Experimentende stoppt alle Geraete) - fuer einen sichtbaren
+  # Lauf diese Routine mit Dauer nehmen. rate in mL/min (60-600 rpm = ca. 53-533 mL/min bei Schlauch 3.2x6.4).
+  test_anolyte_lauf:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, running, bool, ""]
+    commands:
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
   # ---- Liquiline (Endress+Hauser CM448), Modbus RTU, seit 12.10.2026 am Geraet verifiziert ----
 
   test_liquiline_ph:
