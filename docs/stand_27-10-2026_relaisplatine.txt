@@ -1,0 +1,90 @@
+STAND 27.10.2026, 16:00 - RELAISPLATINE (GC-VENTILE) UND TAGESZUSAMMENFASSUNG
+==============================================================================
+Alles unten ist committet und gepusht (LABS-Backend bis 55787c2, Frontend 6bb6660, Dummys 2c3cfab).
+Aufgabenliste des Tages: docs/testplan_27-10-2026.txt (mit Ergebnissen).
+
+----------------------------------------------------------------------------
+1. OFFENES PROBLEM: RELAISPLATINE - RELAIS LASSEN SICH VOM PI NICHT AUSSCHALTEN
+----------------------------------------------------------------------------
+Aufbau:  16-Kanal-Relaisplatine, eigenes Netzteil (12 V), Masse mit dem Pi verbunden.
+         Kanaele 1-3 an Pi-Header-Pins 11 / 13 / 15 = BCM 17 / 27 / 22 = ventil_z1 / z2 / z3.
+Befund:  Beim Start des Backends ziehen alle drei Relais an (LEDs rot), egal ob die Pins auf
+         3,3 V (inverted: true, 15:50 Uhr) oder auf Masse (inverted: false, 15:53 Uhr) liegen.
+         Die 13 unbelegten Kanaele bleiben aus. Ohne laufendes Backend (Pins offen) sind alle aus.
+Ursache: Low-Active-Platine. Relais an = Eingang auf Masse. Relais aus = Eingang auf der
+         Versorgungsspannung der STEUERSEITE, und die ist bei dieser Platine 5 V. Der Pi liefert
+         als High nur 3,3 V -> 1,7 V Rest am Optokoppler -> Relais bleibt an. Deshalb geht mit
+         keiner Software-Einstellung "aus". Offene (hochohmige) Pins zieht die Platine intern
+         selbst auf 5 V -> aus (so wie vor dem Start und bei den unbelegten Kanaelen).
+
+LOESUNG A (empfohlen, Hardware, 1 Kabel + evtl. 1 Jumper):
+  1. VCC der Eingangsleiste (neben GND, IN1..IN16) an 3,3 V vom Pi (Header-Pin 1 oder 17).
+  2. Jumper VCC <-> JD-VCC abziehen, falls vorhanden (sonst sind 3,3 V und Relaisversorgung
+     zusammengeschaltet). JD-VCC bleibt am eigenen 12-V-Netzteil. GND bleibt verbunden.
+  3. Danach in config.yml bei ventil_z1-3 wieder  inverted: true  (Masse = an, 3,3 V = aus).
+     Aktuell steht dort inverted: false (Commit 55787c2) - das ist mit Loesung A FALSCH.
+  4. LABS beenden / LABS starten -> alle drei Relais muessen AUS sein.
+  5. Frontend: Download Experiments from Station, test_ventil_z1 mit position B -> NUR Relais 1
+     (Pin 11) zieht an; mit A faellt es ab. Dann z2 (Pin 13), z3 (Pin 15).
+  6. Gasweg pruefen: stromlos (A) darf von keiner Zelle Gas zum GC kommen, bei B nur von der
+     einen Zelle. Ist es umgekehrt: Schlaeuche am Ventil tauschen, nicht die Software.
+
+LOESUNG B (Notweg, Software, nur wenn A nicht geht):
+  Treiber raspi_gpio_relay_valve so erweitern, dass "aus" = Pin hochohmig (Input) statt 3,3 V,
+  "an" = Pin Output Low. Funktioniert mit solchen Platinen, legt aber ~3,8 V ueber den
+  Optokoppler an den Pi-Eingang (ueber die Schutzdiode) - nicht sauber, zweite Wahl.
+
+Solange die Relais anziehen, stehen die drei Ventile auf B (= offen nach Annahme).
+Bei Bedarf "LABS beenden" druecken, dann gibt das Backend die Pins frei und die Relais fallen ab.
+
+----------------------------------------------------------------------------
+2. WAS HEUTE SONST GEMACHT WURDE (alles am Geraet bzw. mit Dummys geprueft)
+----------------------------------------------------------------------------
+- Desktop-Symbole "LABS starten"/"LABS beenden" funktionieren. Neues Statusfenster "LABS Geraete"
+  (gruener Haken/rotes Kreuz je Geraet) nach dem Start; API /api/device_states.
+- Zuordnung Etiketten <-> Software BESTAETIGT: 1 = psu1 (Hub 2.4.2) / mfc1 (M18212352B),
+  2 = psu2 (Hub 2.1) / mfc2 (M18212352C), 3 = psu3 (Hub 2.2.1) / mfc3 (M18216421B, 20er).
+- Anolyt-Pumpe (zweite WT600-2J, Adapter BG01W2OJ, Hub 2.2.3) als anolyte_pump eingebunden,
+  antwortet stabil, dreht nach rechts. In allen _3x-Routinen: neuer Parameter rate_anolyte,
+  laeuft parallel zur dosing_pump mit gleicher Dauer. Schlauch 3.2x6.4 = ANNAHME.
+  Pumpenbereich 60-600 rpm = ca. 53-533 mL/min; kleinere Raten werden auf 60 rpm angehoben.
+- Trockenlauf kolbe_elektrolyse_3x BESTANDEN (14:38-15:08): Netzteile 0 A / 2 V, nach 60 s aus;
+  GC 4 Laeufe (Z1, dann Z1_Ende/Z2_Ende/Z3_Ende), 0 fehlgeschlagen. AUFFAELLIG: H2 stieg von
+  4,9 auf 16,7 % ohne angeschlossene Leitung - morgen beim ersten echten Lauf beobachten.
+- Behoben: Geraete, die nur unter observables stehen (Ventile), werden jetzt in values.json/
+  Bericht aufgezeichnet.
+- Gaswechsler Variante B (Entscheidung Rafael): 60 s nach dem Start eines GC-Laufs schon auf
+  den naechsten Gasstrom umschalten (config microgc switch_after_s: 60). Dummy OK.
+- Frontend: keine Kurven mehr fuer amount_of_charge und fuer Nicht-Zahlen (Zustaende, Namen).
+- Neue Routinen in config.yml (nach Neustart + "Download Experiments from Station" im Frontend):
+  test_psu2_output/stop_psu2_output, test_psu3_output/stop_psu3_output,
+  test_mfc2_setpoint/counter, stop_mfc2, test_mfc3_setpoint/counter, stop_mfc3,
+  test_mfc1_zaehlen/test_mfc2_zaehlen/test_mfc3_zaehlen (minutes; fuer die Zaehler-Einheit des 20ers),
+  test_anolyte_speed, stop_anolyte, test_anolyte_lauf (rate, minutes),
+  test_ventil_z1/z2/z3 (position A/B). demo_gpio_valve + test_gpio_valve_a/b entfernt.
+- lgpio (Pin-Factory fuer gpiozero auf dem Pi 5) per Symlink aus dem System-Python ins venv
+  (pip-Build braucht swig). Nur lokal auf diesem Pi, s. requirements.txt.
+- Beobachtung USB: Ein-/Ausschalten der Netzteilkaesten stoert den USB-Hub (12:09 Buchse 2.2
+  "disabled by hub (EMI?)", 2.4.2 Reconnect). Regel: erst alle Kaesten an, dann LABS starten;
+  waehrend eines Laufs nicht an den Netzteilen schalten.
+
+----------------------------------------------------------------------------
+3. NOCH OFFEN FUER DEN 3x-LAUF AM 28.10.
+----------------------------------------------------------------------------
+- Relaisplatine (Punkt 1) - ohne funktionierende Ventile misst der GC alle Zellen gemischt.
+- Zaehler-Einheit des 20er-MFC: test_mfc3_zaehlen, bekanntes Volumen, Zaehler (mLn) vergleichen.
+- Liquiline: pH fuer alle 3 Zellen (Leitfaehigkeit nur Zelle 1) - je Sensor ein Eintrag unter
+  liquiline/channels in config.yml (AI-Block am Geraet ablesen), sobald die Sensoren dran sind.
+- Schlauch der Anolyt-Pumpe bestaetigen (Umrechnung mL/min -> rpm).
+- Im Frontend die _3x-Routinen auf den neuen Parameter rate_anolyte pruefen (sonst loeschen +
+  neu anlegen).
+
+----------------------------------------------------------------------------
+4. BEDIENUNG / BEENDEN
+----------------------------------------------------------------------------
+- Start: alle Geraete an (3 Netzteile, 3 MFC inkl. Steckernetzteil des 20ers, beide Pumpen,
+  Liquiline, GC), dann "LABS starten". Statusfenster muss gruen sein. Dann Browser Strg+F5.
+- Ende: erst "LABS beenden" (Geraete-Shutdown: Netzteile aus, Ventile Ruhelage), dann Pi
+  herunterfahren, dann Geraete aus. Terminalfenster schliessen reicht NICHT.
+- Logs: LABS-Backend/logs/backend_stdout.log (alles), logs/2026/10/27/<lauf>/ (je Lauf),
+  logs/2026/10/27/microgc/ (GC-Dateien).
