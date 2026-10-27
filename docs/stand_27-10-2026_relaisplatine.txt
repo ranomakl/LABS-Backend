@@ -17,6 +17,21 @@ Ursache: Low-Active-Platine. Relais an = Eingang auf Masse. Relais aus = Eingang
          keiner Software-Einstellung "aus". Offene (hochohmige) Pins zieht die Platine intern
          selbst auf 5 V -> aus (so wie vor dem Start und bei den unbelegten Kanaelen).
 
+EINFACH ERKLAERT:
+  Das Relais reagiert auf den UNTERSCHIED zwischen den 5 V der Platine und dem Pi-Pin:
+    Pin auf Masse   -> Unterschied 5 V   -> Strom durch den Optokoppler -> Relais AN   (kann der Pi)
+    Pin auf 3,3 V   -> Unterschied 1,7 V -> immer noch Strom            -> Relais AN   (mehr kann der Pi nicht)
+    Pin auf 5 V     -> Unterschied 0 V   -> kein Strom                  -> Relais AUS  (kann der Pi NICHT)
+  Einschalten = Pin runterziehen, geht immer. Ausschalten = Pin genauso hoch wie die Platine, da fehlen
+  dem Pi 1,7 V. Wie ein Lichtschalter, den man ganz nach unten, aber nur zwei Drittel nach oben druecken kann.
+
+  Warum sind die Relais VOR dem Start aus? Weil der Pi seine Pins erst beim Start des Backends uebernimmt.
+  Vorher sind sie offen, als hinge kein Kabel dran. Dann zieht die Platine ihre Eingaenge ueber einen
+  eigenen Widerstand selbst auf 5 V -> Unterschied 0 -> aus (wie bei den 13 unbelegten Kanaelen).
+  Sobald das Backend startet, legt der Pi die drei Pins auf Masse oder 3,3 V - beides ist fuer die
+  Platine "an". Deshalb klicken alle drei genau im Moment des Starts, egal welche Einstellung.
+  Kurz: aus ist es nur, wenn der Pi sich raushaelt. Genau das nutzt Loesung B.
+
 LOESUNG A (empfohlen, Hardware, 1 Kabel + evtl. 1 Jumper):
   1. VCC der Eingangsleiste (neben GND, IN1..IN16) an 3,3 V vom Pi (Header-Pin 1 oder 17).
   2. Jumper VCC <-> JD-VCC abziehen, falls vorhanden (sonst sind 3,3 V und Relaisversorgung
