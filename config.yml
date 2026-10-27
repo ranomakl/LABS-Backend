@@ -226,6 +226,48 @@ experiments:
     commands:
       - [psu1, stop_current, [], {}]
 
+  # 27.10.2026: dieselben Tests fuer Netzteil 2 und 3 (drei baugleiche Kaesten - so findet man heraus,
+  # welcher Kasten welche Nummer hat: 2 V / 0 A starten und schauen, welches Display reagiert).
+  test_psu2_output:
+    conditions:
+    stopconditions:
+    parameters:
+      current: [float, A]
+      max_voltage: [float, V]
+    observables:
+      - [psu2, current, float, A]
+      - [psu2, voltage, float, V]
+    commands:
+      - [psu2, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+
+  stop_psu2_output:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [psu2, stop_current, [], {}]
+
+  test_psu3_output:
+    conditions:
+    stopconditions:
+    parameters:
+      current: [float, A]
+      max_voltage: [float, V]
+    observables:
+      - [psu3, current, float, A]
+      - [psu3, voltage, float, V]
+    commands:
+      - [psu3, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+
+  stop_psu3_output:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+    commands:
+      - [psu3, stop_current, [], {}]
+
   # ---- MFC (Bronkhorst) ----
 
   test_mfc_setpoint:
