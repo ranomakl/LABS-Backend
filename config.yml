@@ -66,7 +66,7 @@ devices:
     driver: longer_wt600
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01W2OJ-if00-port0
     pump_address: 1
-    tubing: "3.2x6.4"          # ANNAHME: gleicher Schlauch wie dosing_pump - beim Einbau pruefen!
+    tubing: "3.2x6.4"          # bestaetigt 28.10.2026 (Rafael): gleicher Schlauch wie dosing_pump
     tubing_table:
       3.2x6.4: 0.8883
 
