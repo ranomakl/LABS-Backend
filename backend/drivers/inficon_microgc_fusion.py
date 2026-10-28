@@ -795,9 +795,35 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         self.update_observables({SCHEDULE_OBSERVABLE: "cancelled"}, time.time())
 
     def stop(self):
-        # Experimentende/"Stop Experiments": Plan abbrechen, dann der normale Abschaltpfad (final_commands).
+        # Experimentende/"Stop Experiments": Plan abbrechen, Gasstrom-Ventile in Ruhelage, dann der normale
+        # Abschaltpfad (final_commands).
         self._cancel_schedule("stop")
+        self._valves_to_rest()
         return super().stop()
+
+    def _valves_to_rest(self):
+        """28.10.2026: Die Gasstrom-Ventile stehen in den Routinen nur unter observables, nicht unter commands.
+        Das Experimentende stoppt aber nur kommandierte Geraete - das zuletzt gestellte Ventil blieb deshalb
+        auf B (Relais an, Gasweg der Zelle zum GC offen; ventiltest-1-19, 11:03 Uhr). Darum stellt der GC, der
+        die Ventile bewegt hat, sie beim Stopp selbst in die Ruhelage (safe_state des Ventils, sonst A)."""
+        if not self._valves:
+            return None
+        writes = {}
+        for name, valve in self._valves.items():
+            rest = str(getattr(valve, "safe_state", "A"))
+            try:
+                writes[name] = valve.set_position(rest).deferred_result
+            except Exception as error:  # noqa: BLE001
+                self.log.error("Gasstrom-Ventil {valve} konnte nicht in Ruhelage {rest} gestellt werden: {err}",
+                               valve=name, rest=rest, err=error)
+        if not writes:
+            return None
+        self.log.info("GC-Stopp: Gasstrom-Ventile in Ruhelage {valves}.",
+                      valves={n: str(getattr(v, "safe_state", "A")) for n, v in self._valves.items()})
+        d = defer.gatherResults(list(writes.values()), consumeErrors=True)
+        d.addErrback(lambda f: self.log.error("GC-Stopp: Ventil-Ruhelage nicht bestaetigt: {err}",
+                                              err=f.value.subFailure.getErrorMessage()))
+        return d
 
     # -- ein einzelner Lauf des Plans (Deferred-Kette, Befehle als urgent) --
 

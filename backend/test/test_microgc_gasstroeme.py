@@ -270,3 +270,42 @@ class StreamNamesTests(unittest.TestCase):
         for entry in [{"name": "Z1", "valves": {"a": "A"}}]:
             device.streams[str(entry["name"])] = {str(k): str(v) for k, v in dict(entry["valves"]).items()}
         self.assertEqual(device.streams, {"Z1": {"a": "A"}})
+
+
+class VentileRuhelageBeimStopp(unittest.TestCase):
+    """28.10.2026: Beim Stopp des GC (Experimentende, Stop Experiments) gehen die Gasstrom-Ventile in die
+    Ruhelage (safe_state, sonst A) - vorher blieb das zuletzt gestellte Ventil auf B (ventiltest-1-19)."""
+
+    def _device(self):
+        device = gc.Device.__new__(gc.Device)
+        device.log = _Log()
+        device.valve_log = []
+        device.v1, device.v2 = _FakeValve(device.valve_log), _FakeValve(device.valve_log)
+        device.v2.safe_state = "B"   # ein Ventil, dessen Ruhelage B ist
+        device._valves = {"ventil_1": device.v1, "ventil_2": device.v2}
+        return device
+
+    def test_alle_ventile_in_ruhelage(self):
+        device = self._device()
+        device._valves_to_rest()
+        self.assertEqual(device.v1.positions, ["A"])
+        self.assertEqual(device.v2.positions, ["B"])
+
+    def test_ohne_ventile_passiert_nichts(self):
+        device = self._device()
+        device._valves = {}
+        self.assertIsNone(device._valves_to_rest())
+
+    def test_stop_stellt_ventile_zurueck(self):
+        device = self._device()
+        device._schedule = None
+        called = []
+        parent = [b for b in gc.Device.__mro__[1:] if hasattr(b, "stop")][0]
+        original = parent.stop
+        parent.stop = lambda self_: called.append("parent_stop") or "ok"
+        try:
+            self.assertEqual(device.stop(), "ok")
+        finally:
+            parent.stop = original
+        self.assertEqual(called, ["parent_stop"])
+        self.assertEqual(device.v1.positions, ["A"])

@@ -156,4 +156,30 @@ Erwartung an den LEDs: immer genau EINE an, Wechsel 1 -> 2 -> 3 -> 1 jeweils ~60
 Im Log pruefen: Laufnamen <versuch>_Z1/Z2/Z3, gc_stream passt zur LED, "set for position" 60 s nach
         Laufstart, KEINE USB-Reconnects / Seriell-Timeouts zeitgleich mit den Relaisschaltungen.
 Hinweis: MFC-Sollwerte bleiben nach dem Test stehen (kein stop_flow) -> stop_mfc1/2/3.
+Ergebnis (ventiltest-1-19, 10:42:06-11:03:55, Rafael + Log):                                  BESTANDEN
+  - Start 10:42:09: Z1 (nur Relais 1). 10:43:39 (60 s nach GC-Start): Z2 (Relais 1 ab, 2 an).
+    10:50:45: Z3 (2 ab, 3 an). 10:57:50: Z1 (3 ab, 1 an). Immer genau ein Relais, LEDs passend (Rafael).
+  - GC: 3 Laeufe (Z1 0 min, Z2 7.6 min, Z3 14.7 min), 0 fehlgeschlagen, alle Raumluft (O2 ~21 %, N2 ~78 %).
+    Plan endete nach dem laufenden Lauf (20 min um 11:02:06, Ende 11:03:55) - ein laufender GC-Lauf wird
+    nicht abgebrochen.
+  - Bronkhorst-Zuordnung: N2 nacheinander an den Kaesten, Software meldet jeweils den Sollwert des
+    richtigen MFC (mfc1 30.0, mfc3 10.0, mfc2 20.0 mL/min), die anderen 0. Flussanzeige ueber einen
+    Mess-Bronkhorst mit Display am Ende des GC-Wegs.
+  - Gasweg: Ventil in Ruhelage A = Gas der Zelle geht zum WASTE; Ventil auf B = Gas kommt am GC-Weg an
+    (Mess-Bronkhorst). Fuer die Einzelpruefung je Ventil ohne Zeitdruck: test_gasweg_z1/z2/z3 (Punkt 8).
+  - Keine USB-/Seriell-Stoerung durch die Relaisschaltungen (Kernel-Log leer, kein Timeout im Backend).
+  - BUG GEFUNDEN: Nach dem Experimentende blieb Ventil 1 auf B (Relais an, Pin 17 auf Masse). Ursache:
+    das Experimentende stoppt nur kommandierte Geraete (mfc1-3, microgc); die Ventile stehen in den
+    Routinen nur unter observables und werden vom GC-Treiber bewegt. Haette auch kolbe_elektrolyse_3x
+    betroffen (Gasweg der letzten Zelle bliebe zum GC offen). FIX: inficon_microgc_fusion.Device.stop()
+    stellt alle Gasstrom-Ventile in die Ruhelage (_valves_to_rest, safe_state des Ventils, sonst A).
+    3 neue Tests (test_microgc_gasstroeme.VentileRuhelageBeimStopp). Aktiv ab Backend-Neustart.
+    Bis dahin: "LABS beenden" stellt die Ventile zurueck (Geraete-Shutdown).
+
+----------------------------------------------------------------------------
+8. NEUE ROUTINEN test_gasweg_z1 / z2 / z3 (28.10. 10:53, Wunsch Rafael)
+----------------------------------------------------------------------------
+Ventil N fest auf B fuer `minutes`, die beiden anderen auf A, Bronkhorst N auf `flow` mL/min + Messung.
+Kein Wechsel, kein GC. Erwartung: Gas kommt am GC-Weg an (Mess-Bronkhorst), Waste von Zelle N bleibt
+trocken. Am Ende alle Ventile A (hold_position + Experimentende). Zwischen den Durchgaengen N2 umstecken.
 Ergebnis: (offen)

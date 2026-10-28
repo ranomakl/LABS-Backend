@@ -868,6 +868,69 @@ experiments:
       - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Test;LABS", final_run: "{final_run}", streams: "alle" }]
 
+  # 28.10.2026: Gasweg je Zelle OHNE Wechsel und OHNE GC (Rafael): Ventil N fest auf B fuer `minutes`,
+  # die beiden anderen Ventile auf A (Ruhelage = Waste), Bronkhorst N auf `flow` mL/min und mitmessen.
+  # Erwartung: Gas kommt am GC-Weg an (Mess-Bronkhorst), Waste von Zelle N bleibt trocken. Am Ende alle A.
+  test_gasweg_z1:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [ventil_z1, position, str, ""]
+      - [ventil_z2, position, str, ""]
+      - [ventil_z3, position, str, ""]
+    commands:
+      - [mfc1, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [ventil_z2, set_position, [], { position: A }]
+      - [ventil_z3, set_position, [], { position: A }]
+      - [ventil_z1, hold_position, [], { position: B, minutes: "{minutes}" }]
+
+  test_gasweg_z2:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [ventil_z1, position, str, ""]
+      - [ventil_z2, position, str, ""]
+      - [ventil_z3, position, str, ""]
+    commands:
+      - [mfc2, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [ventil_z1, set_position, [], { position: A }]
+      - [ventil_z3, set_position, [], { position: A }]
+      - [ventil_z2, hold_position, [], { position: B, minutes: "{minutes}" }]
+
+  test_gasweg_z3:
+    conditions:
+    stopconditions:
+    parameters:
+      flow: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+      - [ventil_z1, position, str, ""]
+      - [ventil_z2, position, str, ""]
+      - [ventil_z3, position, str, ""]
+    commands:
+      - [mfc3, set_setpoint, [], { flow_ml_min: "{flow}" }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [ventil_z1, set_position, [], { position: A }]
+      - [ventil_z2, set_position, [], { position: A }]
+      - [ventil_z3, hold_position, [], { position: B, minutes: "{minutes}" }]
+
   # ---- Relais-Ventile (GPIO) ----
 
   # 27.10.2026: GC-Ventile einzeln stellen (Platine an Header-Pins 11/13/15). position = A (Ruhelage, Gasweg
