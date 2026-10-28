@@ -97,3 +97,36 @@ Der Haken:
     Allein bringt das nichts (Punkt 3); es passt aber zur Software-Loesung.
   - Treiber: noch unveraendert. Software-Loesung (Punkt 5) noch nicht gebaut -
     wartet auf Freigabe.
+
+//
+
+können wir das damit testen?
+
+from gpiozero import OutputDevice
+from time import sleep
+
+# BCM-GPIO-Nummer anpassen!
+GPIO_PIN = 15
+
+# HIGH schaltet dein Relais ein
+relay = OutputDevice(
+    GPIO_PIN,
+    active_high=True,
+    initial_value=False
+)
+
+try:
+    print("Relais EIN")
+    relay.on()
+
+    sleep(5)
+
+    print("Relais AUS")
+    relay.off()
+
+finally:
+    relay.off()
+    relay.close()
+    print("Programm beendet, Relais AUS")
+
+oder macht das keinen sinn
