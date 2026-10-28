@@ -1,0 +1,99 @@
+RELAISPLATINE (GC-VENTILE) - STAND, PROBLEM UND SOFTWARE-LOESUNG
+Stand 28.10.2026, 09:00
+================================================================
+
+1. DER AUFBAU
+----------------------------------------------------------------
+Die Relaisplatine hat 16 Kanaele. Drei davon sind mit drei Pins am Pi verbunden:
+Header-Pin 11, 13 und 15 (BCM 17 / 27 / 22 = ventil_z1 / z2 / z3 in config.yml).
+Jeder Pin steuert ein Relais, jedes Relais schaltet ein Gasventil (Zelle 1, 2, 3 zum GC).
+Die Platine hat ein eigenes 12-V-Netzteil fuer die Relais und eine eigene 5-V-Versorgung
+fuer die Steuerseite, also fuer die Eingaenge, an denen der Pi haengt. Masse ist mit dem
+Pi verbunden.
+
+2. WIE DIE PLATINE SCHALTET
+----------------------------------------------------------------
+Die Platine ist "Low-Active". Sie reagiert nicht darauf, ob ein Pin "an" oder "aus" ist,
+sondern auf den SPANNUNGSUNTERSCHIED zwischen ihren eigenen 5 V und dem Pi-Pin:
+
+  Pin auf Masse (0 V)   -> Unterschied 5 V   -> Strom fliesst  -> Relais zieht AN
+  Pin auf 5 V           -> Unterschied 0 V   -> kein Strom     -> Relais AUS
+  Pin offen (kein Kabel)-> Platine zieht den Eingang selbst auf 5 V -> Unterschied 0 -> AUS
+
+3. DAS PROBLEM
+----------------------------------------------------------------
+Der Pi kann einen Pin auf Masse legen oder auf 3,3 V - mehr hat er nicht.
+3,3 V statt 5 V heisst: Unterschied 1,7 V. Das reicht der Platine immer noch zum
+Durchschalten. Das Relais bleibt an.
+
+  Pin auf Masse  -> Unterschied 5 V   -> Relais AN   (kann der Pi)
+  Pin auf 3,3 V  -> Unterschied 1,7 V -> Relais AN   (mehr kann der Pi nicht)
+  Pin auf 5 V    -> Unterschied 0 V   -> Relais AUS  (kann der Pi NICHT)
+
+Der Pi kann also einschalten, aber nicht ausschalten. Egal ob in config.yml
+inverted: true oder inverted: false steht - beide Zustaende, die der Pi anbieten kann,
+bedeuten fuer die Platine "an". Deshalb klicken beim Backend-Start alle drei Relais,
+und deshalb hat am 27.10. keine Software-Einstellung geholfen.
+
+Vor dem Backend-Start sind die Relais aus, weil der Pi die Pins noch nicht uebernommen
+hat. Sie sind dann "offen", genau wie die 13 unbelegten Kanaele. Erst wenn das Backend
+startet, greift der Pi zu und legt die Pins auf Masse oder 3,3 V - ab da sind alle drei an.
+
+Geprueft am 28.10. morgens: ohne Backend sind BCM 17/27/22 Eingaenge (pinctrl: "no pd"),
+Relais aus. Mit laufendem Backend (inverted: false, safe_state A) liegen alle drei auf
+Masse ("op dl") -> Relais an.
+
+4. DIE HARDWARE-LOESUNG (derzeit nicht moeglich - nichts umklemmen)
+----------------------------------------------------------------
+Man koennte die 5-V-Steuerseite der Platine auf 3,3 V vom Pi legen (VCC der Eingangsleiste
+an Header-Pin 1 oder 17, Jumper VCC-JD-VCC abziehen, 12 V bleibt an JD-VCC, GND bleibt).
+Dann waere "Pin auf 3,3 V" = Unterschied 0 V = aus. Das waere die saubere Loesung,
+braucht aber ein Kabel und einen Jumper. Das scheidet derzeit aus (Rafael 28.10.).
+
+5. DIE SOFTWARE-LOESUNG
+----------------------------------------------------------------
+Der Pi hat neben "Masse" und "3,3 V" noch einen dritten Zustand: "Pin loslassen".
+Der Pin wird dann zum Eingang und treibt gar nichts. Elektrisch sieht das fuer die Platine
+aus, als waere kein Kabel dran - also wie vor dem Backend-Start. Die Platine zieht den
+Eingang selbst auf 5 V, Unterschied 0, Relais aus.
+
+Der Treiber macht dann:
+  Ventil auf B (Relais an):  Pin als Ausgang auf Masse.
+  Ventil auf A (Relais aus): Pin loslassen (Eingang, hochohmig).
+
+Das ist genau der Zustand, in dem die Relais am 27.10. vor dem Start und bei den 13 freien
+Kanaelen zuverlaessig aus waren.
+
+Was genau geaendert wird:
+  - backend/drivers/relay_3_2_valve_base.py und raspi_gpio_relay_valve.py:
+    neue Option (z.B. release_when_off: true). Steht sie drin, heisst "aus" = Pin loslassen
+    statt Pin auf 3,3 V. Ohne die Option bleibt alles wie bisher; andere Platinen sind
+    nicht betroffen.
+  - config.yml: bei ventil_z1/z2/z3 diese Option eintragen. inverted: true passt dazu
+    (Masse = an).
+  - Sonst nichts: keine Verkabelung, keine anderen Geraete, keine anderen Routinen.
+
+Der Haken:
+  Wenn der Pin losgelassen ist, drueckt die Platine ueber ihren Widerstand und den
+  Optokoppler etwas Spannung in den Pi-Eingang, etwa 3,8 V. Der Pi vertraegt eigentlich nur
+  3,3 V. Er hat dafuer eine Schutzdiode, die den Rest abfaengt, und der Strom ist winzig
+  (unter 1 mA). Das ist uebliche Praxis bei dieser Art Platine am Pi, aber nicht die saubere
+  Loesung. Die saubere Loesung bleibt das Umklemmen (Punkt 4), wenn das irgendwann moeglich ist.
+
+6. TEST NACH DER AENDERUNG
+----------------------------------------------------------------
+  1. LABS beenden, LABS starten. Alle drei Relais muessen AUS bleiben.
+  2. Frontend: test_ventil_z1 mit position B -> nur Relais 1 (Pin 11) zieht an.
+     Mit A faellt es ab.
+  3. Gleiches fuer z2 (Pin 13) und z3 (Pin 15).
+  4. Dann am Gas pruefen: bei A darf kein Gas von der Zelle zum GC kommen, bei B nur von
+     der einen Zelle. Ist es umgekehrt, werden die Schlaeuche am Ventil getauscht,
+     nicht die Software.
+
+7. STAND DER DATEIEN (28.10., 09:00)
+----------------------------------------------------------------
+  - config.yml: inverted bei ventil_z1/z2/z3 am 28.10. von false auf true gesetzt
+    (lokal, noch nicht committet, noch nicht wirksam - greift erst nach Neustart).
+    Allein bringt das nichts (Punkt 3); es passt aber zur Software-Loesung.
+  - Treiber: noch unveraendert. Software-Loesung (Punkt 5) noch nicht gebaut -
+    wartet auf Freigabe.
