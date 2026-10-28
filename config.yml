@@ -723,6 +723,64 @@ experiments:
     commands:
       - [liquiline, read_channel, [], { channel: "ph_ch1" }]
 
+  # 28.10.2026: Alle 16 Modbus-Bloecke AI1-AI16 einmal lesen (Status Good/Bad/Not assigned, Einheit, Wert),
+  # unabhaengig von liquiline/channels - zeigt, auf welchen Bloecken das Geraet neue Sensoren ausgibt.
+  test_liquiline_scan:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [liquiline, ai1_status, str, ""]
+      - [liquiline, ai1_unit, str, ""]
+      - [liquiline, ai1_value, float, ""]
+      - [liquiline, ai2_status, str, ""]
+      - [liquiline, ai2_unit, str, ""]
+      - [liquiline, ai2_value, float, ""]
+      - [liquiline, ai3_status, str, ""]
+      - [liquiline, ai3_unit, str, ""]
+      - [liquiline, ai3_value, float, ""]
+      - [liquiline, ai4_status, str, ""]
+      - [liquiline, ai4_unit, str, ""]
+      - [liquiline, ai4_value, float, ""]
+      - [liquiline, ai5_status, str, ""]
+      - [liquiline, ai5_unit, str, ""]
+      - [liquiline, ai5_value, float, ""]
+      - [liquiline, ai6_status, str, ""]
+      - [liquiline, ai6_unit, str, ""]
+      - [liquiline, ai6_value, float, ""]
+      - [liquiline, ai7_status, str, ""]
+      - [liquiline, ai7_unit, str, ""]
+      - [liquiline, ai7_value, float, ""]
+      - [liquiline, ai8_status, str, ""]
+      - [liquiline, ai8_unit, str, ""]
+      - [liquiline, ai8_value, float, ""]
+      - [liquiline, ai9_status, str, ""]
+      - [liquiline, ai9_unit, str, ""]
+      - [liquiline, ai9_value, float, ""]
+      - [liquiline, ai10_status, str, ""]
+      - [liquiline, ai10_unit, str, ""]
+      - [liquiline, ai10_value, float, ""]
+      - [liquiline, ai11_status, str, ""]
+      - [liquiline, ai11_unit, str, ""]
+      - [liquiline, ai11_value, float, ""]
+      - [liquiline, ai12_status, str, ""]
+      - [liquiline, ai12_unit, str, ""]
+      - [liquiline, ai12_value, float, ""]
+      - [liquiline, ai13_status, str, ""]
+      - [liquiline, ai13_unit, str, ""]
+      - [liquiline, ai13_value, float, ""]
+      - [liquiline, ai14_status, str, ""]
+      - [liquiline, ai14_unit, str, ""]
+      - [liquiline, ai14_value, float, ""]
+      - [liquiline, ai15_status, str, ""]
+      - [liquiline, ai15_unit, str, ""]
+      - [liquiline, ai15_value, float, ""]
+      - [liquiline, ai16_status, str, ""]
+      - [liquiline, ai16_unit, str, ""]
+      - [liquiline, ai16_value, float, ""]
+    commands:
+      - [liquiline, scan_ai_blocks, [], { blocks: 16 }]
+
   test_liquiline_all_channels:
     conditions:
     stopconditions:

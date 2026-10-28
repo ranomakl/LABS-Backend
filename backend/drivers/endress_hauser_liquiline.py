@@ -413,6 +413,14 @@ class Device(BaseDevice, SinglechannelBaseDevice):
                               f"Add it to this device's `channels` in config.yml.")
         return self._query_blocks({channel: register}, **kwargs)
 
+    def scan_ai_blocks(self, blocks=16, **kwargs):
+        """28.10.2026: Alle Modbus-Eingangsbloecke AI1..AI<blocks> in EINER Anfrage lesen (je 4 Register ab
+        4*(n-1)), unabhaengig von `channels` in config.yml. Observablen ai<n>_value/_status/_unit. Zeigt,
+        welche Bloecke am Geraet (Setup/Outputs/Modbus/AI n) eine Datenquelle haben - zum Einrichten neuer
+        Sensoren, ohne config.yml raten zu muessen. 16 Bloecke = 64 Register (< 125)."""
+        blocks = max(1, min(int(blocks), 31))
+        return self._query_blocks({f"ai{n}": 4 * (n - 1) for n in range(1, blocks + 1)}, **kwargs)
+
     def read_all_channels(self, **kwargs):
         """Alle konfigurierten Kanaele mit EINER Anfrage auslesen (z.B. Register 0-11 fuer AI1-AI3)."""
         return self._query_blocks(self.channels, **kwargs)
