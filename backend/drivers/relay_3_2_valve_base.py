@@ -58,7 +58,68 @@ class NoWireProtocol:
         pass  # nothing to disconnect; only present so Shutdown.enter() has something to call
 
 
-def build_output_pin(pin_number: int, *, inverted: bool, initial_position: str, simulate: bool):
+class ReleasingOutputPin:
+    """
+    Pin-Objekt fuer Low-Active-Relaisplatinen, deren Steuerseite an 5 V haengt (28.10.2026, GC-Ventile).
+
+    Problem: Solche Platinen schalten das Relais ueber den Spannungsunterschied zwischen ihren 5 V und dem
+    Pi-Pin. Pin auf Masse = 5 V Unterschied = an. Pin auf 3,3 V = 1,7 V Unterschied = IMMER NOCH AN. Der Pi
+    kann das Relais also einschalten, aber nicht ausschalten - mit keiner Einstellung von `inverted`.
+    Loesung hier: "aus" = Pin LOSLASSEN (Eingang mit Pull-Down, wie vor dem Backend-Start). Dann zieht die
+    Platine ihren Eingang selbst auf 5 V -> Unterschied 0 -> Relais aus. "an" = Pin als Ausgang auf Masse.
+    Siehe docs/relaisplatine_erklaerung_28-10-2026.txt.
+
+    Nachteil: Im losgelassenen Zustand drueckt die Platine ueber Widerstand + Optokoppler ca. 3,8 V in den
+    Pi-Eingang (Schutzdiode faengt es ab, Strom < 1 mA). Die saubere Loesung bleibt, die Steuerseite der
+    Platine auf 3,3 V zu legen und dann normal mit inverted: true (ohne release_when_off) zu fahren.
+
+    Gleiche Schnittstelle wie gpiozero.DigitalOutputDevice, soweit der Treiber sie benutzt:
+    .on() = Relais bestromen, .off() = Relais stromlos, .value, .close().
+    """
+    PULL_WHEN_RELEASED = "down"   # Zustand, in dem die Relais am 27.10. vor dem Backend-Start nachweislich aus waren
+
+    def __init__(self, pin_number: int, *, initial_value: bool, simulate: bool):
+        if simulate:
+            from gpiozero.pins.mock import MockFactory
+            self.factory = MockFactory()
+        else:
+            from gpiozero import Device
+            Device.ensure_pin_factory()
+            self.factory = Device.pin_factory
+        self.pin_number = int(pin_number)
+        self.pin = self.factory.pin(self.pin_number)
+        self._value = None
+        if initial_value:
+            self.on()
+        else:
+            self.off()
+
+    def on(self) -> None:
+        """Relais bestromen: Pin als Ausgang auf Masse."""
+        self.pin.function = "output"
+        self.pin.state = 0
+        self._value = True
+
+    def off(self) -> None:
+        """Relais stromlos: Pin loslassen (Eingang + Pull-Down), die Platine zieht ihn selbst auf ihre 5 V."""
+        self.pin.function = "input"
+        self.pin.pull = self.PULL_WHEN_RELEASED
+        self._value = False
+
+    @property
+    def value(self) -> bool:
+        return bool(self._value)
+
+    def close(self) -> None:
+        try:
+            self.pin.close()
+        finally:
+            self.factory.release_pins(self, self.pin_number)
+            self.pin = None
+
+
+def build_output_pin(pin_number: int, *, inverted: bool, initial_position: str, simulate: bool,
+                     release_when_off: bool = False):
     """
     Claim one GPIO pin as a gpiozero DigitalOutputDevice for one relay/valve.
 
@@ -94,6 +155,24 @@ def build_output_pin(pin_number: int, *, inverted: bool, initial_position: str, 
     # ASSUMPTION: "B" is defined as the energized state, "A" as de-energized/rest - see the
     # concrete driver's module docstring. Not verified against the physical valve wiring.
     initial_value = (initial_position == "B")
+
+    if release_when_off:
+        # 28.10.2026: Low-Active-Platine mit 5-V-Steuerseite - "aus" = Pin loslassen statt Pin high.
+        # `inverted` spielt hier keine Rolle: "an" ist immer Pin auf Masse (so schaltet jede Low-Active-Platine),
+        # "aus" ist immer losgelassen. Es wird nur verlangt, dass inverted: true gesetzt ist, damit die
+        # config.yml die Platine ehrlich beschreibt (Masse = an) und ein spaeteres Entfernen von
+        # release_when_off (nach Umklemmen auf 3,3 V) nicht in die falsche Richtung schaltet.
+        if not inverted:
+            raise ValueError(
+                f"GPIO pin {pin_number}: release_when_off: true ist nur fuer Low-Active-Platinen gedacht "
+                f"(Pin auf Masse = Relais an) und verlangt daher inverted: true.")
+        if simulate:
+            _log.warn(
+                "GPIO pin {pin}: simulate=True -> using gpiozero MockFactory. NO real relay is being "
+                "switched. This must only be set for development away from the Raspberry Pi.",
+                pin=pin_number,
+            )
+        return ReleasingOutputPin(pin_number, initial_value=initial_value, simulate=simulate)
 
     kwargs = dict(active_high=active_high, initial_value=initial_value)
     if simulate:

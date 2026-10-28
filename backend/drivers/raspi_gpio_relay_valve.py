@@ -67,7 +67,8 @@ class Device(SinglechannelBaseDevice, BaseDevice):
         "SET_B": ["SET_B"],
     }
 
-    def __init__(self, address, *args, pin: int, inverted: bool, safe_state: str, simulate: bool = False, **kwargs):
+    def __init__(self, address, *args, pin: int, inverted: bool, safe_state: str, simulate: bool = False,
+                 release_when_off: bool = False, **kwargs):
         """
         :param pin: BCM GPIO pin number this valve's relay is wired to. Required, no default -
             get this wrong and you switch the wrong valve.
@@ -78,12 +79,17 @@ class Device(SinglechannelBaseDevice, BaseDevice):
             valve is plumbed into the setup and must be chosen deliberately.
         :param simulate: True to use gpiozero's Mock pin factory (development without a Raspberry
             Pi) instead of real GPIO hardware. Defaults to False (real hardware).
+        :param release_when_off: True fuer Low-Active-Platinen, deren Steuerseite an 5 V haengt, so dass
+            der Pi mit 3,3 V High das Relais nicht ausbekommt (28.10.2026). Dann ist "aus" = Pin
+            loslassen (Eingang) statt Pin high; "an" = Pin auf Masse. Verlangt inverted: true.
+            Siehe relay_3_2_valve_base.ReleasingOutputPin und docs/relaisplatine_erklaerung_28-10-2026.txt.
         """
         super().__init__(address, *args, **kwargs)
         self.pin_number = int(pin)
         self.inverted = bool(inverted)
         self.safe_state = normalize_position(safe_state)
         self.simulate = bool(simulate)
+        self.release_when_off = bool(release_when_off)
         self._pin = None
         self.current_position = None
 
@@ -94,11 +100,12 @@ class Device(SinglechannelBaseDevice, BaseDevice):
 
     def _gpio_connect(self):
         self._pin = build_output_pin(self.pin_number, inverted=self.inverted,
-                                      initial_position=self.safe_state, simulate=self.simulate)
+                                      initial_position=self.safe_state, simulate=self.simulate,
+                                      release_when_off=self.release_when_off)
         self.log.info(
-            "GPIO pin {pin} claimed (inverted={inverted}, simulate={simulate}), "
+            "GPIO pin {pin} claimed (inverted={inverted}, release_when_off={release}, simulate={simulate}), "
             "driven to safe state {safe_state!r}.",
-            pin=self.pin_number, inverted=self.inverted, simulate=self.simulate,
+            pin=self.pin_number, inverted=self.inverted, release=self.release_when_off, simulate=self.simulate,
             safe_state=self.safe_state,
         )
         return self.connection_done(NoWireProtocol(self))

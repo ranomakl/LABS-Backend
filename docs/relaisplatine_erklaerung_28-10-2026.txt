@@ -90,10 +90,20 @@ Der Haken:
      der einen Zelle. Ist es umgekehrt, werden die Schlaeuche am Ventil getauscht,
      nicht die Software.
 
-7. STAND DER DATEIEN (28.10., 09:00)
+7. STAND DER DATEIEN (28.10., 09:30) - SOFTWARE-LOESUNG GEBAUT
 ----------------------------------------------------------------
-  - config.yml: inverted bei ventil_z1/z2/z3 am 28.10. von false auf true gesetzt
-    (lokal, noch nicht committet, noch nicht wirksam - greift erst nach Neustart).
-    Allein bringt das nichts (Punkt 3); es passt aber zur Software-Loesung.
-  - Treiber: noch unveraendert. Software-Loesung (Punkt 5) noch nicht gebaut -
-    wartet auf Freigabe.
+  - backend/drivers/relay_3_2_valve_base.py: neue Klasse ReleasingOutputPin ("an" = Ausgang auf Masse,
+    "aus" = Eingang mit Pull-Down = losgelassen). build_output_pin(...) hat neuen Parameter
+    release_when_off; ohne ihn bleibt alles wie vorher (DigitalOutputDevice).
+  - backend/drivers/raspi_gpio_relay_valve.py: neue Option release_when_off, wird durchgereicht.
+    Verlangt inverted: true, sonst Fehler beim Start.
+  - config.yml: ventil_z1/z2/z3 jetzt inverted: true + release_when_off: true.
+    Nach spaeterem Umklemmen von VCC auf 3,3 V nur release_when_off entfernen.
+  - backend/test/test_relais_loslassen.py: 8 Tests mit gpiozero-Mock, alle gruen (99 gesamt).
+  - Am Pi geprueft mit echtem lgpio an freiem Pin BCM 5 (nicht verdrahtet), pinctrl:
+      sicherer Zustand A -> "ip pd" (Eingang, losgelassen)
+      B                  -> "op dl" (Ausgang, Masse)
+      A                  -> "ip pd"
+      nach close         -> "ip pn" (frei)
+  - NOCH OFFEN: Test an der echten Platine (Punkt 6) - LABS neu starten, Relais muessen aus bleiben,
+    dann test_ventil_z1/z2/z3.

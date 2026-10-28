@@ -152,8 +152,11 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO17"
     pin: 17                  # BCM 17 = Header-Pin 11 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
-                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
+    inverted: true           # Low-Active-Platine (28.10.2026): Pin auf Masse = Relais an = Position B.
+    release_when_off: true   # Steuerseite der Platine haengt an 5 V, 3,3 V High reicht NICHT zum Ausschalten.
+                             # Darum "aus" = Pin loslassen (Eingang) statt High. Software-Loesung, s.
+                             # docs/relaisplatine_erklaerung_28-10-2026.txt. Nach Umklemmen von VCC auf
+                             # 3,3 V diese Zeile entfernen (inverted: true bleibt).
     safe_state: "A"            # A = Gasweg Zelle 1 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -161,8 +164,11 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO27"
     pin: 27                  # BCM 27 = Header-Pin 13 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
-                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
+    inverted: true           # Low-Active-Platine (28.10.2026): Pin auf Masse = Relais an = Position B.
+    release_when_off: true   # Steuerseite der Platine haengt an 5 V, 3,3 V High reicht NICHT zum Ausschalten.
+                             # Darum "aus" = Pin loslassen (Eingang) statt High. Software-Loesung, s.
+                             # docs/relaisplatine_erklaerung_28-10-2026.txt. Nach Umklemmen von VCC auf
+                             # 3,3 V diese Zeile entfernen (inverted: true bleibt).
     safe_state: "A"            # A = Gasweg Zelle 2 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -170,8 +176,11 @@ devices:
     driver: raspi_gpio_relay_valve
     address: "GPIO22"
     pin: 22                  # BCM 22 = Header-Pin 15 (Rafael 27.10.2026: Platine an Pins 11/13/15)
-    inverted: false          # AM GERAET GEPRUEFT 27.10.2026: diese Platine zieht bei High an (bei inverted: true
-                             # zogen alle drei Relais beim Start an). High = Relais an = Position B.
+    inverted: true           # Low-Active-Platine (28.10.2026): Pin auf Masse = Relais an = Position B.
+    release_when_off: true   # Steuerseite der Platine haengt an 5 V, 3,3 V High reicht NICHT zum Ausschalten.
+                             # Darum "aus" = Pin loslassen (Eingang) statt High. Software-Loesung, s.
+                             # docs/relaisplatine_erklaerung_28-10-2026.txt. Nach Umklemmen von VCC auf
+                             # 3,3 V diese Zeile entfernen (inverted: true bleibt).
     safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
 
@@ -181,8 +190,10 @@ devices:
   # Treiber: backend/drivers/raspi_gpio_relay_valve.py (Basis: relay_3_2_valve_base.py)
   #
   # KRITISCH - Signalinvertierung (siehe grosser Kommentar im Treiber fuer Details/Quelle):
-  #   inverted: true  => .off() schaltet Strom (Platine eines Kollegen; NICHT die hier verbaute)
-  #   inverted: false => normale Platine, .on() schaltet Strom (DIE HIER VERBAUTE, geprueft 27.10.2026)
+  #   inverted: true  => Pin Low = Relais an (Low-Active-Platine - DIE HIER VERBAUTE)
+  #   inverted: false => Pin High = Relais an (High-Active-Platine)
+  #   release_when_off: true => "aus" = Pin loslassen statt High. Noetig, solange die Steuerseite der hier
+  #     verbauten Platine an 5 V haengt (28.10.2026); verlangt inverted: true. Details: docs/relaisplatine_erklaerung_28-10-2026.txt
   #   Kein Default - vor dem ersten echten Betrieb gegen die tatsaechliche Platine pruefen!
   #
   # safe_state: Position ("A" oder "B"), die beim Start UND bei jedem stop()/shutdown() angefahren
