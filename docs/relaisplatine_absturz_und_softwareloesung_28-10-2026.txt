@@ -183,3 +183,22 @@ Ventil N fest auf B fuer `minutes`, die beiden anderen auf A, Bronkhorst N auf `
 Kein Wechsel, kein GC. Erwartung: Gas kommt am GC-Weg an (Mess-Bronkhorst), Waste von Zelle N bleibt
 trocken. Am Ende alle Ventile A (hold_position + Experimentende). Zwischen den Durchgaengen N2 umstecken.
 Ergebnis: (offen)
+
+----------------------------------------------------------------------------
+9. ZWEITER DURCHGANG test_gc_ventile_3x UND STOPP-TEST (11:11-11:23)
+----------------------------------------------------------------------------
+ventiltest3-1-20: Z1 11:11:41, GC-Start 11:12:12, Z2 11:13:12, Z3 11:20:17 - wieder immer genau ein Relais.
+"Stop Experiments" 11:22:37: GC-Treiber stellt die Ventile in Ruhelage (neuer Fix), alle Pins losgelassen,
+Messplan sauber abgebrochen. Gasweg je Ventil mit N2 + Mess-Bronkhorst geprueft (Rafael): alles gemessen.
+Kosmetik im Log: "abgebrochen (stop): 1 von 0 Laeufen fertig" - bei Dauermessung ist n = 0 (offen).
+
+----------------------------------------------------------------------------
+10. LIQUILINE FUER 3 ZELLEN (vorbereitet 11:23, Geraeteseite OFFEN)
+----------------------------------------------------------------------------
+config.yml liquiline/channels: ph_ch1 (AI1, Zelle 1), conductivity (AI2, Zelle 1), temperature (AI3),
+NEU ph_z2 (AI4, Register 12), ph_z3 (AI5, Register 16). Observables in kolbe_elektrolyse_3x und
+test_liquiline_all_channels ergaenzt. Erste Lesung 11:23: AI1-3 Status "Bad" (Sensor da, kein gueltiger
+Wert - wie seit 12.10.), AI4/AI5 "Not assigned".
+AM GERAET ZU TUN: zwei weitere pH-Sensoren an freie Kanaele; Setup/Outputs/Modbus/AI 4 = pH-Wert Sensor
+Zelle 2, AI 5 = pH-Wert Sensor Zelle 3. Danach test_liquiline_all_channels: alle fuenf "Good", Einheit pH /
+mS/cm / degC. Kein Neustart noetig.

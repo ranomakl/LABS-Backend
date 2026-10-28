@@ -91,6 +91,11 @@ devices:
       ph_ch1: 0                 # AI1 = CH1 "1:1 pH Glas", Messwert pH       (am Geraet gesetzt 12.10.2026)
       conductivity: 4           # AI2 = CH2, seit 13.10.2026 Leitfaehigkeitssensor (Geraet meldet Einheit mS/cm; vorher "1:2 pH Glas")
       temperature: 8            # AI3 = CH1 "1:1 pH Glas", Messwert Temperatur
+      # 28.10.2026 (3 Zellen): ph_ch1 = pH Zelle 1 (Name bleibt, Frontend/Routinen kennen ihn). Zelle 2 und 3
+      # ueber AI4/AI5 (je 4 Register: Value/Status/Unit). Am Geraet unter Setup/Outputs/Modbus AI 4 bzw. AI 5
+      # die pH-Werte der neuen Sensorkanaele zuordnen - bis dahin Status 3 "Not assigned", Wert 0.
+      ph_z2: 12                 # AI4 = pH Zelle 2 (Zuordnung am Geraet: OFFEN)
+      ph_z3: 16                 # AI5 = pH Zelle 3 (Zuordnung am Geraet: OFFEN)
     # Dummy-Umgebung (LABS-DeviceDummys): address 127.0.0.1:12353, bus_address 1, siehe config.dummy.yml
     # Ethernet des Geraets (Register 509-513): aktiv, IP 169.254.233.247/24 (Link-Local), kein Gateway.
 
@@ -726,6 +731,12 @@ experiments:
       - [liquiline, ph_ch1_value, float, pH]
       - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_z2_value, float, pH]
+      - [liquiline, ph_z2_status, str, ""]
+      - [liquiline, ph_z2_unit, str, ""]
+      - [liquiline, ph_z3_value, float, pH]
+      - [liquiline, ph_z3_status, str, ""]
+      - [liquiline, ph_z3_unit, str, ""]
     commands:
       - [liquiline, read_all_channels, [], {}]
 
@@ -1067,6 +1078,10 @@ experiments:
       - [liquiline, conductivity_value, float, mS/cm]
       - [liquiline, temperature_value, float, degC]
       - [liquiline, ph_ch1_status, str, ""]
+      - [liquiline, ph_z2_value, float, pH]
+      - [liquiline, ph_z2_status, str, ""]
+      - [liquiline, ph_z3_value, float, pH]
+      - [liquiline, ph_z3_status, str, ""]
       - [ventil_z1, position, str, ""]
       - [ventil_z2, position, str, ""]
       - [ventil_z3, position, str, ""]
