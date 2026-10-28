@@ -51,6 +51,7 @@ an example. Leave it unset/false for a real deployment; a real GPIO failure will
 """
 from .relay_3_2_valve_base import (BaseDevice, SinglechannelBaseDevice, CommandParameterFactory, parser,
                                     normalize_position, build_output_pin, NoWireProtocol)
+from backend.conditions.conditions import TimeCondition
 import re
 
 
@@ -156,3 +157,13 @@ class Device(SinglechannelBaseDevice, BaseDevice):
     def set_position(self, position: str, **kwargs):
         position = normalize_position(position)
         return self.write(f"SET_{position}", **kwargs)
+
+    def hold_position(self, position: str, minutes, **kwargs):
+        """Position setzen und `minutes` Minuten HALTEN (Geraet ist solange Busy -> haelt das Experiment).
+        Danach stellt das Experimentende das Ventil ueber final_commands auf safe_state.
+        Grund (28.10.2026): test_ventil_z1-3 nur mit set_position endet sofort, das Experimentende stellt
+        sofort wieder auf A - das Relais war nur einen Sekundenbruchteil an, am Geraet nicht pruefbar."""
+        position = normalize_position(position)
+        cmd = self.set_position(position, **kwargs)
+        self.busy(TimeCondition(f"Ventil {minutes} min auf {position}", 60 * float(minutes)))
+        return cmd

@@ -1,0 +1,159 @@
+RELAISPLATINE (GC-VENTILE): PI-ABSTURZ BEIM UMSTECKEN AUF 3,3 V UND SOFTWARE-LOESUNG
+=====================================================================================
+Stand 28.10.2026, ca. 10:00. Vorgeschichte: docs/stand_27-10-2026_relaisplatine.txt (Problem),
+docs/relaisplatine_erklaerung_28-10-2026.txt (Erklaerung + Einzeltest 09:45).
+
+----------------------------------------------------------------------------
+1. WAS PASSIERT IST
+----------------------------------------------------------------------------
+- 09:45  Einzeltest tools/relais_test.py an der echten Platine: Relais 1-3 (Pins 11/13/15) schalten
+         einzeln aus -> an -> aus. Software-Loesung (Punkt 3) damit bestaetigt. LABS war beendet.
+- 08:56  (davor) LABS regulaer beendet (SIGTERM im backend_stdout.log, Ventile auf Shutdown).
+- danach Umstecken auf Loesung A (VCC der Eingangsleiste an 3,3 V vom Pi). Direkt danach ist der Pi
+         abgestuerzt und liess sich mit dem Einschaltknopf nicht mehr starten. Erst nach Abziehen des
+         USB-C-Netzteils lief er wieder (Neustart ca. 09:37, Uhr zeigte beim Boot 09:29, NTP hat
+         nachgestellt).
+- Danach geprueft (vcgencmd pmic_read_adc, get_throttled): 3V3_SYS 3,32 V bei 72 mA, EXT5V 5,15 V,
+         throttled=0x0, GPIO 17/27/22 frei (Eingang, Pull-Down). Der Pi hat keinen erkennbaren Schaden.
+         Journal ist nicht persistent, vom Absturz selbst gibt es keine Logzeilen.
+
+Ursache (wahrscheinlichste zuerst):
+  a) Jumper VCC <-> JD-VCC auf der Platine war noch gesteckt. Dann haengt die 3,3-V-Schiene des Pi
+     direkt am 12-V-Relaisnetzteil bzw. muss alle 16 Spulen versorgen. Der PMIC des Pi 5 schaltet bei
+     einem Fehler auf der 3,3-V-Schiene hart ab und SPERRT den Einschaltknopf, bis die Versorgung
+     10-30 s komplett weg war. Genau dieses Verhalten wurde beobachtet.
+  b) Kurzschluss beim Stecken: Pin 1 (3,3 V) liegt direkt neben Pin 2 (5 V), Pin 17 (3,3 V) neben
+     Pin 18 (GPIO 24).
+  c) Umstecken am Header bei laufendem Pi.
+
+Konsequenz: Loesung A (3,3 V) wird NICHT weiterverfolgt. Die Platine wird wieder so verdrahtet wie
+beim Einzeltest um 09:45 (VCC an den eigenen 5 V der Platine, GND mit dem Pi verbunden, IN1-3 an
+Header-Pins 11/13/15). Es bleibt bei der Software-Loesung (Punkt 3), die bereits in config.yml steht.
+Am Header wird nur noch bei heruntergefahrenem Pi und abgezogenem USB-C gesteckt.
+
+----------------------------------------------------------------------------
+2. WARUM DER PI DAS RELAIS NICHT PER HIGH AUSSCHALTEN KANN (Kurzform)
+----------------------------------------------------------------------------
+Low-Active-Platine, Steuerseite an 5 V. Das Relais reagiert auf den UNTERSCHIED zwischen den 5 V der
+Platine und dem Pi-Pin:
+    Pin auf Masse   -> 5 V Unterschied   -> Relais AN       (kann der Pi)
+    Pin auf 3,3 V   -> 1,7 V Unterschied -> Relais noch AN  (mehr High kann der Pi nicht)
+    Pin auf 5 V     -> 0 V Unterschied   -> Relais AUS      (kann der Pi NICHT)
+    Pin offen       -> Platine zieht ihn selbst auf 5 V -> AUS (so sind die Relais vor dem LABS-Start)
+
+----------------------------------------------------------------------------
+3. DIE SOFTWARE-LOESUNG: release_when_off
+----------------------------------------------------------------------------
+Code:    backend/drivers/relay_3_2_valve_base.py, Klasse ReleasingOutputPin, Schalter in build_output_pin.
+Config:  config.yml, ventil_z1 / ventil_z2 / ventil_z3:  inverted: true  +  release_when_off: true
+Commit:  9589125 (28.10.2026). Einzeltest ohne Backend: tools/relais_test.py <BCM> [Sekunden].
+
+Prinzip: "aus" heisst nicht "Pin auf 3,3 V", sondern "Pin LOSLASSEN".
+    Position B (Relais an, Ventil offen):      Pin als Ausgang auf Masse (0 V).
+    Position A (Relais aus, Ruhelage):         Pin als Eingang mit Pull-Down. Elektrisch haengt dann kein
+                                               Treiber mehr dran, die Platine zieht ihren Eingang ueber den
+                                               eigenen Widerstand auf 5 V, Unterschied 0 -> Relais faellt ab.
+                                               Das ist exakt der Zustand vor dem Backend-Start, in dem am
+                                               27.10. nachweislich alle Relais aus waren.
+    LABS beenden / Backend-Absturz:            safe_state A -> alle Pins losgelassen -> alle Relais aus.
+                                               (Auch wenn der Prozess hart stirbt, gibt Linux die Pins frei
+                                               -> Relais aus. Ausfallsicher in die Ruhelage.)
+    inverted: true  ist Pflicht (Treiber prueft das), damit die Richtung stimmt: Masse = an.
+
+Nachteil: Im losgelassenen Zustand druecken ueber Widerstand + Optokoppler ca. 3,8 V auf den Pi-Eingang.
+Die Schutzdiode des Pi faengt das ab, Strom < 1 mA je Pin (3 Pins). Nicht schoen, aber bei dieser Art
+Platine gaengige Praxis und am 28.10. um 09:45 an allen drei Relais bestaetigt.
+
+Am Pi sichtbar (pinctrl get 17,27,22):
+    losgelassen (A):  "ip pd | hi"   (Platine zieht den Pin hoch)   -> Relais aus
+    an (B):           "op dl | lo"                                   -> Relais an
+    kein LABS:        "no pd | --"   (Pin ohne Funktion)             -> Relais aus
+
+----------------------------------------------------------------------------
+4. AUSWIRKUNG AUF BRONKHORST (MFC) UND GC-MESSUNGEN
+----------------------------------------------------------------------------
+Keine durch die Software-Loesung selbst. Begruendung:
+- Die Loesung aendert nur, WIE die drei GPIO-Pins 17/27/22 "aus" darstellen (loslassen statt High).
+  Bronkhorst-MFCs (USB-Seriell, FLOW-BUS) und der microGC (LAN) haengen an ganz anderen Schnittstellen
+  und haben keine elektrische Verbindung zu diesen Pins. Weder Zeitverhalten noch Ablauf des
+  Gaswechslers (switch_after_s: 60, streams Z1/Z2/Z3) aendern sich - die Umschaltung dauert gleich lang,
+  nur der Pegel am Pin ist anders.
+- Die ca. 3,8 V / < 1 mA ueber die Schutzdiode belasten nur den jeweiligen Pin, nicht die 3,3-V-Schiene
+  (3 x < 1 mA ist vernachlaessigbar gegen die ca. 70 mA, die dort ohnehin fliessen) und nicht den USB-Hub.
+- Ausfallsicherheit ist eher besser: Bei Backend-Absturz oder Pi-Neustart sind alle Pins losgelassen ->
+  alle Ventile auf A (Gasweg zu). Es kann dann kein Gas aus mehreren Zellen gleichzeitig zum GC laufen.
+
+Was unabhaengig von der Software zu beachten ist (gilt fuer JEDE Ansteuerung dieser Platine):
+- Relais-Spulen (12 V) erzeugen beim Schalten Stoerimpulse. Am 27.10. hat schon das Ein-/Ausschalten der
+  Netzteilkaesten den USB-Hub gestoert (Buchse 2.2 "disabled by hub (EMI?)"). Die Ventile schalten
+  waehrend des Laufs alle paar Minuten (Gaswechsel). Deshalb beim ersten echten 3x-Lauf im
+  backend_stdout.log auf USB-Reconnects / Seriell-Timeouts der MFCs und Netzteile achten, zeitlich
+  passend zu den Ventilschaltungen. Falls das auftritt: 12-V-Netzteil der Platine und Relais-Kabel
+  raeumlich vom USB-Hub trennen, Masseverbindung Pi <-> Platine kurz und direkt.
+- Gasweg/Schlauchzuordnung (A = zu, B = offen) bleibt eine ANNAHME, bis Punkt 5.4 geprueft ist. Ein
+  vertauschter Schlauch wuerde die GC-Werte den falschen Zellen zuordnen - das ist das eigentliche
+  Messrisiko, nicht die Software.
+- Bei LABS-Start und -Ende klicken die Relais nicht mehr (Pins werden losgelassen, nicht auf High
+  gelegt). Beim Start schaltet KEIN Ventil, bis der Gaswechsler die erste Stellung Z1 anfaehrt.
+
+----------------------------------------------------------------------------
+5. TESTABLAUF (nach Rueckverdrahtung wie um 09:45)
+----------------------------------------------------------------------------
+Voraussetzung: VCC der Eingangsleiste an den 5 V der Platine (NICHT am Pi), 12 V an JD-VCC, GND mit Pi
+verbunden, IN1/IN2/IN3 an Header-Pins 11/13/15. Pi erst danach einschalten. LABS beendet.
+
+5.1 Einzeltest ohne Backend, je Relais, auf die LED schauen (aus -> 5 s an -> aus, sonst nichts klickt):
+      cd ~/LABS/LABS-Backend
+      .venv/bin/python tools/relais_test.py 17      # Relais 1, Pin 11, ventil_z1
+      .venv/bin/python tools/relais_test.py 27      # Relais 2, Pin 13, ventil_z2
+      .venv/bin/python tools/relais_test.py 22      # Relais 3, Pin 15, ventil_z3
+5.2 "LABS starten" (Desktop) bzw. bash tools/labs_start.sh. Beim Start darf KEIN Relais klicken, alle
+    drei LEDs bleiben aus. Statusfenster "LABS Geraete" gruen. pinctrl get 17,27,22 -> "ip pd | hi".
+5.3 Frontend: Download Experiments from Station, dann test_ventil_z1 mit position B -> NUR Relais 1
+    zieht an (LED 1 rot); mit position A faellt es ab. Dann test_ventil_z2 (Relais 2), test_ventil_z3
+    (Relais 3). Im Log: "Raspi GPIO Relay Valve on GPIO17 ... position B/A".
+5.4 Gasweg: stromlos (alle A) darf von keiner Zelle Gas zum GC kommen; bei B nur von der jeweiligen
+    Zelle. Ist es umgekehrt: Schlaeuche am Ventil tauschen, NICHT die Software.
+5.5 "LABS beenden": alle drei Relais aus (Ruhelage A).
+
+Ergebnisse bitte unten eintragen.
+
+----------------------------------------------------------------------------
+6. ERGEBNISSE (28.10.2026, 09:56-10:03, Platine wieder wie um 09:45 verdrahtet)
+----------------------------------------------------------------------------
+5.1 Einzeltest ohne Backend: Relais 1, 2, 3 je LED aus -> 5 s an -> aus, immer nur das eine (Rafael).
+    Pi-Seite je Pin: "ip pd | hi" -> "op dl pd | lo" -> "ip pd | hi".                      BESTANDEN
+5.2 LABS gestartet 09:57: kein Relais klickt, Pins 17/27/22 "ip pd | hi", 13/13 Geraete Ready,
+    keine Warnungen.                                                                        BESTANDEN
+5.3 ERST FEHLGESCHLAGEN: test_ventil_z1 mit position B endete sofort (0,0 s), das Experimentende
+    stellt alle Geraete auf safe_state A -> Relais nur einen Sekundenbruchteil an (wie schon
+    test_anolyte_speed am 27.10.). Loesung: neue Treibermethode hold_position(position, minutes)
+    in raspi_gpio_relay_valve.py (Position setzen, Geraet `minutes` Minuten Busy, danach stellt das
+    Experimentende auf A); test_ventil_z1/z2/z3 haben jetzt den Parameter minutes. Backend neu
+    gestartet 10:00 (Frontend: "Download Experiments from Station" wiederholen!).
+    Danach je Ventil position B, minutes 0.5: nur der eine Pin 30 s auf Masse, die beiden anderen
+    "ip pd | hi", nach 30 s wieder losgelassen, Experiment Finished:
+      z1 10:00:48-10:01:19, z2 10:01:40-10:02:11, z3 10:02:15-10:02:46.                   BESTANDEN
+    (LED-Beobachtung fuer 5.3 bitte noch bestaetigen/eintragen.)
+5.4 Gasweg: noch offen.
+5.5 LABS beenden: noch offen.
+
+----------------------------------------------------------------------------
+7. NEUE ROUTINE test_gc_ventile_3x (Weg 2, 28.10. 10:10)
+----------------------------------------------------------------------------
+Zweck: GC-Kreislauf ueber die drei ECHTEN Relaisventile pruefen, ohne Netzteile, Pumpen, Liquiline.
+Inhalt: mfc1-3 set_setpoint(flow_z1/z2/z3) + reset_counter + start_measuring; microgc run_schedule_named
+        mit streams "alle" (Z1, Z2, Z3 im Kreis, switch_after_s 60 s), final_run ja/nein. Gleicher
+        GC-Befehl wie kolbe_elektrolyse_3x.
+Parameter: versuch, gc_minutes (0 = Dauermessung), minutes, final_run (ja/nein), flow_z1, flow_z2, flow_z3.
+Testaufbau (Rafael): GC NICHT an die Zellen angeschlossen (misst Raumluft, Werte egal), Bronkhorsts
+        bekommen N2, mit einem Messgeraet wird Leitung fuer Leitung geprueft, welcher MFC wohin foerdert.
+        Deshalb unterschiedliche Fluesse 30 / 20 / 10 mL/min (mfc3 = 20er, max 20): am gemessenen Fluss
+        ist der MFC erkennbar. Die Fluesse laufen gleichzeitig und dauerhaft (Zufuhrseite); nur die
+        Relaisventile auf der GC-Seite wechseln ab.
+Erwartung an den LEDs: immer genau EINE an, Wechsel 1 -> 2 -> 3 -> 1 jeweils ~60 s nach dem Laufstart
+        (je Lauf ~8 min, minutes 20 + final_run nein = einmal rundherum, ~25 min).
+Im Log pruefen: Laufnamen <versuch>_Z1/Z2/Z3, gc_stream passt zur LED, "set for position" 60 s nach
+        Laufstart, KEINE USB-Reconnects / Seriell-Timeouts zeitgleich mit den Relaisschaltungen.
+Hinweis: MFC-Sollwerte bleiben nach dem Test stehen (kein stop_flow) -> stop_mfc1/2/3.
+Ergebnis: (offen)

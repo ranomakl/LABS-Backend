@@ -794,39 +794,117 @@ experiments:
     commands:
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Test;LABS" }]
 
+  # 28.10.2026: GC-Kreislauf ueber die drei echten Relais-Ventile OHNE Netzteile, Pumpen, Liquiline
+  # (docs/relaisplatine_absturz_und_softwareloesung_28-10-2026.txt, Weg 2). Gleicher GC-Befehl wie in
+  # kolbe_elektrolyse_3x (streams "alle" = Z1, Z2, Z3 im Kreis, switch_after_s 60 s nach Laufstart).
+  # Bronkhorsts: Sollwert flow_z1/z2/z3 (mL/min) wird zu Beginn gesetzt und bleibt nach dem Test stehen
+  # (wie im echten Lauf kein stop_flow - bei Bedarf stop_mfc1/2/3). final_run = ja/nein (Abschlussmessung je Zelle). Je GC-Lauf ~8 min:
+  # minutes 20 + final_run nein = Z1, Z2, Z3 einmal rundherum (~25 min).
+  # Pruefung an den LEDs: immer genau EINE an, Wechsel 1 -> 2 -> 3 -> 1 je ~60 s nach dem Laufstart.
+  test_gc_ventile_3x:
+    conditions:
+    stopconditions:
+    parameters:
+      versuch: [str, ""]
+      gc_minutes: [str, ""]
+      minutes: [float, min]
+      final_run: [str, ""]
+      flow_z1: [float, mL/min]          # Sollwert je Bronkhorst waehrend des Tests (0 = Ventil zu)
+      flow_z2: [float, mL/min]
+      flow_z3: [float, mL/min]
+    observables:
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]
+      - [mfc3, counter, float, mLn]
+      - [ventil_z1, position, str, ""]
+      - [ventil_z2, position, str, ""]
+      - [ventil_z3, position, str, ""]
+      - [microgc, gc_schedule, str, ""]
+      - [microgc, gc_runs_done, int, ""]
+      - [microgc, gc_run_name, str, ""]
+      - [microgc, gc_stream, str, ""]
+      - [microgc, gc_Z1_H2, float, "%"]
+      - [microgc, gc_Z1_O2, float, "%"]
+      - [microgc, gc_Z1_N2, float, "%"]
+      - [microgc, gc_Z1_CO2, float, "%"]
+      - [microgc, gc_Z1_Ethylene, float, "%"]
+      - [microgc, gc_Z1_Ethane, float, "%"]
+      - [microgc, gc_Z1_1_Penten, float, "%"]
+      - [microgc, gc_Z1_n_Pentan, float, "%"]
+      - [microgc, gc_Z1_n_Hexane, float, "%"]
+      - [microgc, gc_Z1_n_Heptane, float, "%"]
+      - [microgc, gc_Z2_H2, float, "%"]
+      - [microgc, gc_Z2_O2, float, "%"]
+      - [microgc, gc_Z2_N2, float, "%"]
+      - [microgc, gc_Z2_CO2, float, "%"]
+      - [microgc, gc_Z2_Ethylene, float, "%"]
+      - [microgc, gc_Z2_Ethane, float, "%"]
+      - [microgc, gc_Z2_1_Penten, float, "%"]
+      - [microgc, gc_Z2_n_Pentan, float, "%"]
+      - [microgc, gc_Z2_n_Hexane, float, "%"]
+      - [microgc, gc_Z2_n_Heptane, float, "%"]
+      - [microgc, gc_Z3_H2, float, "%"]
+      - [microgc, gc_Z3_O2, float, "%"]
+      - [microgc, gc_Z3_N2, float, "%"]
+      - [microgc, gc_Z3_CO2, float, "%"]
+      - [microgc, gc_Z3_Ethylene, float, "%"]
+      - [microgc, gc_Z3_Ethane, float, "%"]
+      - [microgc, gc_Z3_1_Penten, float, "%"]
+      - [microgc, gc_Z3_n_Pentan, float, "%"]
+      - [microgc, gc_Z3_n_Hexane, float, "%"]
+      - [microgc, gc_Z3_n_Heptane, float, "%"]
+    commands:
+      - [mfc1, set_setpoint, [], { flow_ml_min: "{flow_z1}" }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, set_setpoint, [], { flow_ml_min: "{flow_z2}" }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, set_setpoint, [], { flow_ml_min: "{flow_z3}" }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Test;LABS", final_run: "{final_run}", streams: "alle" }]
+
   # ---- Relais-Ventile (GPIO) ----
 
   # 27.10.2026: GC-Ventile einzeln stellen (Platine an Header-Pins 11/13/15). position = A (Ruhelage, Gasweg
-  # zum GC zu) oder B (offen). Solange simulate: true an den Ventilen steht, schaltet kein echtes Relais!
+  # zum GC zu) oder B (offen). 28.10.: minutes = Haltezeit; danach stellt das Experimentende auf A zurueck
+  # (ohne Haltezeit endete das Experiment sofort, Relais nur einen Sekundenbruchteil an). Solange simulate: true an den Ventilen steht, schaltet kein echtes Relais!
   test_ventil_z1:
     conditions:
     stopconditions:
     parameters:
       position: [str, ""]
+      minutes: [float, min]
     observables:
       - [ventil_z1, position, str, ""]
     commands:
-      - [ventil_z1, set_position, [], { position: "{position}" }]
+      - [ventil_z1, hold_position, [], { position: "{position}", minutes: "{minutes}" }]
 
   test_ventil_z2:
     conditions:
     stopconditions:
     parameters:
       position: [str, ""]
+      minutes: [float, min]
     observables:
       - [ventil_z2, position, str, ""]
     commands:
-      - [ventil_z2, set_position, [], { position: "{position}" }]
+      - [ventil_z2, hold_position, [], { position: "{position}", minutes: "{minutes}" }]
 
   test_ventil_z3:
     conditions:
     stopconditions:
     parameters:
       position: [str, ""]
+      minutes: [float, min]
     observables:
       - [ventil_z3, position, str, ""]
     commands:
-      - [ventil_z3, set_position, [], { position: "{position}" }]
+      - [ventil_z3, hold_position, [], { position: "{position}", minutes: "{minutes}" }]
 
 
   # ---- 26.10.2026 Drei Zellen parallel (docs/gc_rundlauf_3_zellen_26-10-2026.md) ----
