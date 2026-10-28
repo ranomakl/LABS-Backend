@@ -107,3 +107,38 @@ Der Haken:
       nach close         -> "ip pn" (frei)
   - NOCH OFFEN: Test an der echten Platine (Punkt 6) - LABS neu starten, Relais muessen aus bleiben,
     dann test_ventil_z1/z2/z3.
+
+
+
+//
+
+können wir das damit testen?
+
+from gpiozero import OutputDevice
+from time import sleep
+
+# BCM-GPIO-Nummer anpassen!
+GPIO_PIN = 15
+
+# HIGH schaltet dein Relais ein
+relay = OutputDevice(
+    GPIO_PIN,
+    active_high=True,
+    initial_value=False
+)
+
+try:
+    print("Relais EIN")
+    relay.on()
+
+    sleep(5)
+
+    print("Relais AUS")
+    relay.off()
+
+finally:
+    relay.off()
+    relay.close()
+    print("Programm beendet, Relais AUS")
+
+oder macht das keinen sinn
