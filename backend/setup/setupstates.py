@@ -22,7 +22,7 @@ class SetupState(IState, ABC):
             raise NonUniqueIDError(f"{experiment_id} already used.")
         new_index = len(self.setup.experiment_id_order)
         if existing_id is not None:
-            for index, exp_id in enumerate(self.setup.experiment_order):
+            for index, exp_id in enumerate(self.setup.experiment_id_order):  # 28.10.2026: hiess experiment_order (AttributeError beim Einfuegen hinter einem Schritt)
                 if exp_id == existing_id:
                     new_index = index + 1
             if not new_index > self.setup.current_experiment_index:
