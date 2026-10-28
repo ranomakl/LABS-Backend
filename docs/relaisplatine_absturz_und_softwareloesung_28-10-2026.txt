@@ -199,6 +199,9 @@ config.yml liquiline/channels: ph_ch1 (AI1, Zelle 1), conductivity (AI2, Zelle 1
 NEU ph_z2 (AI4, Register 12), ph_z3 (AI5, Register 16). Observables in kolbe_elektrolyse_3x und
 test_liquiline_all_channels ergaenzt. Erste Lesung 11:23: AI1-3 Status "Bad" (Sensor da, kein gueltiger
 Wert - wie seit 12.10.), AI4/AI5 "Not assigned".
-AM GERAET ZU TUN: zwei weitere pH-Sensoren an freie Kanaele; Setup/Outputs/Modbus/AI 4 = pH-Wert Sensor
-Zelle 2, AI 5 = pH-Wert Sensor Zelle 3. Danach test_liquiline_all_channels: alle fuenf "Good", Einheit pH /
-mS/cm / degC. Kein Neustart noetig.
+ERLEDIGT 11:40-11:43: Sensoren in den Loesungen, am Geraet Setup/Outputs/Modbus AI 4 = Datenquelle CH3
+"3:1 pH Glas" + Messwert pH-Wert, AI 5 = CH4 "4:1 pH Glas" + pH-Wert (nur Datenquelle reicht NICHT, dann
+bleibt "Not assigned"). Neue Routine test_liquiline_scan (alle 16 Bloecke): AI1 9.38 pH, AI2 51.7 mS/cm,
+AI3 21.2 degC, AI4 9.20 pH, AI5 9.14 pH, alle Good, AI6-16 Not assigned.
+Zuordnung geprueft (Sensor aus der Loesung -> Kanal "Bad"): Zelle 2 = CH3 = ph_z2, Zelle 3 = CH4 = ph_z3.
+Liquiline fuer den 3x-Lauf FERTIG (pH alle 3 Zellen, Leitfaehigkeit + Temperatur Zelle 1).

@@ -93,9 +93,10 @@ devices:
       temperature: 8            # AI3 = CH1 "1:1 pH Glas", Messwert Temperatur
       # 28.10.2026 (3 Zellen): ph_ch1 = pH Zelle 1 (Name bleibt, Frontend/Routinen kennen ihn). Zelle 2 und 3
       # ueber AI4/AI5 (je 4 Register: Value/Status/Unit). Am Geraet unter Setup/Outputs/Modbus AI 4 bzw. AI 5
-      # die pH-Werte der neuen Sensorkanaele zuordnen - bis dahin Status 3 "Not assigned", Wert 0.
-      ph_z2: 12                 # AI4 = pH Zelle 2 (Zuordnung am Geraet: OFFEN)
-      ph_z3: 16                 # AI5 = pH Zelle 3 (Zuordnung am Geraet: OFFEN)
+      # Datenquelle UND Messwert (pH-Wert) zuordnen - sonst Status 3 "Not assigned". Pruefung: Sensor aus der
+      # Loesung heben -> der zugehoerige Kanal geht auf "Bad" (tools: Routine test_liquiline_scan / _all_channels).
+      ph_z2: 12                 # AI4 = CH3 "3:1 pH Glas", pH-Wert = Zelle 2 (am Geraet gesetzt + geprueft 28.10.2026 11:43)
+      ph_z3: 16                 # AI5 = CH4 "4:1 pH Glas", pH-Wert = Zelle 3 (am Geraet gesetzt + geprueft 28.10.2026 11:42)
     # Dummy-Umgebung (LABS-DeviceDummys): address 127.0.0.1:12353, bus_address 1, siehe config.dummy.yml
     # Ethernet des Geraets (Register 509-513): aktiv, IP 169.254.233.247/24 (Link-Local), kein Gateway.
 
