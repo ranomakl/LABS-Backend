@@ -30,8 +30,12 @@ Antworten aus dem Labor (eingetragen 06.10.2026)
 -------------------------------
 [x] Wird sie für die Anlage gebraucht?
     -> Dosierpumpe für Stufe II. Jetzt noch kein Treiber nötig.
-[ ] Später: Modellbezeichnung auf dem Typenschild prüfen. Davon hängt ab,
+[x] Später: Modellbezeichnung auf dem Typenschild prüfen. Davon hängt ab,
     ob das Longer-Binärprotokoll passt oder ob sie Modbus RTU spricht.
+    -> 02.11.2026: Longer BT100-1F(-B), SN 202606090001, an Messstand II. Longer-Frameformat
+       (1200 8E1, Adresse 1): RID wird beantwortet, RJ/DL/RL/XL/WJ nicht, Modbus nicht.
+       Details: docs/messstand2_stand_02-11-2026.md, Abschnitt 4.
+[ ] Offizielles RS485-Protokoll der BT100-1F bei Longer/Drifton anfragen (Handbuch verweist dorthin).
 
 
 3. Endress+Hauser Liquiline CM44x

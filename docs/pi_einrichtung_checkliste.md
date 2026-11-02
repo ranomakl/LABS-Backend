@@ -173,6 +173,9 @@ Ein Geraet nach dem anderen, erst lesen, dann schalten:
 
 ## 10. Wo was steht
 
+- Erfahrungen beim Einrichten von Messstand II (Python 3.13, gh-Login, eth0 fuer LAN-Geraete,
+  Knauer-Ventil, BT100-1F): docs/messstand2_stand_02-11-2026.md
+
 - Geraete-Befunde Messstand I (Adressen, Adapter, was geprueft ist): OFFENE_FRAGEN.md
 - Versuchsablauf im Labor fuer die Laboranten: docs/ablauf_versuch_im_labor.md
 - Routinen-Uebersicht: docs/routinen_uebersicht.md
