@@ -66,6 +66,7 @@ Designs sind pro Benutzer: jeder sieht nur seine eigenen und die, die ihm geteil
 Administration -> Routines -> **Download Experiments from Station**. Danach muessen in der Liste u.a.
 stehen: `kolbe_pumpe_zeit`, `kolbe_gas_zaehlen`, `kolbe_gas_zaehlen_pumpe`, `kolbe_elektrolyse_gc`, `kolbe_gc_messung`.
 Fehlt eine Routine, war beim Backend-Start ein Geraet aus (siehe 1).
+Welche Routine wofuer (eine Kammer / zwei Kammern / drei Zellen, Geraetetests): docs/routinen_uebersicht.md.
 
 ## 5. Versuch planen (Design anlegen)
 
