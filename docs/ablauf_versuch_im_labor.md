@@ -109,6 +109,10 @@ Parameter von `kolbe_elektrolyse_gc`:
 Das Experiment endet erst, wenn der LETZTE GC-Lauf abgeholt ist (letzter Zeitpunkt + ca. 8 min).
 Netzteil und Pumpe schalten unabhaengig davon nach `minutes` ab.
 
+Zwei-Kammer-Zelle (ein Versuch, zweiter Bronkhorst am Katholyt, zweiter pH + Temperatur, beide Pumpen):
+Routine `kolbe_elektrolyse_2k`, Parameter wie `kolbe_elektrolyse_gc` plus `rate_anolyte`. Einmalig am Liquiline
+AI 6 auf CH3 Temperatur legen. Details: docs/zweikammer_2k_02-11-2026.md.
+
 ## 6. Starten und beobachten (Monitoring)
 
 1. **Monitoring** -> Station -> **See Details**. Oben steht die Warteschlange (Name, Routine, Parameter).

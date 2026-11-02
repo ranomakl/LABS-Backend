@@ -116,6 +116,9 @@ devices:
       ph_ch1: 0                 # AI1 (am echten Geraet: CH1 "1:1 pH Glas", pH)
       conductivity: 4                 # AI2 (CH2 "1:2 pH Glas", pH)
       temperature: 8            # AI3 (CH1, Temperatur)
+      ph_z2: 12                 # AI4 (CH3, pH Zelle 2 / Zwei-Kammer: zweiter pH-Sensor)
+      ph_z3: 16                 # AI5 (CH4, pH Zelle 3)
+      temperature_z2: 20        # AI6 (CH3, Temperatur des zweiten pH-Sensors)
 
 #conditions:
   # Once a condition is True it will stay True inside the experiment.
@@ -563,6 +566,67 @@ experiments:
       - [mfc1, reset_counter, [], {}]
       - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
+      - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true }]
+
+  # 02.11.2026 Zwei-Kammer-Zelle, EIN Versuch (ANFORDERUNGEN "1er-Versuch mit 2-Kammern", Antworten Rafael
+  # 29.10./02.11.): wie kolbe_elektrolyse_gc, dazu mfc2 am Katholytgas (nur Zaehler/Fluss, kein Sollwert),
+  # zweiter pH-Sensor ph_z2 (Liquiline CH3 = AI4) mit seiner Temperatur temperature_z2 (AI6 - am Geraet
+  # unter Setup/Outputs/Modbus AI 6 auf CH3 Temperatur legen, sonst Status "Not assigned") und beide Pumpen:
+  # dosing_pump am Katholyt mit `rate`, anolyte_pump am Anolyt mit `rate_anolyte` (Zuordnung der Pumpen =
+  # ANNAHME nach den Namen, docs/neuePumpe.txt), beide `minutes` lang. mfc1 bleibt am Anolytgas, der GC
+  # misst wie bisher nur diesen Strom (kein Ventil-Rundlauf), mit Abschlussmessung nach dem Ende.
+  kolbe_elektrolyse_2k:
+    conditions:
+    stopconditions:
+    parameters:
+      versuch: [str, ""]
+      gc_minutes: [str, ""]
+      current: [float, A]
+      max_voltage: [float, V]
+      minutes: [float, min]
+      rate: [float, mL/min]
+      rate_anolyte: [float, mL/min]
+    observables:
+      - [psu1, current, float, A]
+      - [psu1, voltage, float, V]
+      - [psu1, amount_of_charge, float, C]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [dosing_pump, speed_rpm, int, rpm]
+      - [dosing_pump, flow_ml_min, float, mL/min]
+      - [anolyte_pump, speed_rpm, int, rpm]
+      - [anolyte_pump, flow_ml_min, float, mL/min]
+      - [liquiline, ph_ch1_value, float, pH]
+      - [liquiline, conductivity_value, float, mS/cm]
+      - [liquiline, temperature_value, float, degC]
+      - [liquiline, ph_ch1_status, str, ""]
+      - [liquiline, ph_z2_value, float, pH]
+      - [liquiline, ph_z2_status, str, ""]
+      - [liquiline, temperature_z2_value, float, degC]
+      - [microgc, gc_schedule, str, ""]
+      - [microgc, gc_runs_done, int, ""]
+      - [microgc, gc_run_name, str, ""]
+      - [microgc, gc_H2, float, "%"]
+      - [microgc, gc_O2, float, "%"]
+      - [microgc, gc_N2, float, "%"]
+      - [microgc, gc_CO2, float, "%"]
+      - [microgc, gc_Ethylene, float, "%"]
+      - [microgc, gc_Ethane, float, "%"]
+      - [microgc, gc_1_Penten, float, "%"]
+      - [microgc, gc_n_Pentan, float, "%"]
+      - [microgc, gc_n_Hexane, float, "%"]
+      - [microgc, gc_n_Heptane, float, "%"]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, start_measuring, [], { interval: 1.0 }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+      - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
       - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true }]
 
