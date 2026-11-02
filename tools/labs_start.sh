@@ -1,7 +1,8 @@
 #!/bin/bash
 # LABS auf dem Pi starten - fuer das Desktop-Symbol "LABS starten" (26.10.2026).
 # Holt den neuesten Stand (git pull), startet Backend und Frontend im Hintergrund (Logs in
-# LABS-Backend/logs/), wartet bis beide antworten und oeffnet Chromium mit dem Frontend.
+# LABS-Backend/logs/), wartet bis beide antworten und oeffnet den Browser mit dem Frontend
+# (Firefox, falls installiert, sonst Chromium; Chromium haengt auf dem Pi bei http-Seiten).
 # Laeuft in einem Terminalfenster, damit man sieht, was passiert; das Fenster bleibt offen.
 set -u
 BACKEND=/home/pohlma/LABS/LABS-Backend
@@ -55,8 +56,9 @@ fi
 echo "--- Geraetestatus-Fenster oeffnen (gruener Haken = an, rotes Kreuz = aus) ---"
 nohup "$BACKEND/.venv/bin/python" "$BACKEND/tools/geraete_fenster.py" >/dev/null 2>&1 &
 
-echo "--- Browser oeffnen: $URL ---"
-nohup chromium "$URL" >/dev/null 2>&1 &
+if command -v firefox >/dev/null 2>&1; then BROWSER=firefox; else BROWSER=chromium; fi
+echo "--- Browser oeffnen ($BROWSER): $URL ---"
+nohup "$BROWSER" "$URL" >/dev/null 2>&1 &
 echo
 echo "Fertig. Dieses Fenster kann offen bleiben (oder geschlossen werden, Backend und Frontend laufen weiter)."
 echo "Beenden: Desktop-Symbol 'LABS beenden' oder tools/labs_stop.sh."

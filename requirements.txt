@@ -5,3 +5,7 @@ pyserial==3.5
 gpiozero==2.0.1.post3
 # lgpio (Pi 5, Pin-Factory fuer gpiozero/Relais-Ventile): pip-Build braucht swig. Stattdessen 27.10.2026 das System-
 # Paket python3-lgpio per Symlink ins venv geholt (lgpio.py + _lgpio*.so aus /usr/lib/python3/dist-packages).
+# Python 3.13 hat das Modul cgi entfernt, Twisted 22.10 braucht es (twisted.web.http).
+legacy-cgi; python_version >= "3.13"
+# pkg_resources fuer "python -m twisted.trial"; ab setuptools 81 entfernt.
+setuptools<81
