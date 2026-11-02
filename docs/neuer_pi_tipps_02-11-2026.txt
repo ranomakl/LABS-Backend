@@ -31,6 +31,7 @@ Claude Code
 - Am Messstand I laeuft die native Installation ohne Node (Version 2.1.316 unter
   ~/.local/bin/claude). Installieren auf dem neuen Pi:
     curl -fsSL https://claude.ai/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH" echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 - Dann einmal `claude` starten und /login machen. Einstellungen (Modell, Theme) sind pro Pi
   und werden neu gesetzt.
 - Die Memory von Claude Code ist an den Projektordner auf dem jeweiligen Pi gebunden und
