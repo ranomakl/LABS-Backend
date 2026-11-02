@@ -19,7 +19,19 @@ log_level: info
 # Wie am Messstand I seit 16.10.2026 eingeschaltet.
 step_mode: true
 
-devices: {}
+devices:
+
+  valve1:
+    driver: knauer_azura_vu_4_1
+    # Knauer AZURA Valve Unifier VU 4.1, SN FVH263200018, Firmware 6.26.000.0000.
+    # Ventilkopf SN FWM263200013, Typ EVS63CE, 16 Positionen / 16 Ports (am 02.11.2026 abgefragt).
+    # LAN direkt an eth0 des Pi. eth0 steht in NetworkManager auf "shared" (Pi verteilt per DHCP
+    # 10.42.0.x), das Ventil bekommt seine Adresse per DHCP (MAC 00:15:e2:00:78:e2).
+    # Port 10001 = Knauer-Werkseinstellung (die alten Ventile in config.yml.bak liefen auf 10123).
+    # Nach dem Einschalten braucht das Ventil eine Weile, bis Port 10001 offen ist.
+    # ACHTUNG: Der Treiber faehrt beim Backend-Start auf Position 1 (initial_commands).
+    address: 10.42.0.103:10001
+
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #
   # FTDI-Adapter mit Seriennummer -> by-id (USB-Buchse egal):
@@ -47,6 +59,18 @@ devices: {}
   #
   # Geraet voruebergehend abschalten, ohne es zu loeschen:  enabled: false
 
-experiments: {}
+experiments:
+
+  # Ventil auf eine Position (1-16) fahren. Der Treiber liest die Position danach zurueck.
+  test_valve1_position:
+    conditions:
+    stopconditions:
+    parameters:
+      position: [float, ""]
+    observables:
+      - [valve1, position, str, ""]
+    commands:
+      - [valve1, set_position, ["{position}"], {}]
+
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).
