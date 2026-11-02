@@ -8,6 +8,10 @@ set -u
 BACKEND=/home/pohlma/LABS/LABS-Backend
 FRONTEND=/home/pohlma/LABS/LABS-User-Interface
 URL=http://localhost:5000
+# Konfigdatei pro Pi: station.conf (nicht im Repo) mit z.B. CONFIG=config.messstand2.yml.
+# Ohne station.conf wie bisher config.yml (Messstand I).
+CONFIG=config.yml
+[ -f "$BACKEND/station.conf" ] && . "$BACKEND/station.conf"
 
 echo "=== LABS starten  $(date '+%d.%m.%Y %H:%M') ==="
 echo
@@ -25,10 +29,10 @@ done
 echo
 
 if [ "$BACKEND_RUNNING" = 0 ]; then
-  echo "--- Backend starten (Log: logs/backend_stdout.log) ---"
+  echo "--- Backend starten mit $CONFIG (Log: logs/backend_stdout.log) ---"
   cd "$BACKEND" || exit 1
   mkdir -p logs
-  nohup .venv/bin/python main.py >> logs/backend_stdout.log 2>&1 &
+  nohup .venv/bin/python main.py "$CONFIG" >> logs/backend_stdout.log 2>&1 &
   for i in $(seq 1 60); do
     sleep 1
     curl -s -m 1 http://127.0.0.1:11123/api/station_overview >/dev/null 2>&1 && break
