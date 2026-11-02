@@ -1,0 +1,56 @@
+Neuen Pi fuer den zweiten Messstand einrichten - Tipps (02.11.2026)
+====================================================================
+
+Ergaenzung zu docs/pi_einrichtung_checkliste.md. Im Kern: LAN, einloggen, Repos holen,
+Claude Code installieren. Dazu die Dinge, die auf dem Pi von Messstand I dazukamen und die
+man leicht vergisst.
+
+Vor dem ersten Login
+--------------------
+- Beim Schreiben der SD-Karte mit dem Raspberry Pi Imager gleich Benutzer, Passwort, WLAN und
+  SSH setzen. Dann braucht der Pi weder Tastatur noch Monitor, man kommt vom Laptop per SSH rein.
+- Hostname eindeutig waehlen (z.B. messstand2), damit die Pis nicht verwechselt werden.
+- Denselben Benutzernamen wie am Messstand I (pohlma) nehmen oder bewusst einen anderen. Die
+  Startskripte und Desktop-Symbole haben den Pfad /home/pohlma fest drin; bei einem anderen
+  Namen muessen sie angepasst werden (Checkliste Abschnitt 7).
+
+GitHub-Zugang
+-------------
+- Der Pi von Messstand I pusht ueber HTTPS mit einem gespeicherten Token
+  (git config credential.helper store). Auf dem neuen Pi braucht es einen neuen Token von
+  GitHub (Settings / Developer settings / Personal access tokens). Beim ersten Push fragt git
+  nach Benutzername (ranomakl) und Token und merkt sich beides.
+  Vorher einmal setzen:
+    git config --global user.name ranomakl
+    git config --global user.email <mail>
+    git config --global credential.helper store
+- Wer am neuen Pi nur pullen will, braucht keinen Token. Die Repos sind oeffentlich.
+
+Claude Code
+-----------
+- Am Messstand I laeuft die native Installation ohne Node (Version 2.1.316 unter
+  ~/.local/bin/claude). Installieren auf dem neuen Pi:
+    curl -fsSL https://claude.ai/install.sh | bash
+- Dann einmal `claude` starten und /login machen. Einstellungen (Modell, Theme) sind pro Pi
+  und werden neu gesetzt.
+- Die Memory von Claude Code ist an den Projektordner auf dem jeweiligen Pi gebunden und
+  kommt NICHT mit. Deshalb liegt das Wichtige in docs/pi_einrichtung_checkliste.md und
+  CLAUDE.md. Am neuen Pi reicht es, Claude beim ersten Start auf diese beiden Dateien zu
+  zeigen ("lies docs/pi_einrichtung_checkliste.md und CLAUDE.md").
+
+Reihenfolge
+-----------
+1. Imager mit Benutzer, SSH, WLAN. Booten, per SSH vom Laptop rein.
+2. Pakete und Gruppen aus Abschnitt 1 der Checkliste.
+3. Drei Repos klonen, Backend-venv, Testlauf:
+     .venv/bin/python -m twisted.trial backend.test
+   Sind die 102 Tests gruen, ist der Code-Teil fertig - ganz ohne Geraete.
+4. Claude Code installieren, einloggen.
+5. Dann erst Geraete: Adapter einzeln stecken, Adressen notieren
+   (ls -l /dev/serial/by-id/ und /dev/serial/by-path/), config.messstand2.yml anlegen.
+
+Noch zu tun, bevor der neue Pi im Labor steht
+---------------------------------------------
+- Die konkreten neuen Geraete des zweiten Messstands in die Checkliste eintragen (Hersteller,
+  Modell, Schnittstelle, Handbuch unter docs/). Dann kann Claude am neuen Pi direkt die
+  Treiber angehen (Checkliste Abschnitt 5).
