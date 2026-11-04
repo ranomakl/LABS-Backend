@@ -48,7 +48,7 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
   (initial_commands/final_commands). Soll das Ventil zwischen Schritten stehen bleiben, muss das angepasst
   werden - offen, haengt vom Versuchsablauf ab.
 
-## 4. Pumpe Longer BT100-1F (Haendler Drifton) - Verbindung steht, Protokoll noch offen
+## 4. Pumpe Longer BT100-1F (Haendler Drifton) - Protokoll da, Treiber geschrieben (04.11.), Test an der Pumpe offen
 
 - Typenschild: Baoding Longer Precision Pump, Model BT100-1F(-B), SN 202606090001. Fotos:
   docs/photo_2026-11-02_14-39-*.jpg.
@@ -70,11 +70,25 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
   Longer (longer@longerpump.com) - beim Haendler Drifton/Longer das RS485-Protokoll der BT100-1F anfragen.
 - Quellen: BT100-1F-Handbuch (manualshive.com, manuals.online), Darwin Microfluidics: RS485-Protokoll
   BT100-2J(3J) (PDF) und Blog "How to control the Longer BT100-1L pump via Python" (XL/DL/WL/RL/CL).
-- Noch kein Treiber und kein Eintrag in config.messstand2.yml.
+- NACHTRAG 04.11.2026: Protokoll von Drifton/Longer erhalten -> docs/BT100-1F-RS485-Protocol.pdf,
+  Kurzfassung docs/protokoll_bt100_1f.md (Bedienhandbuch: docs/BT100-1F-Operating-Manual.pdf, ohne Protokoll).
+  Erklaerung fuer die fehlenden Antworten: die BT100-1F kennt WJ/RJ/XL/DL nicht. Ihre Befehle sind WF/RF
+  (Flussrate in nL/min + State1), WD/RD/WSD/RSD (Dosieren), WT/RT (Kopf/Schlauch), WB/RB, WID/RID.
+  Dazu Byte-Stuffing hinter dem Flag (E8 -> E8 00, E9 -> E8 01).
+  - Treiber backend/drivers/longer_bt100_1f.py (importiert Frame/XOR aus longer_wt600.py, eigener Framer
+    mit Stuffing). Tests backend/test/test_longer_bt100_1f.py: 29 gruen, alle drei Herstellerbeispiele und
+    die RID-Antwort vom 02.11. byteweise nachgerechnet. Lesetest tools/lese_bt100_1f.py (nur R-Befehle,
+    Sperre gegen alle W-Befehle, --dry-run).
+  - config.messstand2.yml: pump1 mit enabled: false und Routinen test_pump1_read / test_pump1_flow /
+    test_pump1_stop. Die Pumpe war am 04.11. in Benutzung, deshalb KEIN Test am Geraet.
 
 ## 5. Naechste Schritte
 
-1. BT100-1F-Protokoll von Longer/Drifton besorgen, nach docs/ legen. Dann Treiber (Vorbild longer_wt600.py,
-   Frame-Funktionen wiederverwenden) + Leseskript unter tools/ + Test mit Pruefvektoren.
+1. Sobald die Pumpe frei ist: `.venv/bin/python tools/lese_bt100_1f.py` (liest nur). Antwortet RF/RT,
+   in config.messstand2.yml pump1 auf enabled: true, Backend neu starten, test_pump1_read, dann
+   test_pump1_flow mit kleiner Rate (z.B. 5 mL/min, 0.5 min) und pruefen, ob die Pumpe wirklich stoppt.
+   Offen bis dahin: ob die Pumpe WF mit Flussrate 0 annimmt (Treiber sendet nie unter 1 nL/min), ob die
+   Pumpe im Control Mode "Flowrate" stehen muss, und ob eine Flussrate ueber dem Schlauchmaximum
+   abgelehnt oder gekappt wird.
 2. Klaeren, ob valve1 zwischen Versuchsschritten seine Position halten soll (Treiber faehrt sonst auf 1).
 3. Weitere Geraete von Messstand II in config.messstand2.yml eintragen.

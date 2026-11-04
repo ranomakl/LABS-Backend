@@ -4,7 +4,8 @@
 # (docs/pi_einrichtung_checkliste.md, Abschnitt 4). config.yml gehoert Messstand I und bleibt unberuehrt.
 # Welche Datei ein Pi laedt, steht in station.conf (nicht im Repo, pro Pi), siehe tools/labs_start.sh.
 #
-# STAND 02.11.2026: GERUEST. Noch keine Geraete und keine Routinen eingetragen.
+# STAND 04.11.2026: valve1 (Knauer-Ventil) laeuft; pump1 (Longer BT100-1F) nach Protokoll eingetragen,
+# aber noch enabled: false, bis der erste Test an der freien Pumpe gelaufen ist.
 # Naechste Schritte:
 #   1. Geraeteliste (Hersteller, Modell, Schnittstelle) klaeren und hier unter devices: eintragen.
 #   2. Adapter einzeln stecken, Pfade auslesen (ls -l /dev/serial/by-id/ bzw. /dev/serial/by-path/),
@@ -31,6 +32,19 @@ devices:
     # Nach dem Einschalten braucht das Ventil eine Weile, bis Port 10001 offen ist.
     # ACHTUNG: Der Treiber faehrt beim Backend-Start auf Position 1 (initial_commands).
     address: 10.42.0.103:10001
+
+  # Longer BT100-1F Schlauchpumpe, SN 202606090001, RS485 ueber FTDI-Adapter BG01X3TF (LogiLink-Hub).
+  # Protokoll: docs/BT100-1F-RS485-Protocol.pdf (04.11.2026), Kurzfassung docs/protokoll_bt100_1f.md.
+  # Am Geraet: System Setting -> Ext Cont. ON, Address 1 (am 02.11.2026 gesetzt). 1200 Baud 8E1 im Treiber.
+  # Sollwert ist eine Flussrate in mL/min; die Pumpe rechnet selbst anhand von Kopf/Schlauch (RT liest das aus).
+  # ACHTUNG: Der Treiber stoppt die Pumpe beim Backend-Start und am Ende jedes Experiments (final_commands).
+  # STAND 04.11.2026: Treiber nach Protokoll geschrieben und mit den Herstellerbeispielen getestet, NOCH NICHT
+  # an der Pumpe. enabled: false, bis test_pump1_read an der freien Pumpe gelaufen ist - dann auf true setzen.
+  pump1:
+    driver: longer_bt100_1f
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0
+    pump_address: 1
+    enabled: false
 
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #
@@ -71,6 +85,46 @@ experiments:
       - [valve1, position, str, ""]
     commands:
       - [valve1, set_position, ["{position}"], {}]
+
+  # Pumpe nur LESEN (Flussrate, Zustand, Kopf/Schlauch) - erster Test an der Pumpe, bewegt nichts.
+  test_pump1_read:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [pump1, set_flow_ml_min, float, mL/min]
+      - [pump1, running, bool, ""]
+      - [pump1, pump_head, str, ""]
+      - [pump1, tubing_no, int, ""]
+    commands:
+      - [pump1, read_tubing, [], {}]
+      - [pump1, read_flow, [], {}]
+
+  # Pumpe 'minutes' Minuten mit 'rate' mL/min laufen lassen (negativ = gegen den Uhrzeigersinn), dann Stopp.
+  # Live: eingestellte und tatsaechliche Flussrate (0 im Stand), Laufzustand.
+  test_pump1_flow:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [pump1, set_flow_ml_min, float, mL/min]
+      - [pump1, flow_ml_min, float, mL/min]
+      - [pump1, running, bool, ""]
+    commands:
+      - [pump1, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  # Not-Stopp von Hand (das Experimentende stoppt die Pumpe ohnehin).
+  test_pump1_stop:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [pump1, running, bool, ""]
+    commands:
+      - [pump1, stop_pumping, [], {}]
+      - [pump1, read_flow, [], {}]
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).
