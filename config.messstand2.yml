@@ -5,6 +5,7 @@
 # Welche Datei ein Pi laedt, steht in station.conf (nicht im Repo, pro Pi), siehe tools/labs_start.sh.
 #
 # STAND 04.11.2026: valve1 (Knauer-Ventil) und pump1 (Longer BT100-1F) laufen, beide am Geraet getestet.
+# liquiline (E+H CM44x) antwortet seit 04.11. 14:20 per Modbus RTU; Sensoren am Geraet noch nicht auf AI zugeordnet.
 # Naechste Schritte:
 #   1. Geraeteliste (Hersteller, Modell, Schnittstelle) klaeren und hier unter devices: eintragen.
 #   2. Adapter einzeln stecken, Pfade auslesen (ls -l /dev/serial/by-id/ bzw. /dev/serial/by-path/),
@@ -43,6 +44,22 @@ devices:
     driver: longer_bt100_1f
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0
     pump_address: 1
+
+  # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
+  # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
+  # (Register 505 = 0), Byte order 1-0-3-2 (Register 506/507 Watchdog = 5,0 s). Klemmen am Modul 485MB:
+  # 95 = B (Data+), 96 = A (Data-), 99 = GND. Die COM-LED am Modul blinkt NUR bei gueltigen Rahmen im
+  # eingestellten Modus - eine dunkle COM-LED heisst also nicht "Kabel falsch", sondern meist "Menue falsch"
+  # (Setup/General settings/Extended setup/Modbus: RTU, 19200, Even, Adresse 247).
+  # 04.11.2026: alle 16 AI-Bloecke "Not assigned" -> am Geraet unter Setup/Outputs/Modbus/AI 1..16 je
+  # Datenquelle (Sensorkanal) UND Messwert zuordnen, dann hier unter channels: eintragen (Register = 4*(n-1)).
+  liquiline:
+    driver: endress_hauser_liquiline
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q3TM-if00-port0
+    bus_address: 247
+    byte_order: "1-0-3-2"
+    channels:                   # Kanalname: Register (0-basiert = Beginn des AI-Blocks Value/Status/Unit)
+      ai1: 0                    # Platzhalter, bis am Geraet Sensoren auf AI1.. zugeordnet sind
 
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #
@@ -123,6 +140,64 @@ experiments:
     commands:
       - [pump1, stop_pumping, [], {}]
       - [pump1, read_flow, [], {}]
+
+  # Liquiline: alle 16 Modbus-Bloecke AI1-AI16 einmal lesen (Status Good/Bad/Not assigned, Einheit, Wert),
+  # unabhaengig von liquiline/channels - zeigt, auf welchen Bloecken das Geraet Sensoren ausgibt.
+  test_liquiline_scan:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [liquiline, ai1_status, str, ""]
+      - [liquiline, ai1_unit, str, ""]
+      - [liquiline, ai1_value, float, ""]
+      - [liquiline, ai2_status, str, ""]
+      - [liquiline, ai2_unit, str, ""]
+      - [liquiline, ai2_value, float, ""]
+      - [liquiline, ai3_status, str, ""]
+      - [liquiline, ai3_unit, str, ""]
+      - [liquiline, ai3_value, float, ""]
+      - [liquiline, ai4_status, str, ""]
+      - [liquiline, ai4_unit, str, ""]
+      - [liquiline, ai4_value, float, ""]
+      - [liquiline, ai5_status, str, ""]
+      - [liquiline, ai5_unit, str, ""]
+      - [liquiline, ai5_value, float, ""]
+      - [liquiline, ai6_status, str, ""]
+      - [liquiline, ai6_unit, str, ""]
+      - [liquiline, ai6_value, float, ""]
+      - [liquiline, ai7_status, str, ""]
+      - [liquiline, ai7_unit, str, ""]
+      - [liquiline, ai7_value, float, ""]
+      - [liquiline, ai8_status, str, ""]
+      - [liquiline, ai8_unit, str, ""]
+      - [liquiline, ai8_value, float, ""]
+      - [liquiline, ai9_status, str, ""]
+      - [liquiline, ai9_unit, str, ""]
+      - [liquiline, ai9_value, float, ""]
+      - [liquiline, ai10_status, str, ""]
+      - [liquiline, ai10_unit, str, ""]
+      - [liquiline, ai10_value, float, ""]
+      - [liquiline, ai11_status, str, ""]
+      - [liquiline, ai11_unit, str, ""]
+      - [liquiline, ai11_value, float, ""]
+      - [liquiline, ai12_status, str, ""]
+      - [liquiline, ai12_unit, str, ""]
+      - [liquiline, ai12_value, float, ""]
+      - [liquiline, ai13_status, str, ""]
+      - [liquiline, ai13_unit, str, ""]
+      - [liquiline, ai13_value, float, ""]
+      - [liquiline, ai14_status, str, ""]
+      - [liquiline, ai14_unit, str, ""]
+      - [liquiline, ai14_value, float, ""]
+      - [liquiline, ai15_status, str, ""]
+      - [liquiline, ai15_unit, str, ""]
+      - [liquiline, ai15_value, float, ""]
+      - [liquiline, ai16_status, str, ""]
+      - [liquiline, ai16_unit, str, ""]
+      - [liquiline, ai16_value, float, ""]
+    commands:
+      - [liquiline, scan_ai_blocks, [], { blocks: 16 }]
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).

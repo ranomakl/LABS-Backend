@@ -103,3 +103,24 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
    (WD/WSD) genauer als das zeitgesteuerte dispense(); braucht Control Mode "Dispensing" am Geraet.
 2. Klaeren, ob valve1 zwischen Versuchsschritten seine Position halten soll (Treiber faehrt sonst auf 1).
 3. Weitere Geraete von Messstand II in config.messstand2.yml eintragen.
+
+## 5. Liquiline (E+H CM44x) antwortet (04.11.2026, 14:20)
+
+- Adapter BG02Q3TM (FTDI, /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q3TM-if00-port0), Modbus RTU,
+  19200 Baud, 8E1, Adresse 247, Byte order 1-0-3-2. Treiber endress_hauser_liquiline unveraendert.
+- Vorgeschichte des Tages: ab 13:50 ueber eine Stunde keine Antwort (RTU und ASCII, alle Baudraten/Paritaeten,
+  Adressen 1-247, RTS/DTR-Varianten). TXD am Adapter blinkte, COM am Modul 485MB nie. Nach dem Umstellen
+  am Geraetemenue (Setup/General settings/Extended setup/Modbus) kamen sofort Antworten - wie am 12.10. an
+  Messstand I. Merke: die COM-LED blinkt nur bei gueltigen Rahmen im eingestellten Modus; dunkle COM-LED
+  heisst nicht "Kabel", sondern meist "Menue". Der Adapter BG02Q3TM funktioniert (an Messstand I war er
+  im Oktober nur deshalb stumm, weil das Geraet im ASCII-Modus stand).
+- Register 501-513 gelesen: Baud-Code 4 (19200), Parity 0 (Even), RS485 an, Modus 0 (RTU), Watchdog 5 s,
+  Ethernet an.
+- Routine test_liquiline_scan (liquiline_scan_1, 14:10): alle 16 AI-Bloecke Status 3 "Not assigned", Wert 0,
+  Einheit None. Am Geraet muss unter Setup/Outputs/Modbus/AI 1..16 je Datenquelle (Sensorkanal) und Messwert
+  zugeordnet werden; danach channels: in config.messstand2.yml eintragen (Register = 4*(AI-Nr - 1)) und eine
+  Leseroutine wie test_liquiline_all_channels (config.yml) anlegen.
+- Offen: welche Sensoren haengen an dieser Liquiline? pump1 hat beim Backend-Neustart 14:09 nicht auf RID
+  geantwortet (3 Versuche) und wurde uebersprungen - vermutlich ausgeschaltet, pruefen und Backend neu starten.
+- tools/scan_liquiline.py und tools/dauertest_liquiline.py starten nicht mehr (importieren _lrc aus der
+  ASCII-Zeit); heute wurde ein Scratch-Skript benutzt. Auf RTU umstellen.
