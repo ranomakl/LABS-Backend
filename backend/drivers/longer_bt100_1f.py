@@ -6,9 +6,12 @@
 # Alle Beispiel-Frames aus Anhang 7 des Dokuments sind in backend/test/test_longer_bt100_1f.py als
 # Pruefvektoren hinterlegt (Frameaufbau, XOR-Pruefsumme, Byte-Stuffing, Parser).
 #
-# STAND 04.11.2026: Nach Protokolldokument geschrieben, NOCH NICHT AN DER PUMPE GETESTET (die Pumpe war
-# an dem Tag in Benutzung). Was am 02.11.2026 bereits am Geraet lief: 1200 Baud 8E1, Adresse 1,
-# RID wird beantwortet (E9 01 03 52 49 44 5D) - also stimmen Verkabelung, Baudrate und Frameformat.
+# AM GERAET VERIFIZIERT 04.11.2026 (Messstand II, Kopf DG 6 Rollen, Schlauch Nr. 5 = 1,65 mm):
+#   - RID/RT/RF/RD/RSD/RB werden beantwortet (tools/lese_bt100_1f.py), 1200 Baud 8E1, Adresse 1.
+#   - Routine test_pump1_flow mit 5 mL/min, 0,5 min: WF-Start bestaetigt, 26 RF-Abfragen "laeuft, cw,
+#     5,0 mL/min", nach 30 s WF-Stopp bestaetigt, Experiment Finished. Antwortzeit RF ~170 ms.
+#   - Die Pumpe uebernimmt die Flussrate in nL/min direkt (WF-Antwort echot den Wert).
+# Erstes Lesen am 02.11.2026: nur RID beantwortet, weil damals WJ/RJ/XL (andere Longer-Modelle) probiert wurden.
 #
 # Unterschiede zur WT600-2J (backend/drivers/longer_wt600.py), von der Frame/XOR/_RawFrame
 # importiert werden:
@@ -280,7 +283,23 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         # Flussrate zurueckschreibt statt DEFAULT_FLOW_NL_MIN (cmd_string() laeuft beim Einreihen).
         self.query("READ_ID", inter_command_time=0)
         self.query("READ_TUBING", inter_command_time=0)
-        self.query("READ_FLOW").deferred_result.addBoth(lambda result: (self.stop_pumping(), result)[1])
+        self.query("READ_FLOW").deferred_result.addBoth(self._adopt_device_flow_and_stop)
+
+    def _adopt_device_flow_and_stop(self, result):
+        """Callback der RF-Antwort beim Verbinden. Liest die Flussrate direkt aus result.parameters:
+        der Callback feuert, BEVOR der Unterbau update_observables() aufruft (base.py receive():
+        erst Zustand setzen, dann Observablen) - am Geraet am 04.11.2026 gesehen (Stopp ging mit
+        1,0 mL/min statt der gelesenen 0,018 mL/min raus). Bei Fehler (Failure) trotzdem stoppen."""
+        try:
+            flow_nl_min = int(result.parameters["flow_nl_min"])
+        except (AttributeError, KeyError, TypeError, ValueError):
+            pass
+        else:
+            if not self._flow_known and flow_nl_min >= MIN_FLOW_NL_MIN:
+                self._flow_nl_min = flow_nl_min
+                self._flow_known = True
+        self.stop_pumping()
+        return result
 
     def final_commands(self):
         self.stop_pumping()
@@ -288,8 +307,15 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def handle_event(self, match: re.Match) -> None:
         pass
 
+    # Rohschluessel aus BT100Parser - werden hier in typisierte Observablen uebersetzt. ALLE anderen
+    # Schluessel (vor allem "state" vom Unterbau bei jedem Zustandswechsel, "errorcode") muessen
+    # unveraendert durchgereicht werden: die Endbedingung eines Experiments (DevicesWaitingCondition)
+    # feuert nur auf die "state"-Meldung "Waiting". Am 04.11.2026 blieb test_pump1_read deshalb ewig
+    # in Running, weil diese Methode "state" verschluckt hat.
+    _RAW_KEYS = ("pump_address", "flow_nl_min", "running", "clockwise", "pump_head", "tubing")
+
     def update_observables(self, observables: dict, timestamp: float = None):
-        converted = {}
+        converted = {key: value for key, value in observables.items() if key not in self._RAW_KEYS}
         if "flow_nl_min" in observables:
             flow_nl_min = int(observables["flow_nl_min"])
             if not self._flow_known and flow_nl_min >= MIN_FLOW_NL_MIN:
@@ -376,7 +402,11 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         return self.dispense(rate, float(rate) * float(minutes), **kwargs)
 
     def stop_pumping(self, **kwargs):
-        """Stop (Start/Stop-Bit 0, Flussrate bleibt). Beendet auch das periodische Auslesen."""
+        """Stop (Start/Stop-Bit 0, Flussrate bleibt). Beendet auch das periodische Auslesen und liest
+        den Zustand einmal zurueck, damit die Observablen mit running=False / flow_ml_min=0 enden
+        (die WF-Bestaetigung traegt nur die Flussrate, keinen Zustand)."""
         self.stop_measuring()
         self._running = False
-        return self._send_state(**kwargs)
+        cmd = self._send_state(**kwargs)
+        self.query("READ_FLOW", **kwargs)
+        return cmd

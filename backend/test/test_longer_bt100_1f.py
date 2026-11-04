@@ -222,3 +222,27 @@ class DeviceObservablesTest(unittest.TestCase):
     def test_rid_antwort_ohne_observable(self):
         self.device.update_observables({"pump_address": "1"})
         self.assertEqual(self.seen, [])
+
+    def test_state_vom_unterbau_wird_durchgereicht(self):
+        # Die Endbedingung eines Experiments feuert nur auf state='Waiting' - darf nicht verschluckt werden.
+        self.device.update_observables({"state": "Waiting"})
+        self.device.update_observables({"errorcode": "connection lost"})
+        self.assertEqual(self.seen, [{"state": "Waiting"}, {"errorcode": "connection lost"}])
+
+    def test_verbinden_uebernimmt_geraetefluss_fuer_den_stopp(self):
+        # Der RF-Callback feuert vor update_observables(): Fluss muss aus result.parameters kommen.
+        sent = []
+        self.device._send_state = lambda **kw: sent.append((self.device._flow_nl_min, self.device._running))
+        self.device.query = lambda name, **kw: sent.append(name)
+        result = Result("RF"); result.parameters = {"pump_address": "1", "flow_nl_min": "18000", "running": "0", "clockwise": "1"}
+        self.assertIs(self.device._adopt_device_flow_and_stop(result), result)
+        self.assertEqual(sent, [(18000, False), "READ_FLOW"])  # Stopp, dann Zustand zuruecklesen
+
+    def test_verbinden_stoppt_auch_bei_fehler(self):
+        from twisted.python.failure import Failure
+        sent = []
+        self.device._send_state = lambda **kw: sent.append((self.device._flow_nl_min, self.device._running))
+        self.device.query = lambda name, **kw: sent.append(name)
+        failure = Failure(RuntimeError("timeout"))
+        self.device._adopt_device_flow_and_stop(failure)
+        self.assertEqual(sent, [(1_000_000, False), "READ_FLOW"])
