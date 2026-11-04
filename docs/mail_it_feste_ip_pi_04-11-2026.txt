@@ -1,0 +1,48 @@
+Vorschlag fuer die Anfrage an die UFZ-IT (Stand 04.11.2026) - Luecken in eckigen Klammern ausfuellen.
+MAC-Adresse am Pi im Terminal:   ip link show wlan0
+Aktuelle Adresse am Pi:          hostname -I   (die 141.65.x.x nehmen)
+
+----------------------------------------------------------------------------------------------
+
+Betreff: Feste IP-Adresse (DHCP-Reservierung) für Raspberry Pi im Labor [Raum/Gebäude]
+
+Hallo [IT-Team / Name],
+
+in unserem Labor [Raum, Gebäude, Department] betreiben wir einen Raspberry Pi,
+der eine Elektrolyse-Messanlage steuert (Projekt LABS). Auf dem Pi läuft eine
+Weboberfläche (Port 5000), über die die Kolleginnen und Kollegen aus der Chemie
+Versuche starten und den Verlauf verfolgen, auch von außerhalb per UFZ-VPN.
+
+Der Pi ist im WLAN "ufz-m2m" angemeldet und bekommt aktuell per DHCP die Adresse
+141.65.150.197. Da sich diese Adresse ändern kann, wäre uns eine dauerhaft
+gleichbleibende Adresse wichtig, damit die Nutzer den Pi zuverlässig erreichen.
+
+Daher die Bitte:
+1. DHCP-Reservierung für den Pi, so dass er immer dieselbe IP-Adresse erhält
+   (gerne die jetzige 141.65.150.197, falls möglich).
+2. Falls machbar: ein DNS-Name für diese Adresse, z. B. labs-messstand1.ufz.de,
+   damit wir in der Dokumentation einen Namen statt einer IP angeben können.
+
+Angaben zum Gerät:
+- Gerätetyp: Raspberry Pi [4 / 5]
+- Hostname: [Hostname des Pi]
+- MAC-Adresse WLAN: [xx:xx:xx:xx:xx:xx]
+- Netz: WLAN "ufz-m2m"
+- Standort: [Raum, Gebäude]
+- Verantwortlich: Rafael Kleiner, [Telefon/E-Mail]
+
+Ein zweiter Pi für einen weiteren Messstand ist in Vorbereitung. Dafür würde
+ich dann eine entsprechende Anfrage nachreichen.
+
+Vielen Dank und viele Grüße
+Rafael Kleiner
+[Department / Arbeitsgruppe]
+
+----------------------------------------------------------------------------------------------
+
+Hinweise:
+- Wird der Pi spaeter per Kabel statt WLAN angeschlossen, hat er eine andere MAC-Adresse
+  (ip link show eth0); die Reservierung muss dann erneuert werden.
+- Falls die IT nach Port 5000 fragt: Weboberflaeche der Laborsteuerung, nur im UFZ-Netz / per VPN.
+- Sobald die feste Adresse (oder der DNS-Name) da ist: in docs/ablauf_versuch_im_labor.md
+  Abschnitt 3 die Adresse eintragen.
