@@ -1,7 +1,7 @@
 # Longer BT100-1F - RS485-Protokoll (Kurzfassung)
 
 Quelle: `docs/BT100-1F-RS485-Protocol.pdf` ("LONGER RS485 Protocol for BT100-1F", Herstellerdokument,
-am 04.11.2026 ueber Drifton/Longer erhalten). Bedienhandbuch: `docs/BT100-1F-Operating-Manual.pdf`
+am 04.11.2026 ueber Drifton/Longer erhalten). Bedienhandbuch: `docs/BT100-1F_Messtand2.pdf`
 (enthaelt das Protokoll NICHT). Treiber: `backend/drivers/longer_bt100_1f.py`,
 Tests: `backend/test/test_longer_bt100_1f.py`, Lesetest: `tools/lese_bt100_1f.py`.
 

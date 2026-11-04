@@ -71,7 +71,7 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
 - Quellen: BT100-1F-Handbuch (manualshive.com, manuals.online), Darwin Microfluidics: RS485-Protokoll
   BT100-2J(3J) (PDF) und Blog "How to control the Longer BT100-1L pump via Python" (XL/DL/WL/RL/CL).
 - NACHTRAG 04.11.2026: Protokoll von Drifton/Longer erhalten -> docs/BT100-1F-RS485-Protocol.pdf,
-  Kurzfassung docs/protokoll_bt100_1f.md (Bedienhandbuch: docs/BT100-1F-Operating-Manual.pdf, ohne Protokoll).
+  Kurzfassung docs/protokoll_bt100_1f.md (Bedienhandbuch: docs/BT100-1F_Messtand2.pdf, ohne Protokoll).
   Erklaerung fuer die fehlenden Antworten: die BT100-1F kennt WJ/RJ/XL/DL nicht. Ihre Befehle sind WF/RF
   (Flussrate in nL/min + State1), WD/RD/WSD/RSD (Dosieren), WT/RT (Kopf/Schlauch), WB/RB, WID/RID.
   Dazu Byte-Stuffing hinter dem Flag (E8 -> E8 00, E9 -> E8 01).
