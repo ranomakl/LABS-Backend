@@ -24,9 +24,9 @@ Daher die Bitte:
    damit wir in der Dokumentation einen Namen statt einer IP angeben können.
 
 Angaben zum Gerät:
-- Gerätetyp: Raspberry Pi [4 / 5]
-- Hostname: [Hostname des Pi]
-- MAC-Adresse WLAN: [xx:xx:xx:xx:xx:xx]
+- Gerätetyp: Raspberry Pi 5 Model B
+- Hostname: Raspberry-PI-MP-002
+- MAC-Adresse WLAN: 88:a2:9e:cb:22:e5
 - Netz: WLAN "ufz-m2m"
 - Standort: [Raum, Gebäude]
 - Verantwortlich: Rafael Kleiner, [Telefon/E-Mail]
@@ -41,8 +41,8 @@ Rafael Kleiner
 ----------------------------------------------------------------------------------------------
 
 Hinweise:
-- Wird der Pi spaeter per Kabel statt WLAN angeschlossen, hat er eine andere MAC-Adresse
-  (ip link show eth0); die Reservierung muss dann erneuert werden.
+- Der LAN-Port des Pi ist fuer die Laborgeraete reserviert (Messstand I: Liquiline, Messstand II:
+  Knauer-Ventil). Ins UFZ-Netz geht der Pi nur per WLAN; nur die WLAN-MAC angeben.
 - Falls die IT nach Port 5000 fragt: Weboberflaeche der Laborsteuerung, nur im UFZ-Netz / per VPN.
 - Sobald die feste Adresse (oder der DNS-Name) da ist: in docs/ablauf_versuch_im_labor.md
   Abschnitt 3 die Adresse eintragen.
