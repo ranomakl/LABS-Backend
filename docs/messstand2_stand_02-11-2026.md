@@ -50,8 +50,7 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
 
 ## 4. Pumpe Longer BT100-1F (Haendler Drifton) - laeuft ueber LABS (04.11.2026)
 
-- Typenschild: Baoding Longer Precision Pump, Model BT100-1F(-B), SN 202606090001. Fotos:
-  docs/photo_2026-11-02_14-39-*.jpg.
+- Typenschild: Baoding Longer Precision Pump, Model BT100-1F(-B), SN 202606090001.
 - Rueckseite: RS485-Modul (Klemme "RS485 A B GND", Draehte gelb/rot/gruen), daneben DB9 (nicht benutzt).
 - Adapter: FTDI FT232R, SN BG01X3TF, ueber LogiLink-Hub:
   `/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0`
