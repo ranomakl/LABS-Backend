@@ -4,8 +4,7 @@
 # (docs/pi_einrichtung_checkliste.md, Abschnitt 4). config.yml gehoert Messstand I und bleibt unberuehrt.
 # Welche Datei ein Pi laedt, steht in station.conf (nicht im Repo, pro Pi), siehe tools/labs_start.sh.
 #
-# STAND 04.11.2026: valve1 (Knauer-Ventil) laeuft; pump1 (Longer BT100-1F) nach Protokoll eingetragen,
-# aber noch enabled: false, bis der erste Test an der freien Pumpe gelaufen ist.
+# STAND 04.11.2026: valve1 (Knauer-Ventil) und pump1 (Longer BT100-1F) laufen, beide am Geraet getestet.
 # Naechste Schritte:
 #   1. Geraeteliste (Hersteller, Modell, Schnittstelle) klaeren und hier unter devices: eintragen.
 #   2. Adapter einzeln stecken, Pfade auslesen (ls -l /dev/serial/by-id/ bzw. /dev/serial/by-path/),
@@ -38,13 +37,12 @@ devices:
   # Am Geraet: System Setting -> Ext Cont. ON, Address 1 (am 02.11.2026 gesetzt). 1200 Baud 8E1 im Treiber.
   # Sollwert ist eine Flussrate in mL/min; die Pumpe rechnet selbst anhand von Kopf/Schlauch (RT liest das aus).
   # ACHTUNG: Der Treiber stoppt die Pumpe beim Backend-Start und am Ende jedes Experiments (final_commands).
-  # STAND 04.11.2026: Treiber nach Protokoll geschrieben und mit den Herstellerbeispielen getestet, NOCH NICHT
-  # an der Pumpe. enabled: false, bis test_pump1_read an der freien Pumpe gelaufen ist - dann auf true setzen.
+  # AM GERAET VERIFIZIERT 04.11.2026: test_pump1_read und test_pump1_flow (5 mL/min, 0,5 min) laufen; die Pumpe
+  # meldet Kopf DG 6 Rollen, Schlauch Nr. 5 (1,65 mm) -> Bereich laut Handbuch 0,018-18 mL/min.
   pump1:
     driver: longer_bt100_1f
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0
     pump_address: 1
-    enabled: false
 
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #

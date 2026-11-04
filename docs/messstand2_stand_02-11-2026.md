@@ -48,7 +48,7 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
   (initial_commands/final_commands). Soll das Ventil zwischen Schritten stehen bleiben, muss das angepasst
   werden - offen, haengt vom Versuchsablauf ab.
 
-## 4. Pumpe Longer BT100-1F (Haendler Drifton) - Protokoll da, Treiber geschrieben (04.11.), Test an der Pumpe offen
+## 4. Pumpe Longer BT100-1F (Haendler Drifton) - laeuft ueber LABS (04.11.2026)
 
 - Typenschild: Baoding Longer Precision Pump, Model BT100-1F(-B), SN 202606090001. Fotos:
   docs/photo_2026-11-02_14-39-*.jpg.
@@ -79,16 +79,27 @@ Pi: Raspberry-PI-MP-001, Benutzer pohlma, Debian 13 (trixie), Python 3.13.5.
     mit Stuffing). Tests backend/test/test_longer_bt100_1f.py: 29 gruen, alle drei Herstellerbeispiele und
     die RID-Antwort vom 02.11. byteweise nachgerechnet. Lesetest tools/lese_bt100_1f.py (nur R-Befehle,
     Sperre gegen alle W-Befehle, --dry-run).
-  - config.messstand2.yml: pump1 mit enabled: false und Routinen test_pump1_read / test_pump1_flow /
-    test_pump1_stop. Die Pumpe war am 04.11. in Benutzung, deshalb KEIN Test am Geraet.
+  - config.messstand2.yml: pump1 und Routinen test_pump1_read / test_pump1_flow / test_pump1_stop.
+- AM GERAET 04.11.2026 (nachmittags, Pumpe frei): tools/lese_bt100_1f.py -> RT, RF, RD, RSD, RB beantwortet
+  (Kopf 3 = DG 6 Rollen, Schlauch Nr. 5 = 1,65 mm, eingestellt 0,018 mL/min, Dosierparameter 0,20 mL).
+  RID blieb beim allerersten Frame nach dem Oeffnen des Ports stumm, ueber das Backend antwortet es.
+  test_pump1_read: Finished nach 1 s. test_pump1_flow 5 mL/min / 0,5 min: WF-Start bestaetigt, 26 RF-Abfragen
+  "laeuft, cw, 5,0 mL/min", nach 30 s Stopp bestaetigt, Finished. Laufprotokolle logs/2026/11/4/pump_*.
+  Zwei Fehler dabei gefunden und behoben (beide im Treiber, nicht im Unterbau):
+  1. Experiment blieb ewig "Running": update_observables() des Treibers hatte die "state"-Meldung des
+     Unterbaus verschluckt, auf die die Endbedingung (DevicesWaitingCondition, state = Waiting) wartet.
+     Merksatz fuer neue Treiber: unbekannte Observablen-Schluessel IMMER durchreichen.
+  2. Der Stopp beim Verbinden schrieb 1,0 mL/min statt der am Geraet eingestellten Flussrate: der
+     Callback der RF-Antwort feuert, bevor der Unterbau update_observables() aufruft. Jetzt liest der
+     Callback die Flussrate aus result.parameters. (Die Pumpe steht seitdem auf 1,0 mL/min - bei Bedarf
+     am Geraet oder per test_pump1_flow neu setzen.)
+  Noch offen: ob die Pumpe im Control Mode "Flowrate" stehen muss (sie stand beim Test darin) und ob
+  eine Flussrate ueber dem Schlauchmaximum (18 mL/min bei 1,65 mm) abgelehnt oder gekappt wird.
 
 ## 5. Naechste Schritte
 
-1. Sobald die Pumpe frei ist: `.venv/bin/python tools/lese_bt100_1f.py` (liest nur). Antwortet RF/RT,
-   in config.messstand2.yml pump1 auf enabled: true, Backend neu starten, test_pump1_read, dann
-   test_pump1_flow mit kleiner Rate (z.B. 5 mL/min, 0.5 min) und pruefen, ob die Pumpe wirklich stoppt.
-   Offen bis dahin: ob die Pumpe WF mit Flussrate 0 annimmt (Treiber sendet nie unter 1 nL/min), ob die
-   Pumpe im Control Mode "Flowrate" stehen muss, und ob eine Flussrate ueber dem Schlauchmaximum
-   abgelehnt oder gekappt wird.
+1. Pumpe: Rolle im Versuchsablauf klaeren (Befuellen, Umwaelzen, Dosieren?) und die Versuchsroutinen
+   nach Vorbild config.yml (kolbe_*) anlegen. Fuer echtes Dosieren waere der geraeteeigene Dosier-Modus
+   (WD/WSD) genauer als das zeitgesteuerte dispense(); braucht Control Mode "Dispensing" am Geraet.
 2. Klaeren, ob valve1 zwischen Versuchsschritten seine Position halten soll (Treiber faehrt sonst auf 1).
 3. Weitere Geraete von Messstand II in config.messstand2.yml eintragen.
