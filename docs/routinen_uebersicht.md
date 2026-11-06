@@ -62,3 +62,19 @@ Administration -> Routines -> "Download Experiments from Station" holt die Liste
 geaenderte Routinen (neue Parameter/Observablen) erscheinen nur so; eine schon geladene Routine wird nicht
 aktualisiert - deshalb bekommen geaenderte Routinen einen neuen Namen (z.B. _gc, _2k). Fehlt eine Routine,
 war beim Backend-Start eines ihrer Geraete aus (Backend ueberspringt sie mit Warnung im Log).
+
+## Messstand II (zweiter Pi, config.messstand2.yml)
+
+Diese Uebersicht beschreibt Messstand I (config.yml). Messstand II hat eine eigene Konfiguration und eigene
+Routinen. Stand 06.11.2026: Geraetetests (`test_valve1_position`, `test_pump1_read`, `test_pump1_flow`,
+`test_pump1_stop`, `test_liquiline_scan`) und der erste Baustein fuer das automatische Ansetzen der
+Reaktionsloesung:
+
+| Routine | Parameter | Was passiert |
+|---|---|---|
+| `zugabe` | port, volume (mL) | eine Zugabe aus einem Port des 16-Wege-Ventils, danach Spuelen mit Wasser |
+| `spuelen` | volume (mL) | nur Wasser aus Port 1 |
+| `dosiertest` | volume (mL), repeats, pause (s) | mehrmals dasselbe Wasservolumen, zum Auswiegen |
+
+Beschreibung, Testreihenfolge fuers Labor, bekannte Grenzen und offene Fragen:
+`docs/messstand2_zugabe_06-11-2026.md`.

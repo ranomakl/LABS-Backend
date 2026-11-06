@@ -47,6 +47,7 @@ from backend.conditions.conditions import TimeCondition
 from backend.devices.base import BaseDeviceProtocol, BaseDeviceProtocolFactory
 from .longer_wt600 import FLAG, _xor, _build_frame, _RawFrame
 from .pump_base import BaseDevice, SinglechannelBaseDevice, CommandParameterFactory
+from .valve_dosing import ValveDosingMixIn
 
 
 ESCAPE = 0xE8
@@ -236,7 +237,7 @@ def _parser(code: str):
     return ParserParameterFactory(parserclass=BT100Parser, expect_command=code.encode("ascii"))
 
 
-class Device(BaseDevice, SinglechannelBaseDevice):
+class Device(ValveDosingMixIn, BaseDevice, SinglechannelBaseDevice):
     protocol_factory_class = BT100ProtocolFactory
     serial_parameters = {"baudrate": 1200, "bytesize": 8, "parity": "E", "stopbits": 1}
     command_parameter_factory = CommandParameterFactory(command_execution_time=.1)
@@ -250,15 +251,19 @@ class Device(BaseDevice, SinglechannelBaseDevice):
         "READ_ID": [CMD_READ_ID, _parser(CMD_READ_ID)],
     }
 
-    def __init__(self, address, *args, pump_address: int = 1, **kwargs):
+    def __init__(self, address, *args, pump_address: int = 1, dosing: dict = None, **kwargs):
         """
         :param pump_address: Protokolladresse der Pumpe (1-30, ab Werk 1; am Geraet unter
                              System Setting -> Address; dort muss auch "Ext Cont." auf ON stehen).
                              Nicht zu verwechseln mit `address` (serielle Schnittstelle).
+        :param dosing: optionaler Abschnitt fuer Zugaben ueber ein Auswahlventil (valve, water_port,
+                       dead_volume_ml, flush_factor, min/max_rate_ml_min, min_dose_seconds - alles Pflicht,
+                       siehe valve_dosing.py). Ohne den Abschnitt verhaelt sich die Pumpe wie bisher.
         """
         self.pump_address = int(pump_address)
         if not 1 <= self.pump_address <= 30:
             raise ValueError(f"pump_address {pump_address} ausserhalb 1-30 (31 = Broadcast ist nicht erlaubt).")
+        self._init_dosing(dosing)
         self._flow_nl_min = DEFAULT_FLOW_NL_MIN
         self._flow_known = False   # True, sobald ein RF/WF die eingestellte Flussrate geliefert hat
         self._running = False
@@ -400,6 +405,27 @@ class Device(BaseDevice, SinglechannelBaseDevice):
     def run_for_minutes(self, rate, minutes, **kwargs):
         """'minutes' Minuten mit 'rate' mL/min laufen, dann Stopp. Geraet ist solange Busy."""
         return self.dispense(rate, float(rate) * float(minutes), **kwargs)
+
+    # -- Zugabe ueber das Auswahlventil (valve_dosing.ValveDosingMixIn) --------------------------------
+    # Beide Befehle gehen als dringend raus, weil die Pumpe waehrend der ganzen Zugabe Busy ist. Kein
+    # periodisches RF dabei: der Stopp soll nie hinter einer Abfrage warten (Dosiergenauigkeit).
+
+    def _dosing_pump_start(self, rate_ml_min):
+        """Ein WF-Frame: Flussrate setzen UND starten (im Uhrzeigersinn). Rueckgabe: der Befehl."""
+        self.stop_measuring()
+        self._flow_nl_min = _clamp_flow_nl_min(float(rate_ml_min) * NL_PER_ML)
+        self._flow_known = True
+        self._clockwise = True
+        self._running = True
+        return self._send_state(urgent=True, run_while_device_busy=True)
+
+    def _dosing_pump_stop(self):
+        """Stopp; danach einmal RF, damit die Observablen running/flow_ml_min stimmen. Rueckgabe: der
+        Stopp-Befehl (WF)."""
+        self._running = False
+        command = self._send_state(urgent=True, run_while_device_busy=True)
+        self.query("READ_FLOW", urgent=True, run_while_device_busy=True)
+        return command
 
     def stop_pumping(self, **kwargs):
         """Stop (Start/Stop-Bit 0, Flussrate bleibt). Beendet auch das periodische Auslesen und liest

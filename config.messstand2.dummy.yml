@@ -1,0 +1,273 @@
+# config.messstand2.dummy.yml - ERZEUGT aus config.messstand2.yml fuer die Dummy-Umgebung am PC (06.11.2026).
+# Nur die drei Geraeteadressen zeigen auf LABS-DeviceDummys (127.0.0.1:123xx). Nicht von Hand pflegen, sondern
+# nach jeder Aenderung an config.messstand2.yml neu erzeugen: siehe docs/messstand2_zugabe_06-11-2026.md, Abschnitt 6.
+# Start: python main.py config.messstand2.dummy.yml   (vorher LABS-DeviceDummys/main.py)
+#
+# config.messstand2.yml — Konfiguration fuer Messstand II (zweiter Pi, angelegt 02.11.2026).
+#
+# Der Code ist fuer alle Messstaende derselbe, diese Datei ist stationsspezifisch
+# (docs/pi_einrichtung_checkliste.md, Abschnitt 4). config.yml gehoert Messstand I und bleibt unberuehrt.
+# Welche Datei ein Pi laedt, steht in station.conf (nicht im Repo, pro Pi), siehe tools/labs_start.sh.
+#
+# STAND 04.11.2026: valve1 (Knauer-Ventil) und pump1 (Longer BT100-1F) laufen, beide am Geraet getestet.
+# liquiline (E+H CM44x) antwortet seit 04.11. 14:20 per Modbus RTU; Sensoren am Geraet noch nicht auf AI zugeordnet.
+# 06.11.2026: Zugabe ueber das Ventil (dosing: bei pump1, Routinen zugabe/spuelen/dosiertest) - am PC gegen die
+# Dummys getestet, am Geraet noch NICHT gelaufen. Testreihenfolge: docs/messstand2_zugabe_06-11-2026.md.
+# Naechste Schritte:
+#   1. Geraeteliste (Hersteller, Modell, Schnittstelle) klaeren und hier unter devices: eintragen.
+#   2. Adapter einzeln stecken, Pfade auslesen (ls -l /dev/serial/by-id/ bzw. /dev/serial/by-path/),
+#      als address eintragen und als Kommentar notieren: Seriennummer, Etikett, Geraet, Hub-Buchse.
+#   3. Pro Geraet eine Leseroutine und eine Schaltroutine mit Stop-Routine (test_...) unter experiments:.
+#   4. Erst dann die Versuchsschritte. Vorlagen: config.yml (Messstand I), docs/routinen_uebersicht.md.
+
+listen port: 11123
+destination port: 32111
+log_level: info
+# Schrittmodus: true = nach jedem fertigen Experiment anhalten, naechster Schritt erst mit "Start Experiments".
+# Wie am Messstand I seit 16.10.2026 eingeschaltet.
+step_mode: true
+
+devices:
+
+  valve1:
+    driver: knauer_azura_vu_4_1
+    # Knauer AZURA Valve Unifier VU 4.1, SN FVH263200018, Firmware 6.26.000.0000.
+    # Ventilkopf SN FWM263200013, Typ EVS63CE, 16 Positionen / 16 Ports (am 02.11.2026 abgefragt).
+    # LAN direkt an eth0 des Pi. eth0 steht in NetworkManager auf "shared" (Pi verteilt per DHCP
+    # 10.42.0.x), das Ventil bekommt seine Adresse per DHCP (MAC 00:15:e2:00:78:e2).
+    # Port 10001 = Knauer-Werkseinstellung (die alten Ventile in config.yml.bak liefen auf 10123).
+    # Nach dem Einschalten braucht das Ventil eine Weile, bis Port 10001 offen ist.
+    # ACHTUNG: Der Treiber faehrt beim Backend-Start auf Position 1 (initial_commands).
+    address: 127.0.0.1:12364
+
+  # Longer BT100-1F Schlauchpumpe, SN 202606090001, RS485 ueber FTDI-Adapter BG01X3TF (LogiLink-Hub).
+  # Protokoll: docs/BT100-1F-RS485-Protocol.pdf (04.11.2026), Kurzfassung docs/protokoll_bt100_1f.md.
+  # Am Geraet: System Setting -> Ext Cont. ON, Address 1 (am 02.11.2026 gesetzt). 1200 Baud 8E1 im Treiber.
+  # Sollwert ist eine Flussrate in mL/min; die Pumpe rechnet selbst anhand von Kopf/Schlauch (RT liest das aus).
+  # ACHTUNG: Der Treiber stoppt die Pumpe beim Backend-Start und am Ende jedes Experiments (final_commands).
+  # AM GERAET VERIFIZIERT 04.11.2026: test_pump1_read und test_pump1_flow (5 mL/min, 0,5 min) laufen; die Pumpe
+  # meldet Kopf DG 6 Rollen, Schlauch Nr. 5 (1,65 mm) -> Bereich laut Handbuch 0,018-18 mL/min.
+  pump1:
+    driver: longer_bt100_1f
+    address: 127.0.0.1:12363
+    pump_address: 1
+    # Zugabe ueber das Auswahlventil (06.11.2026, backend/drivers/valve_dosing.py, docs/messstand2_zugabe_06-11-2026.md).
+    # Aufbau: Vorratsgefaesse an den Ventil-Ports -> valve1 -> Schlauch -> pump1 -> Reaktor.
+    # Die Pumpe stellt das Ventil selbst; jede Zugabe wird mit Wasser nachgespuelt. ALLE Werte sind Pflicht.
+    dosing:
+      valve: valve1
+      water_port: 1            # Wasser gehoert an Port 1: dorthin faehrt das Ventil beim Backend-Start
+      dead_volume_ml: 0.5      # VORLAEUFIG (Anforderung): Schlauch Ventil -> Reaktor. Am Aufbau AUSMESSEN!
+      flush_factor: 1.5        # Spuelmenge = 1,5 x Totvolumen (Anforderung: 1- bis 2-fach)
+      min_rate_ml_min: 0.018   # Bereich der Pumpe mit Kopf DG 6 Rollen / Schlauch Nr. 5 (1,65 mm)
+      max_rate_ml_min: 5.0     # am Geraet getestet bis 5 mL/min (04.11.2026); laut Handbuch bis 18
+      min_dose_seconds: 10     # kleine Volumen so langsam, dass die Pumpe mindestens 10 s laeuft
+
+  # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
+  # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
+  # (Register 505 = 0), Byte order 1-0-3-2 (Register 506/507 Watchdog = 5,0 s). Klemmen am Modul 485MB:
+  # 95 = B (Data+), 96 = A (Data-), 99 = GND. Die COM-LED am Modul blinkt NUR bei gueltigen Rahmen im
+  # eingestellten Modus - eine dunkle COM-LED heisst also nicht "Kabel falsch", sondern meist "Menue falsch"
+  # (Setup/General settings/Extended setup/Modbus: RTU, 19200, Even, Adresse 247).
+  # 04.11.2026: alle 16 AI-Bloecke "Not assigned" -> am Geraet unter Setup/Outputs/Modbus/AI 1..16 je
+  # Datenquelle (Sensorkanal) UND Messwert zuordnen, dann hier unter channels: eintragen (Register = 4*(n-1)).
+  liquiline:
+    driver: endress_hauser_liquiline
+    address: 127.0.0.1:12353
+    bus_address: 247
+    byte_order: "1-0-3-2"
+    channels:                   # Kanalname: Register (0-basiert = Beginn des AI-Blocks Value/Status/Unit)
+      ai1: 0                    # Platzhalter, bis am Geraet Sensoren auf AI1.. zugeordnet sind
+
+  # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
+  #
+  # FTDI-Adapter mit Seriennummer -> by-id (USB-Buchse egal):
+  # mfc1:
+  #   driver: bronkhorst_mfc
+  #   address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_<SN>-if00-port0
+  #   node: "03"
+  #   max_flow_ml_min: 50.0
+  #   serial_parameters:
+  #     baudrate: 38400
+  #
+  # Adapter OHNE Seriennummer (CH340, Joy-IT-Netzteil) -> by-path (immer dieselbe Buchse, beschriften):
+  # psu1:
+  #   driver: joyit_dpm86
+  #   address: /dev/serial/by-path/platform-xhci-hcd.1-usb-0:<buchse>:1.0-port0
+  #   dpm_address: "01"
+  #   voltage_limit: 48.0
+  #   current_limit: 5.0
+  #
+  # GPIO-Relais (Relaisplatine an eigene 5 V, nicht an 3,3 V des Pi):
+  # ventil_z1:
+  #   driver: raspi_gpio_relay_valve
+  #   address: "GPIO17"
+  #   release_when_off: true
+  #
+  # Geraet voruebergehend abschalten, ohne es zu loeschen:  enabled: false
+
+experiments:
+
+  # Ventil auf eine Position (1-16) fahren. Der Treiber liest die Position danach zurueck.
+  test_valve1_position:
+    conditions:
+    stopconditions:
+    parameters:
+      position: [float, ""]
+    observables:
+      - [valve1, position, str, ""]
+    commands:
+      - [valve1, set_position, ["{position}"], {}]
+
+  # Pumpe nur LESEN (Flussrate, Zustand, Kopf/Schlauch) - erster Test an der Pumpe, bewegt nichts.
+  test_pump1_read:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [pump1, set_flow_ml_min, float, mL/min]
+      - [pump1, running, bool, ""]
+      - [pump1, pump_head, str, ""]
+      - [pump1, tubing_no, int, ""]
+    commands:
+      - [pump1, read_tubing, [], {}]
+      - [pump1, read_flow, [], {}]
+
+  # Pumpe 'minutes' Minuten mit 'rate' mL/min laufen lassen (negativ = gegen den Uhrzeigersinn), dann Stopp.
+  # Live: eingestellte und tatsaechliche Flussrate (0 im Stand), Laufzustand.
+  test_pump1_flow:
+    conditions:
+    stopconditions:
+    parameters:
+      rate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [pump1, set_flow_ml_min, float, mL/min]
+      - [pump1, flow_ml_min, float, mL/min]
+      - [pump1, running, bool, ""]
+    commands:
+      - [pump1, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
+
+  # Not-Stopp von Hand (das Experimentende stoppt die Pumpe ohnehin).
+  test_pump1_stop:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [pump1, running, bool, ""]
+    commands:
+      - [pump1, stop_pumping, [], {}]
+      - [pump1, read_flow, [], {}]
+
+  # Liquiline: alle 16 Modbus-Bloecke AI1-AI16 einmal lesen (Status Good/Bad/Not assigned, Einheit, Wert),
+  # unabhaengig von liquiline/channels - zeigt, auf welchen Bloecken das Geraet Sensoren ausgibt.
+  test_liquiline_scan:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [liquiline, ai1_status, str, ""]
+      - [liquiline, ai1_unit, str, ""]
+      - [liquiline, ai1_value, float, ""]
+      - [liquiline, ai2_status, str, ""]
+      - [liquiline, ai2_unit, str, ""]
+      - [liquiline, ai2_value, float, ""]
+      - [liquiline, ai3_status, str, ""]
+      - [liquiline, ai3_unit, str, ""]
+      - [liquiline, ai3_value, float, ""]
+      - [liquiline, ai4_status, str, ""]
+      - [liquiline, ai4_unit, str, ""]
+      - [liquiline, ai4_value, float, ""]
+      - [liquiline, ai5_status, str, ""]
+      - [liquiline, ai5_unit, str, ""]
+      - [liquiline, ai5_value, float, ""]
+      - [liquiline, ai6_status, str, ""]
+      - [liquiline, ai6_unit, str, ""]
+      - [liquiline, ai6_value, float, ""]
+      - [liquiline, ai7_status, str, ""]
+      - [liquiline, ai7_unit, str, ""]
+      - [liquiline, ai7_value, float, ""]
+      - [liquiline, ai8_status, str, ""]
+      - [liquiline, ai8_unit, str, ""]
+      - [liquiline, ai8_value, float, ""]
+      - [liquiline, ai9_status, str, ""]
+      - [liquiline, ai9_unit, str, ""]
+      - [liquiline, ai9_value, float, ""]
+      - [liquiline, ai10_status, str, ""]
+      - [liquiline, ai10_unit, str, ""]
+      - [liquiline, ai10_value, float, ""]
+      - [liquiline, ai11_status, str, ""]
+      - [liquiline, ai11_unit, str, ""]
+      - [liquiline, ai11_value, float, ""]
+      - [liquiline, ai12_status, str, ""]
+      - [liquiline, ai12_unit, str, ""]
+      - [liquiline, ai12_value, float, ""]
+      - [liquiline, ai13_status, str, ""]
+      - [liquiline, ai13_unit, str, ""]
+      - [liquiline, ai13_value, float, ""]
+      - [liquiline, ai14_status, str, ""]
+      - [liquiline, ai14_unit, str, ""]
+      - [liquiline, ai14_value, float, ""]
+      - [liquiline, ai15_status, str, ""]
+      - [liquiline, ai15_unit, str, ""]
+      - [liquiline, ai15_value, float, ""]
+      - [liquiline, ai16_status, str, ""]
+      - [liquiline, ai16_unit, str, ""]
+      - [liquiline, ai16_value, float, ""]
+    commands:
+      - [liquiline, scan_ai_blocks, [], { blocks: 16 }]
+
+  # ---- Zugabe ueber das Auswahlventil (06.11.2026) - siehe dosing: bei pump1 ------------------------------
+  # Die Pumpe ist das einzige kommandierte Geraet; das Ventil stellt sie selbst (steht darum nur unter
+  # observables). Volumen in mL: 0.2 = 200 uL, 0.05 = 50 uL.
+
+  # EINE Zugabe: Ventil auf 'port', 'volume' mL foerdern, Ventil auf Wasser, Spuelmenge nachschieben.
+  # In den Reaktor laufen volume + Spuelmenge (dead_volume_ml x flush_factor). Port 1 = nur Wasser.
+  zugabe:
+    conditions:
+    stopconditions:
+    parameters:
+      port: [float, ""]
+      volume: [float, mL]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, dosed_ml, float, mL]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, delivered_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, add_from_port, [], { port: "{port}", volume: "{volume}" }]
+
+  # Nur Wasser: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen.
+  spuelen:
+    conditions:
+    stopconditions:
+    parameters:
+      volume: [float, mL]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, pump_water, [], { volume: "{volume}" }]
+
+  # Dosiergenauigkeit auswiegen: 'repeats' mal 'volume' mL Wasser, dazwischen 'pause' s (Becher auf der Waage).
+  dosiertest:
+    conditions:
+    stopconditions:
+    parameters:
+      volume: [float, mL]
+      repeats: [float, ""]
+      pause: [float, s]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, pump_water, [], { volume: "{volume}", repeats: "{repeats}", pause_s: "{pause}" }]
+
+  # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
+  # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).

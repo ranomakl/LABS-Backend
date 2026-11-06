@@ -1,0 +1,442 @@
+# -*- test-case-name: backend.test.test_valve_dosing -*-
+"""Zugabe ueber das Auswahlventil (backend/drivers/valve_dosing.py), Stand 06.11.2026 - ohne Hardware.
+Pumpe und Ventil sind Attrappen, die Zeit laeuft ueber eine task.Clock. Geprueft werden die Rechnung
+(Flussrate, Schrittliste, Summen), die Reihenfolge Ventil/Pumpe, die Laufzeiten und alle Fehlerpfade.
+Lauf am PC: .venv/Scripts/python -c "import sys; sys.argv=['trial','backend.test.test_valve_dosing'];
+            from twisted.scripts.trial import run; run()"
+"""
+from twisted.internet import defer, task
+from twisted.trial import unittest
+
+from backend.devices import devicestate
+from backend.drivers import valve_dosing as vd
+from backend.drivers.longer_bt100_1f import Device, build_wire_frame
+
+CONFIG = {"valve": "valve1", "water_port": 1, "dead_volume_ml": 0.5, "flush_factor": 1.5,
+          "min_rate_ml_min": 0.018, "max_rate_ml_min": 5.0, "min_dose_seconds": 10}
+
+
+def settings(**changes):
+    return vd.DosingSettings({**CONFIG, **changes})
+
+
+class SettingsTests(unittest.TestCase):
+    def test_complete_config(self):
+        s = settings()
+        self.assertEqual((s.valve, s.water_port), ("valve1", 1))
+        self.assertAlmostEqual(s.flush_volume_ml, 0.75)
+        self.assertEqual((s.valve_timeout_s, s.settle_s), (20.0, 0.5))
+
+    def test_every_required_key_is_required(self):
+        for key in vd.REQUIRED_KEYS:
+            config = dict(CONFIG)
+            del config[key]
+            error = self.assertRaises(ValueError, vd.DosingSettings, config)
+            self.assertIn(key, str(error))
+
+    def test_unknown_key_is_rejected(self):
+        self.assertRaises(ValueError, settings, dead_volume=0.5)
+
+    def test_nonsense_values_are_rejected(self):
+        for changes in ({"dead_volume_ml": 0}, {"dead_volume_ml": -1}, {"flush_factor": 0.9}, {"water_port": 0},
+                        {"min_rate_ml_min": 0}, {"min_rate_ml_min": 6}, {"min_dose_seconds": 0},
+                        {"valve_timeout_s": 0}, {"settle_s": -1}):
+            self.assertRaises(ValueError, settings, **changes)
+
+    def test_not_a_mapping(self):
+        self.assertRaises(ValueError, vd.DosingSettings, "valve1")
+
+
+class RateTests(unittest.TestCase):
+    def test_small_volumes_run_at_least_min_dose_seconds(self):
+        self.assertAlmostEqual(vd.choose_rate(0.05, settings()), 0.3)     # 50 uL in 10 s
+        self.assertAlmostEqual(vd.choose_rate(0.2, settings()), 1.2)      # 200 uL in 10 s
+
+    def test_large_volumes_are_capped_at_max_rate(self):
+        self.assertEqual(vd.choose_rate(50, settings()), 5.0)
+
+    def test_tiny_volumes_use_min_rate(self):
+        self.assertEqual(vd.choose_rate(0.001, settings()), 0.018)
+
+    def test_given_rate_is_used_and_checked(self):
+        self.assertEqual(vd.choose_rate(0.2, settings(), rate="2.5"), 2.5)
+        self.assertRaises(ValueError, vd.choose_rate, 0.2, settings(), 9)
+        self.assertRaises(ValueError, vd.choose_rate, 0.2, settings(), 0.001)
+
+    def test_empty_or_zero_rate_means_automatic(self):
+        for rate in (None, "", 0, "0", 0.0, " "):
+            self.assertAlmostEqual(vd.choose_rate(0.2, settings(), rate), 1.2)
+
+    def test_volume_must_be_positive(self):
+        self.assertRaises(ValueError, vd.choose_rate, 0, settings())
+        self.assertRaises(ValueError, vd.choose_rate, -0.1, settings())
+
+
+class PlanTests(unittest.TestCase):
+    def test_reagent_addition_is_valve_dose_valve_flush(self):
+        steps = vd.plan_addition(3, 0.2, settings())
+        self.assertEqual([repr(s) for s in steps],
+                         ["Ventil->Port 3", "reagent 200 uL @ 1.2 mL/min", "Ventil->Port 1",
+                          "water 750 uL @ 4.5 mL/min"])
+        totals = vd.plan_totals(steps)
+        self.assertAlmostEqual(totals["reagent_ml"], 0.2)
+        self.assertAlmostEqual(totals["water_ml"], 0.75)
+        self.assertAlmostEqual(totals["total_ml"], 0.95)
+        self.assertAlmostEqual(totals["duration_s"], 20.0)
+
+    def test_water_port_has_no_flush_step(self):
+        steps = vd.plan_addition("1.0", 2.0, settings())
+        self.assertEqual([repr(s) for s in steps], ["Ventil->Port 1", "water 2000 uL @ 5 mL/min"])
+
+    def test_repeats_with_pause(self):
+        steps = vd.plan_addition(1, 0.05, settings(), repeats=3, pause_s=5)
+        self.assertEqual([s.kind for s in steps], ["valve", "pump", "pause", "pump", "pause", "pump"])
+        self.assertAlmostEqual(vd.plan_totals(steps)["water_ml"], 0.15)
+
+    def test_repeated_reagent_addition_flushes_every_time(self):
+        steps = vd.plan_addition(2, 0.05, settings(), repeats=2)
+        self.assertEqual([s.kind for s in steps], ["valve", "pump", "valve", "pump"] * 2)
+        self.assertEqual([s.port for s in steps if s.kind == "valve"], [2, 1, 2, 1])
+
+    def test_invalid_ports(self):
+        self.assertRaises(ValueError, vd.plan_addition, 0, 0.2, settings())
+        self.assertRaises(ValueError, vd.plan_addition, 17, 0.2, settings(), positions=16)
+        self.assertRaises(ValueError, vd.plan_addition, 2.5, 0.2, settings())
+        self.assertRaises(ValueError, vd.plan_addition, "abc", 0.2, settings())
+        self.assertEqual(len(vd.plan_addition(16, 0.2, settings(), positions=16)), 4)
+
+    def test_invalid_repeats_and_pause(self):
+        self.assertRaises(ValueError, vd.plan_addition, 2, 0.2, settings(), repeats=0)
+        self.assertRaises(ValueError, vd.plan_addition, 2, 0.2, settings(), repeats=1.5)
+        self.assertRaises(ValueError, vd.plan_addition, 2, 0.2, settings(), pause_s=-1)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Ablauf mit Attrappen
+# ---------------------------------------------------------------------------------------------------
+
+class _Command:
+    def __init__(self, time=None):
+        self.time = time                      # Sendezeitpunkt, wie Command.time
+        self.deferred_execution = defer.Deferred()
+        self.deferred_result = defer.Deferred()
+
+
+class _Reply:
+    def __init__(self, **parameters):
+        self.parameters = parameters
+
+
+class _Log:
+    def __init__(self):
+        self.errors, self.warnings = [], []
+
+    def info(self, *args, **kwargs):
+        pass
+
+    def warn(self, message, **kwargs):
+        self.warnings.append(message.format(**kwargs))
+
+    def error(self, message, **kwargs):
+        self.errors.append(message.format(**kwargs))
+
+
+class _Valve:
+    commands = {"GET_POS": None}
+    positions = 16
+    state = devicestate.Ready
+
+    def __init__(self, events):
+        self.events = events
+        self.position = 1
+        self.stuck = False        # nimmt den Befehl an, bewegt sich aber nicht
+        self.silent = False       # bestaetigt den Stellbefehl nie
+
+    def set_position(self, port):
+        command = _Command()
+        self.events.append(("valve", port))
+        if not self.stuck:
+            self.position = int(port)
+        if not self.silent:
+            command.deferred_result.callback(None)
+        return command
+
+    def query(self, name):
+        command = _Command()
+        command.deferred_result.callback(_Reply(position=str(self.position)))
+        return command
+
+
+class _Base:
+    def stop(self):
+        self.events.append(("device stop",))
+        return "stopped"
+
+
+class _Pump(vd.ValveDosingMixIn, _Base):
+    def __init__(self, dosing=CONFIG, valve=True):
+        self.clock = task.Clock()
+        self.callLater = self.clock.callLater
+        self._dosing_now = self.clock.seconds
+        self.events = []
+        self.updates = []
+        self.log = _Log()
+        self.state = devicestate.Ready
+        self.waits = []
+        self.start_delay = 0.0     # so spaet bestaetigt die Pumpe den Start
+        self._init_dosing(dosing)
+        self.valve = _Valve(self.events)
+        self.link_devices({"valve1": self.valve} if valve else {})
+
+    def busy(self, condition):
+        self.state = devicestate.Busy
+        command = _Command()
+        self.waits.append((condition, command))
+        command.deferred_execution.callback(None)
+        return command
+
+    def update_observables(self, values, timestamp=None):
+        self.updates.append(dict(values))
+
+    def _dosing_pump_start(self, rate):
+        command = _Command(time=self.clock.seconds())
+        self.events.append(("start", round(self.clock.seconds(), 3), round(rate, 6)))
+        if self.start_delay:
+            self.clock.callLater(self.start_delay, command.deferred_result.callback, None)
+        else:
+            command.deferred_result.callback(None)
+        return command
+
+    def _dosing_pump_stop(self):
+        command = _Command(time=self.clock.seconds())
+        self.events.append(("stop", round(self.clock.seconds(), 3)))
+        command.deferred_result.callback(None)
+        return command
+
+    # Hilfen fuer die Tests
+    def last(self, key):
+        return [u[key] for u in self.updates if key in u][-1]
+
+    def run_all(self, seconds=200, step=0.25):
+        self.clock.advance(0)      # der Start ist ein callLater(0)
+        for _ in range(int(seconds / step)):
+            self.clock.advance(step)
+
+
+class RunTests(unittest.TestCase):
+    def test_reagent_addition_runs_in_order_with_exact_times(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        self.assertEqual(pump.state, devicestate.Busy)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "running")
+        pump.run_all(60)
+        # Ventil 3 -> 0,5 s Ruhe -> 10 s Dosis -> Ventil 1 -> 0,5 s -> 10 s Spuelen (0,75 mL bei 4,5 mL/min)
+        self.assertEqual(pump.events, [("valve", 3), ("start", 0.5, 1.2), ("stop", 10.5),
+                                       ("valve", 1), ("start", 11.0, 4.5), ("stop", 21.0)])
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertAlmostEqual(pump.last("dosed_ml"), 0.2)
+        self.assertAlmostEqual(pump.last("flushed_ml"), 0.75)
+        self.assertAlmostEqual(pump.last("delivered_ml"), 0.95)
+        self.assertEqual(pump.last("dosing_port"), 1)
+        # Fluss im Monitoring: 0 -> 1,2 (Dosis) -> 0 -> 4,5 (Spuelen) -> 0
+        self.assertEqual([x["dosing_flow_ml_min"] for x in pump.updates if "dosing_flow_ml_min" in x],
+                         [0.0, 1.2, 0.0, 4.5, 0.0])
+        self.assertEqual(pump.log.errors, [])
+        self.assertFalse(pump._dosing.open)
+        self.assertIsNone(pump._dosing.reagent_port)
+
+    def test_finished_is_the_condition_the_pump_waits_for(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        condition, _ = pump.waits[0]
+        self.assertEqual((condition.observable_name, condition.value), (vd.DOSING_OBSERVABLE, "finished"))
+        self.assertIs(condition.observable_objects[0], pump)
+
+    def test_water_only(self):
+        pump = _Pump()
+        pump.pump_water(0.05, repeats=3, pause_s=5)
+        pump.run_all(60)
+        self.assertEqual(pump.events, [("valve", 1), ("start", 0.5, 0.3), ("stop", 10.5),
+                                       ("start", 15.5, 0.3), ("stop", 25.5),
+                                       ("start", 30.5, 0.3), ("stop", 40.5)])
+        self.assertAlmostEqual(pump.last("flushed_ml"), 0.15)
+        self.assertAlmostEqual(pump.last("dosed_ml"), 0.0)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+
+    def test_valve_never_switches_while_the_pump_runs(self):
+        pump = _Pump()
+        pump.add_from_port(2, 0.05, repeats=3)
+        pump.run_all(120)
+        running = False
+        for event in pump.events:
+            if event[0] == "start":
+                self.assertFalse(running)
+                running = True
+            elif event[0] == "stop":
+                running = False
+            else:
+                self.assertFalse(running, pump.events)
+        self.assertEqual(len([e for e in pump.events if e[0] == "valve"]), 6)
+
+    def test_late_start_confirmation_shortens_the_wait(self):
+        """Die Zeit zaehlt ab dem Senden des Startbefehls (Command.time), nicht ab der Bestaetigung."""
+        pump = _Pump()
+        pump.start_delay = 2.0
+        pump.pump_water(0.05)
+        pump.run_all(30)
+        self.assertEqual(pump.events, [("valve", 1), ("start", 0.5, 0.3), ("stop", 10.5)])
+        self.assertEqual(len(pump.log.warnings), 1)       # > 1 s: Volumen als ungenau gemeldet
+
+    def test_given_rate(self):
+        pump = _Pump()
+        pump.pump_water(1.0, rate=2.0)
+        pump.run_all(60)
+        self.assertEqual(pump.events, [("valve", 1), ("start", 0.5, 2.0), ("stop", 30.5)])
+
+
+class FailureTests(unittest.TestCase):
+    def assert_failed(self, pump, text):
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.state, devicestate.Error)
+        self.assertIn(text, pump.last("dosing_step"))
+        self.assertTrue(pump.log.errors)
+
+    def test_invalid_port_fails_cleanly_without_moving_anything(self):
+        pump = _Pump()
+        pump.add_from_port(99, 0.2)
+        self.assertEqual(pump.state, devicestate.Busy)        # Experiment laeuft an, kein Ausnahmefehler
+        pump.run_all(5)
+        self.assert_failed(pump, "Port 99")
+        self.assertEqual(pump.events, [])
+
+    def test_no_dosing_section(self):
+        pump = _Pump(dosing=None)
+        pump.add_from_port(2, 0.2)
+        pump.run_all(5)
+        self.assert_failed(pump, "dosing")
+        self.assertEqual(pump.events, [])
+
+    def test_valve_not_connected(self):
+        pump = _Pump(valve=False)
+        self.assertEqual(len(pump.log.errors), 1)             # schon beim Verbinden gemeldet
+        pump.add_from_port(2, 0.2)
+        pump.run_all(5)
+        self.assert_failed(pump, "nicht verbunden")
+
+    def test_valve_reports_wrong_position(self):
+        pump = _Pump()
+        pump.valve.stuck = True
+        pump.add_from_port(3, 0.2)
+        pump.run_all(60)
+        self.assert_failed(pump, "Position 1 statt 3")
+        self.assertEqual(pump.events, [("valve", 3)])         # Pumpe ist nie gestartet
+
+    def test_valve_never_confirms(self):
+        pump = _Pump()
+        pump.valve.silent = True
+        pump.add_from_port(3, 0.2)
+        pump.run_all(30)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "running")
+        pump.run_all(10)                                      # 20 s + 15 s Reserve
+        self.assert_failed(pump, "nicht innerhalb")
+        self.assertEqual(pump.events, [("valve", 3)])
+
+    def test_valve_in_stopped_state(self):
+        pump = _Pump()
+        pump.valve.state = devicestate.Stopped
+        pump.add_from_port(3, 0.2)
+        pump.run_all(5)
+        self.assert_failed(pump, "Stopped")
+        self.assertEqual(pump.events, [])
+
+    def test_second_request_while_one_is_running(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(2)
+        pump.add_from_port(4, 0.2)
+        pump.run_all(1)
+        self.assert_failed(pump, "es laeuft noch")
+
+    def test_failure_while_pumping_reagent_goes_to_error_and_warns(self):
+        """Kein eigener Stoppbefehl: der Error-Zustand laesst das Experiment scheitern, dessen stop()
+        schaltet die Pumpe ueber final_commands ab (ein zweiter Stopp davor kollidiert auf der Leitung)."""
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(5)                                       # mitten in der Dosis
+        pump._dosing_fail(pump._dosing, RuntimeError("Testfehler"))
+        self.assertEqual(pump.events, [("valve", 3), ("start", 0.5, 1.2)])
+        self.assert_failed(pump, "Testfehler")
+        self.assertTrue(any("Reagenz von Port 3" in e for e in pump.log.errors), pump.log.errors)
+        self.assertTrue(any("Abschaltpfad" in w for w in pump.log.warnings), pump.log.warnings)
+        pump.run_all(60)
+        self.assertEqual(len(pump.events), 2)                 # danach passiert nichts mehr
+
+
+class StopTests(unittest.TestCase):
+    def test_stop_during_the_dose(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(5)
+        self.assertEqual(pump.stop(), "stopped")
+        # genau EIN Stopp: der Abschaltpfad des Geraets (final_commands), kein zweiter vom Baustein
+        self.assertEqual(pump.events, [("valve", 3), ("start", 0.5, 1.2), ("device stop",)])
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "cancelled")
+        self.assertEqual(pump.last("dosing_flow_ml_min"), 0.0)
+        self.assertTrue(any("Reagenz von Port 3" in e for e in pump.log.errors))
+        pump.run_all(60)
+        self.assertEqual(len(pump.events), 3)
+        self.assertNotEqual(pump.state, devicestate.Error)
+
+    def test_stop_during_the_flush_still_warns_about_reagent(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(15)                                      # Spuelen laeuft seit 4 s
+        pump.stop()
+        self.assertTrue(any("Reagenz von Port 3" in e for e in pump.log.errors))
+
+    def test_stop_after_regular_end_is_silent(self):
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(60)
+        updates = len(pump.updates)
+        pump.stop()
+        self.assertEqual(len(pump.updates), updates)
+        self.assertEqual(pump.events[-1], ("device stop",))
+        self.assertEqual(pump.log.errors, [])
+
+    def test_stop_without_any_run(self):
+        pump = _Pump()
+        self.assertEqual(pump.stop(), "stopped")
+
+
+class DriverWiringTests(unittest.TestCase):
+    """Der echte BT100-1F-Treiber: Abschnitt dosing wird gelesen, Start/Stopp gehen als dringende
+    WF-Frames raus."""
+
+    def test_without_dosing_section_nothing_changes(self):
+        device = Device("127.0.0.1:12399", pump_address=1)
+        self.assertIsNone(device._dosing_settings)
+
+    def test_dosing_section_is_checked_at_construction(self):
+        device = Device("127.0.0.1:12399", pump_address=1, dosing=dict(CONFIG))
+        self.assertEqual(device._dosing_settings.valve, "valve1")
+        incomplete = {key: value for key, value in CONFIG.items() if key != "dead_volume_ml"}
+        self.assertRaises(ValueError, Device, "127.0.0.1:12398", pump_address=1, dosing=incomplete)
+
+    def test_start_and_stop_frames(self):
+        device = Device("127.0.0.1:12399", pump_address=1, dosing=dict(CONFIG))
+        sent = []
+        device.send_cmd = sent.append
+        start = device._dosing_pump_start(1.2)
+        # 1,2 mL/min = 1 200 000 nL/min = 00 12 4F 80, State1 = 03 (Start, im Uhrzeigersinn)
+        self.assertEqual(bytes(start.bytestring), build_wire_frame(1, b"WF" + bytes.fromhex("00124F80") + b"\x03"))
+        self.assertTrue(start.parameters.urgent and start.parameters.run_while_device_busy)
+        stop = device._dosing_pump_stop()
+        self.assertEqual(bytes(stop.bytestring), build_wire_frame(1, b"WF" + bytes.fromhex("00124F80") + b"\x02"))
+        self.assertTrue(stop.parameters.urgent and stop.parameters.run_while_device_busy)
+        self.assertEqual(len(sent), 3)                        # Start, Stopp, RF zum Zuruecklesen
+        self.assertEqual(bytes(sent[2].bytestring), build_wire_frame(1, b"RF"))
+
+    def test_mixin_stop_comes_first_in_the_mro(self):
+        self.assertIs(Device.stop, vd.ValveDosingMixIn.stop)
+        self.assertIs(Device.link_devices, vd.ValveDosingMixIn.link_devices)

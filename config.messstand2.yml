@@ -6,6 +6,8 @@
 #
 # STAND 04.11.2026: valve1 (Knauer-Ventil) und pump1 (Longer BT100-1F) laufen, beide am Geraet getestet.
 # liquiline (E+H CM44x) antwortet seit 04.11. 14:20 per Modbus RTU; Sensoren am Geraet noch nicht auf AI zugeordnet.
+# 06.11.2026: Zugabe ueber das Ventil (dosing: bei pump1, Routinen zugabe/spuelen/dosiertest) - am PC gegen die
+# Dummys getestet, am Geraet noch NICHT gelaufen. Testreihenfolge: docs/messstand2_zugabe_06-11-2026.md.
 # Naechste Schritte:
 #   1. Geraeteliste (Hersteller, Modell, Schnittstelle) klaeren und hier unter devices: eintragen.
 #   2. Adapter einzeln stecken, Pfade auslesen (ls -l /dev/serial/by-id/ bzw. /dev/serial/by-path/),
@@ -44,6 +46,17 @@ devices:
     driver: longer_bt100_1f
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0
     pump_address: 1
+    # Zugabe ueber das Auswahlventil (06.11.2026, backend/drivers/valve_dosing.py, docs/messstand2_zugabe_06-11-2026.md).
+    # Aufbau: Vorratsgefaesse an den Ventil-Ports -> valve1 -> Schlauch -> pump1 -> Reaktor.
+    # Die Pumpe stellt das Ventil selbst; jede Zugabe wird mit Wasser nachgespuelt. ALLE Werte sind Pflicht.
+    dosing:
+      valve: valve1
+      water_port: 1            # Wasser gehoert an Port 1: dorthin faehrt das Ventil beim Backend-Start
+      dead_volume_ml: 0.5      # VORLAEUFIG (Anforderung): Schlauch Ventil -> Reaktor. Am Aufbau AUSMESSEN!
+      flush_factor: 1.5        # Spuelmenge = 1,5 x Totvolumen (Anforderung: 1- bis 2-fach)
+      min_rate_ml_min: 0.018   # Bereich der Pumpe mit Kopf DG 6 Rollen / Schlauch Nr. 5 (1,65 mm)
+      max_rate_ml_min: 5.0     # am Geraet getestet bis 5 mL/min (04.11.2026); laut Handbuch bis 18
+      min_dose_seconds: 10     # kleine Volumen so langsam, dass die Pumpe mindestens 10 s laeuft
 
   # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
   # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
@@ -198,6 +211,58 @@ experiments:
       - [liquiline, ai16_value, float, ""]
     commands:
       - [liquiline, scan_ai_blocks, [], { blocks: 16 }]
+
+  # ---- Zugabe ueber das Auswahlventil (06.11.2026) - siehe dosing: bei pump1 ------------------------------
+  # Die Pumpe ist das einzige kommandierte Geraet; das Ventil stellt sie selbst (steht darum nur unter
+  # observables). Volumen in mL: 0.2 = 200 uL, 0.05 = 50 uL.
+
+  # EINE Zugabe: Ventil auf 'port', 'volume' mL foerdern, Ventil auf Wasser, Spuelmenge nachschieben.
+  # In den Reaktor laufen volume + Spuelmenge (dead_volume_ml x flush_factor). Port 1 = nur Wasser.
+  zugabe:
+    conditions:
+    stopconditions:
+    parameters:
+      port: [float, ""]
+      volume: [float, mL]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, dosed_ml, float, mL]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, delivered_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, add_from_port, [], { port: "{port}", volume: "{volume}" }]
+
+  # Nur Wasser: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen.
+  spuelen:
+    conditions:
+    stopconditions:
+    parameters:
+      volume: [float, mL]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, pump_water, [], { volume: "{volume}" }]
+
+  # Dosiergenauigkeit auswiegen: 'repeats' mal 'volume' mL Wasser, dazwischen 'pause' s (Becher auf der Waage).
+  dosiertest:
+    conditions:
+    stopconditions:
+    parameters:
+      volume: [float, mL]
+      repeats: [float, ""]
+      pause: [float, s]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, pump_water, [], { volume: "{volume}", repeats: "{repeats}", pause_s: "{pause}" }]
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).
