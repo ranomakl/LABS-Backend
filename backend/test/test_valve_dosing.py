@@ -456,6 +456,11 @@ class ParseAdditionsTests(unittest.TestCase):
         self.assertEqual(vd.parse_additions(""), [])
         self.assertEqual(vd.parse_additions(None), [])
 
+    def test_port_zero_drops_the_entry(self):
+        # vorfuellen: ein Volumen fuer mehrere Ports, nicht genutzte Ports stehen auf 0
+        self.assertEqual(vd.parse_additions("Wasser=5;Port A=2:2;Port B=3:2;Port C=0:2;Port D=0.0:2"),
+                         [("Wasser", None, 5.0), ("Port A", 2, 2.0), ("Port B", 3, 2.0)])
+
     def test_frontend_floats_for_ports(self):
         # Die Parameter kommen aus dem Frontend als float ("3.0") in den Text.
         self.assertEqual(vd.parse_additions("Leitsalz=3.0:5.0;NaOH=5.0:1.2"), [("Leitsalz", 3, 5.0), ("NaOH", 5, 1.2)])
@@ -542,6 +547,16 @@ class RecipeRunTests(unittest.TestCase):
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
         self.assertEqual(pump.log.errors, [])
         self.assertIsNone(pump._dosing.reagent_port)
+
+    def test_priming_recipe_with_own_title(self):
+        pump = _Pump()
+        pump.add_recipe("Wasser=0.1;Port A=2.0:0.05;Port B=3.0:0.05;Port C=0.0:0.05;Port D=0.0:0.05",
+                        target_volume=0, title="Vorfuellen")
+        pump.run_all(200)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [1, 2, 1, 3, 1])
+        self.assertEqual(pump._dosing.title, "Vorfuellen")
+        self.assertEqual(pump.log.errors, [])
 
     def test_budget_error_fails_cleanly_without_moving_anything(self):
         pump = _Pump()

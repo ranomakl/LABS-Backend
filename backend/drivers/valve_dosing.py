@@ -188,7 +188,8 @@ def plan_addition(port, volume_ml, settings: DosingSettings, rate=None, repeats=
 def parse_additions(text) -> list:
     """Rezeptzeile -> Liste (label, port, volume_ml). Eintraege mit ';' getrennt, je Eintrag
     'Name=port:volumen' oder 'Name=volumen' (ohne Port = Wasser-Port) oder ohne Name 'port:volumen'.
-    Volumen 0 oder leer = Eintrag entfaellt (so lassen sich Zugaben im Frontend "ausschalten").
+    Volumen 0 oder leer = Eintrag entfaellt (so lassen sich Zugaben im Frontend "ausschalten");
+    Port 0 ebenso (Routinen mit EINEM Volumen fuer mehrere Ports, z.B. vorfuellen: nicht genutzte Ports = 0).
     Beispiel: 'Leitsalz=3:5;Wasser=20;Saeure=4:1.2;NaOH=5:0' -> drei Zugaben, NaOH entfaellt."""
     additions = []
     if text is None:
@@ -225,6 +226,8 @@ def parse_additions(text) -> list:
             if port_f != int(port_f):
                 raise ValueError(f"Rezept: Port {port_text!r} in {entry!r} ist keine ganze Zahl")
             port = int(port_f)
+            if port == 0:
+                continue
         additions.append((label or (f"Port {port}" if port is not None else "Wasser"), port, volume_ml))
     return additions
 
@@ -346,14 +349,15 @@ class ValveDosingMixIn:
             lambda settings, positions: plan_addition(settings.water_port, volume, settings, rate, repeats,
                                                       pause_s, positions=positions))
 
-    def add_recipe(self, additions, target_volume=None, pause_s=0.0, start_volume=0.0, **kwargs):
+    def add_recipe(self, additions, target_volume=None, pause_s=0.0, start_volume=0.0, title="Ansatz", **kwargs):
         """Rezept: mehrere Zugaben nacheinander, dann mit Wasser auf `target_volume` mL auffuellen.
         additions: Rezeptzeile 'Name=port:volumen;Name=volumen;...' (siehe parse_additions; Volumen 0 =
         Eintrag entfaellt, ohne Port = Wasser). pause_s: Ruehrzeit zwischen den Zugaben. start_volume:
         was schon im Reaktor ist (zaehlt zum Zielvolumen). Die Pumpe ist bis zum Ende Busy.
-        Passt das Rezept nicht ins Zielvolumen, bewegt sich nichts und der Lauf endet als Failed."""
+        Passt das Rezept nicht ins Zielvolumen, bewegt sich nichts und der Lauf endet als Failed.
+        title: Name im Log und in den Meldungen (vorfuellen nutzt denselben Baustein)."""
         return self._dosing_request(
-            "Ansatz",
+            str(title),
             lambda settings, positions: plan_recipe(parse_additions(additions), settings, target_volume,
                                                     pause_s, start_volume, positions=positions))
 

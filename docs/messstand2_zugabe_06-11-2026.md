@@ -61,6 +61,7 @@ Volumen immer in mL: 0.2 = 200 uL, 0.05 = 50 uL.
 | `spuelen` | volume | nur Wasser aus Port 1: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen |
 | `dosiertest` | volume, repeats, pause | `repeats` mal `volume` Wasser, dazwischen `pause` Sekunden - zum Auswiegen |
 | `ansatz` | Ports/Volumina, zielvolumen, pause | ganzer Ansatz in einem Lauf (Abschnitt 9) |
+| `vorfuellen` | vol_wasser, port_a..d, vol_je_port | vor dem ersten Ansatz alle Schlaeuche fuellen (Abschnitt 11) |
 
 Im Monitoring: `dosing_step` (aktueller Schritt als Text), `dosing_flow_ml_min` (Flussrate, solange die
 Pumpe foerdert, sonst 0), `dosed_ml` (Chemikalie), `flushed_ml` (Wasser), `delivered_ml` (Summe in den
@@ -85,8 +86,9 @@ Alles zuerst nur mit Wasser an ALLEN benutzten Ports.
 
 1. `git pull`, Backend neu starten, im Frontend "Download Experiments from Station".
    Im Geraetestatus muessen valve1 und pump1 "Ready" sein.
-2. Schlaeuche fuellen: Auslauf in ein Becherglas, `spuelen` mit z.B. 5 mL, bis keine Luft mehr kommt.
-   Fuer jeden Chemikalien-Port einmal `zugabe` (port, 2 mL), damit auch dessen Zuleitung gefuellt ist.
+2. Schlaeuche fuellen: Auslauf in ein Becherglas, Routine `vorfuellen` (Abschnitt 11) mit vol_wasser 5,
+   den benutzten Ports (z.B. port_a 2, port_b 3, Rest 0) und vol_je_port 2. Von Hand geht es auch:
+   `spuelen` mit 5 mL, dann fuer jeden Chemikalien-Port einmal `zugabe` (port, 2 mL).
 3. Ventil pruefen: `zugabe` mit port 3 und 0,2 mL. Am Ventil mitlesen: 3, dann zurueck auf 1.
    Die Pumpe darf nur laufen, waehrend das Ventil steht.
 4. Dosiergenauigkeit auswiegen (Waage, Becherglas, Wasser 1 g = 1 mL):
@@ -308,3 +310,24 @@ Gelernt:
 
 Noch zu tun am Geraet (Reihenfolge wie Abschnitt 5): zugabe mit Wasser an Port 3 (Ventil schaltet im Lauf),
 dosiertest 10 x 0,2 mL und 10 x 0,05 mL auswiegen, dann erster Ansatz mit Reagenzien.
+
+## 11. Schlaeuche fuellen: Routine `vorfuellen` (10.11.2026)
+
+`ansatz` spuelt am Anfang nichts und setzt gefuellte Schlaeuche voraus (Abschnitt 9). Enthaelt eine
+Zuleitung noch Luft, foerdert die Pumpe beim ersten Hub erst die Luft, und von der ersten Zugabe kommt
+weniger an, ohne dass das Backend es merkt. Darum vor dem ersten Ansatz einmal `vorfuellen`, **Auslauf in
+ein Becherglas**, nicht in den Reaktor.
+
+| Parameter | Einheit | Bedeutung |
+|---|---|---|
+| `vol_wasser` | mL | Wasser zuerst: Wasserweg und Schlauch zum Reaktor luftfrei (z.B. 5) |
+| `port_a` .. `port_d` | - | die Chemikalien-Ports, z.B. 2 und 3; nicht genutzte auf 0 |
+| `vol_je_port` | mL | Menge je Zuleitung (2 mL reichen fuer etwa 1 m Schlauch mit 1,65 mm innen) |
+
+Ablauf: Wasser -> Port a mit Spuelen -> Port b mit Spuelen -> ... Jede Chemikalie laeuft bis zum Ventil
+und von dort mit dem Spuelwasser ins Becherglas; am Ende steht der Schlauch zum Reaktor auf Wasser.
+Danach Auslauf in den Reaktor haengen und `ansatz` starten. Solange die Schlaeuche nicht leerlaufen,
+muss das vor weiteren Ansaetzen nicht wiederholt werden.
+
+Technisch ist es derselbe Baustein wie `ansatz` (`add_recipe`, Titel "Vorfuellen", kein Zielvolumen).
+Im Log und im Monitoring (`dosing_addition`) steht, welcher Port gerade gefuellt wird.

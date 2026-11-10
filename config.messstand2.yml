@@ -306,5 +306,30 @@ experiments:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
       - [pump1, add_recipe, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2};NaOH={port_naoh}:{vol_naoh}", target_volume: "{zielvolumen}", pause_s: "{pause}" }]
 
+  # ---- Schlae/uche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
+  # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je
+  # Port 'vol_je_port' mL seiner Chemikalie (fuellt die Zuleitung Vorratsgefaess -> Ventil), jeweils mit Wasser
+  # nachgespuelt - danach steht der Schlauch zum Reaktor wieder auf Wasser. Nicht genutzte Ports = 0.
+  # Richtwert: 2 mL je Port reichen fuer etwa 1 m Zuleitung (1,65 mm innen). Danach Auslauf in den Reaktor, ansatz.
+  vorfuellen:
+    conditions:
+    stopconditions:
+    parameters:
+      vol_wasser: [float, mL]
+      port_a: [float, ""]
+      port_b: [float, ""]
+      port_c: [float, ""]
+      port_d: [float, ""]
+      vol_je_port: [float, mL]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_addition, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, dosed_ml, float, mL]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, add_recipe, [], { additions: "Wasser={vol_wasser};{port_a}:{vol_je_port};{port_b}:{vol_je_port};{port_c}:{vol_je_port};{port_d}:{vol_je_port}", target_volume: 0, pause_s: 0, title: Vorfuellen }]
+
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).
