@@ -264,5 +264,40 @@ experiments:
     commands:
       - [pump1, pump_water, [], { volume: "{volume}", repeats: "{repeats}", pause_s: "{pause}" }]
 
+  # ---- Rezept: Reaktionsloesung ansetzen (10.11.2026) --------------------------------------------------------
+  # EINE Routine fuer den ganzen Ansatz, Volumina direkt in mL (die Umrechnung aus Konzentrationen nach
+  # Blatt 2 der Exceltabelle ist noch offen und wird vorher von Hand gemacht).
+  # Reihenfolge: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH -> mit Wasser auf 'zielvolumen' auffuellen.
+  # Jede Zugabe aus einem Chemikalien-Port wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
+  # Volumen 0 = Zugabe entfaellt (z.B. vol_saeure2 0, wenn nur eine Saeure). zielvolumen 0 = nicht auffuellen.
+  # pause = Ruehrzeit in s zwischen den Zugaben. VOR dem ersten Ventilschritt wird gerechnet: passen Zugaben
+  # + Spuelwasser nicht ins Zielvolumen, bewegt sich nichts und der Lauf endet als Failed (Meldung im Log und
+  # in dosing_step). Die pH-Schleife kommt als eigener Schritt danach (noch nicht gebaut).
+  ansatz:
+    conditions:
+    stopconditions:
+    parameters:
+      port_leitsalz: [float, ""]
+      vol_leitsalz: [float, mL]
+      vol_wasser: [float, mL]
+      port_saeure1: [float, ""]
+      vol_saeure1: [float, mL]
+      port_saeure2: [float, ""]
+      vol_saeure2: [float, mL]
+      port_naoh: [float, ""]
+      vol_naoh: [float, mL]
+      zielvolumen: [float, mL]
+      pause: [float, s]
+    observables:
+      - [valve1, position, str, ""]
+      - [pump1, dosing_addition, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, dosed_ml, float, mL]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, delivered_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [pump1, add_recipe, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2};NaOH={port_naoh}:{vol_naoh}", target_volume: "{zielvolumen}", pause_s: "{pause}" }]
+
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).

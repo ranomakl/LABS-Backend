@@ -31,8 +31,14 @@ Zeitsteuerung: Die Laufzeit zaehlt vom SENDEN des Startbefehls bis zum SENDEN de
 Frames sind gleich lang, die Uebertragungszeit (bei 1200 Baud ~90 ms) hebt sich damit auf. Waehrend
 einer Zugabe wird die Pumpe NICHT periodisch abgefragt, damit der Stopp nie hinter einer Abfrage wartet.
 
-Nicht in diesem Modul: Rezeptrechnung (Volumina aus Konzentrationen) und pH-Schleife. Beides baut auf
-den Schritten hier auf (plan_addition liefert eine Schrittliste, _dosing_request faehrt sie ab).
+Rezept (10.11.2026): add_recipe faehrt mehrere Zugaben nacheinander ab (Leitsalz, Wasser, Saeuren, NaOH, ...)
+und fuellt am Ende mit Wasser auf ein Zielvolumen auf. Die Volumina werden direkt eingegeben (mL); die
+Umrechnung aus Konzentrationen (Blatt 2 der Exceltabelle) ist noch offen und kommt davor, nicht hierher.
+Vor dem ersten Ventilschritt wird das Volumenbudget geprueft: passt Rezept + Spuelwasser nicht ins
+Zielvolumen, laeuft nichts an und der Lauf endet als Failed.
+
+Nicht in diesem Modul: die pH-Schleife. Sie baut auf den Schritten hier auf (plan_addition/plan_recipe
+liefern eine Schrittliste, _dosing_request faehrt sie ab).
 """
 
 import time
@@ -115,9 +121,10 @@ class Step:
     """Ein Schritt einer Zugabe. kind: 'valve' (port), 'pump' (volume_ml, rate_ml_min, role), 'pause' (seconds).
     role: 'reagent' (zaehlt als zugegebenes Reagenz) oder 'water' (Spuel-/Fuellwasser)."""
 
-    def __init__(self, kind, port=None, volume_ml=None, rate_ml_min=None, role=None, seconds=None):
+    def __init__(self, kind, port=None, volume_ml=None, rate_ml_min=None, role=None, seconds=None, label=None):
         self.kind, self.port, self.volume_ml = kind, port, volume_ml
         self.rate_ml_min, self.role, self.seconds = rate_ml_min, role, seconds
+        self.label = label        # Name der Zugabe im Rezept (z.B. "Leitsalz"), None bei Einzelzugaben
 
     @property
     def duration_s(self) -> float:
@@ -178,6 +185,100 @@ def plan_addition(port, volume_ml, settings: DosingSettings, rate=None, repeats=
     return steps
 
 
+def parse_additions(text) -> list:
+    """Rezeptzeile -> Liste (label, port, volume_ml). Eintraege mit ';' getrennt, je Eintrag
+    'Name=port:volumen' oder 'Name=volumen' (ohne Port = Wasser-Port) oder ohne Name 'port:volumen'.
+    Volumen 0 oder leer = Eintrag entfaellt (so lassen sich Zugaben im Frontend "ausschalten").
+    Beispiel: 'Leitsalz=3:5;Wasser=20;Saeure=4:1.2;NaOH=5:0' -> drei Zugaben, NaOH entfaellt."""
+    additions = []
+    if text is None:
+        return additions
+    for raw in str(text).split(";"):
+        entry = raw.strip()
+        if not entry:
+            continue
+        label, _, spec = entry.rpartition("=")
+        label, spec = label.strip(), spec.strip()
+        if ":" in spec:
+            port_text, _, volume_text = spec.partition(":")
+            port_text = port_text.strip()
+        else:
+            port_text, volume_text = "", spec
+        volume_text = volume_text.strip()
+        if volume_text in ("", "None"):
+            continue
+        try:
+            volume_ml = float(volume_text)
+        except ValueError:
+            raise ValueError(f"Rezept: Volumen {volume_text!r} in {entry!r} ist keine Zahl")
+        if volume_ml < 0:
+            raise ValueError(f"Rezept: Volumen {volume_ml} mL in {entry!r} darf nicht negativ sein")
+        if volume_ml == 0:
+            continue
+        if port_text in ("", "None"):
+            port = None
+        else:
+            try:
+                port_f = float(port_text)
+            except ValueError:
+                raise ValueError(f"Rezept: Port {port_text!r} in {entry!r} ist keine Zahl")
+            if port_f != int(port_f):
+                raise ValueError(f"Rezept: Port {port_text!r} in {entry!r} ist keine ganze Zahl")
+            port = int(port_f)
+        additions.append((label or (f"Port {port}" if port is not None else "Wasser"), port, volume_ml))
+    return additions
+
+
+def _number_or_zero(value) -> float:
+    if value is None or str(value).strip() in ("", "None"):
+        return 0.0
+    return float(value)
+
+
+def plan_recipe(additions, settings: DosingSettings, target_volume_ml=None, pause_s=0.0,
+                start_volume_ml=0.0, positions=None) -> list:
+    """Schrittliste fuer ein Rezept: die Zugaben aus `additions` (Liste (label, port, volume_ml), port None =
+    Wasser-Port) der Reihe nach, jede Reagenz-Zugabe mit Spuelen, dazwischen `pause_s` Sekunden Ruehrzeit.
+    target_volume_ml > 0: am Ende mit Wasser auffuellen, bis start_volume_ml + alles Gefoerderte das
+    Zielvolumen erreicht. Passt das Rezept samt Spuelwasser nicht hinein -> ValueError, nichts laeuft an."""
+    target_volume_ml = _number_or_zero(target_volume_ml)
+    start_volume_ml = _number_or_zero(start_volume_ml)
+    pause_s = _number_or_zero(pause_s)
+    if target_volume_ml < 0 or start_volume_ml < 0:
+        raise ValueError("Rezept: Zielvolumen und Startvolumen duerfen nicht negativ sein")
+    if pause_s < 0:
+        raise ValueError(f"Rezept: Pause {pause_s} s darf nicht negativ sein")
+    if not additions and target_volume_ml <= 0:
+        raise ValueError("Rezept: keine Zugabe mit Volumen > 0 und kein Zielvolumen - nichts zu tun")
+    steps = []
+    last_port = None
+
+    def append(label, port, volume_ml):
+        nonlocal last_port
+        if steps and pause_s:
+            steps.append(Step("pause", seconds=pause_s, label=label))
+        for step in plan_addition(port, volume_ml, settings, positions=positions):
+            if step.kind == "valve" and step.port == last_port:
+                continue                              # Ventil steht schon dort
+            step.label = label
+            steps.append(step)
+            if step.kind == "valve":
+                last_port = step.port
+
+    for label, port, volume_ml in additions:
+        append(label, settings.water_port if port is None else port, volume_ml)
+    delivered = start_volume_ml + plan_totals(steps)["total_ml"]
+    if target_volume_ml > 0:
+        fill_ml = target_volume_ml - delivered
+        if fill_ml < -1e-9:
+            raise ValueError(f"Rezept ergibt {delivered:.3f} mL (Zugaben + Spuelwasser + Startvolumen), "
+                             f"mehr als das Zielvolumen {target_volume_ml:.3f} mL - Zielvolumen erhoehen oder "
+                             f"Zugaben verkleinern")
+        if fill_ml > 1e-9:
+            append(f"Auffuellen auf {target_volume_ml:g} mL", settings.water_port, fill_ml)
+    return steps
+
+
 def plan_totals(steps) -> dict:
     """Summe der Schrittliste: Reagenz, Wasser, Gesamtvolumen in den Reaktor (mL) und Dauer (s, ohne Ventil)."""
     reagent = sum(s.volume_ml for s in steps if s.kind == "pump" and s.role == "reagent")
@@ -196,13 +297,14 @@ class _Run:
         self.watchdog = None
         self.pump_running = False
         self.reagent_port = None  # Port, dessen Reagenz evtl. noch im Schlauch steht
+        self.label = None         # Zugabe des Rezepts, die gerade laeuft (Observable dosing_addition)
         self.dosed_ml = 0.0
         self.flushed_ml = 0.0
 
 
 class ValveDosingMixIn:
     """Siehe Modulkopf. Oeffentliche Methoden (aus der Konfiguration: [pump1, add_from_port, [], {...}]):
-    add_from_port, pump_water."""
+    add_from_port, pump_water, add_recipe."""
 
     _dosing_settings = None
     _dosing_valve = None
@@ -231,20 +333,37 @@ class ValveDosingMixIn:
         """`repeats` Zugaben von je `volume` mL aus Ventil-Port `port`, jede gefolgt von der Spuelmenge
         Wasser. rate (mL/min) leer/0 = automatisch. Die Pumpe ist bis zum Ende Busy.
         Aus dem Wasser-Port: nur das Volumen, kein Spuelschritt."""
-        return self._dosing_request(f"Zugabe Port {port}", port, volume, rate, repeats, pause_s)
+        return self._dosing_request(
+            f"Zugabe Port {port}",
+            lambda settings, positions: plan_addition(port, volume, settings, rate, repeats, pause_s,
+                                                      positions=positions))
 
     def pump_water(self, volume, rate=None, repeats=1, pause_s=0.0, **kwargs):
         """`repeats` mal `volume` mL Wasser (Wasser-Port) foerdern: Spuelen, Schlauch fuellen, Auffuellen
         und Auswiegen der Dosiergenauigkeit."""
-        port = None if self._dosing_settings is None else self._dosing_settings.water_port
-        return self._dosing_request("Wasser", port, volume, rate, repeats, pause_s)
+        return self._dosing_request(
+            "Wasser",
+            lambda settings, positions: plan_addition(settings.water_port, volume, settings, rate, repeats,
+                                                      pause_s, positions=positions))
+
+    def add_recipe(self, additions, target_volume=None, pause_s=0.0, start_volume=0.0, **kwargs):
+        """Rezept: mehrere Zugaben nacheinander, dann mit Wasser auf `target_volume` mL auffuellen.
+        additions: Rezeptzeile 'Name=port:volumen;Name=volumen;...' (siehe parse_additions; Volumen 0 =
+        Eintrag entfaellt, ohne Port = Wasser). pause_s: Ruehrzeit zwischen den Zugaben. start_volume:
+        was schon im Reaktor ist (zaehlt zum Zielvolumen). Die Pumpe ist bis zum Ende Busy.
+        Passt das Rezept nicht ins Zielvolumen, bewegt sich nichts und der Lauf endet als Failed."""
+        return self._dosing_request(
+            "Ansatz",
+            lambda settings, positions: plan_recipe(parse_additions(additions), settings, target_volume,
+                                                    pause_s, start_volume, positions=positions))
 
     # -- Ablauf ----------------------------------------------------------------------------------------
 
     def _dosing_emit(self, values: dict):
         self.update_observables(values, self._dosing_now())
 
-    def _dosing_request(self, title, port, volume, rate, repeats, pause_s):
+    def _dosing_request(self, title, plan):
+        """plan(settings, positions) -> Schrittliste; darf ValueError/TypeError werfen (-> Failed ohne Bewegung)."""
         error, steps = None, []
         try:
             if self._dosing_settings is None:
@@ -253,8 +372,7 @@ class ValveDosingMixIn:
                 raise ValueError(f"Ventil {self._dosing_settings.valve} ist nicht verbunden")
             if self._dosing is not None and self._dosing.open:
                 raise ValueError(f"es laeuft noch '{self._dosing.title}'")
-            steps = plan_addition(port, volume, self._dosing_settings, rate, repeats, pause_s,
-                                  positions=getattr(self._dosing_valve, "positions", None))
+            steps = plan(self._dosing_settings, getattr(self._dosing_valve, "positions", None))
         except (ValueError, TypeError) as exc:
             error = exc
         run = _Run(steps, title)
@@ -265,8 +383,8 @@ class ValveDosingMixIn:
         condition = ObservableEqualsValueCondition(f"{title} beendet", self, DOSING_OBSERVABLE, "finished")
         wait_command = self.busy(condition)
         totals = plan_totals(steps)
-        self._dosing_emit({DOSING_OBSERVABLE: "running", "dosing_step": "Start", "dosed_ml": 0.0,
-                           "flushed_ml": 0.0, "delivered_ml": 0.0, "dosing_flow_ml_min": 0.0})
+        self._dosing_emit({DOSING_OBSERVABLE: "running", "dosing_step": "Start", "dosing_addition": "",
+                           "dosed_ml": 0.0, "flushed_ml": 0.0, "delivered_ml": 0.0, "dosing_flow_ml_min": 0.0})
         if error is None:
             self.log.info("{title}: {n} Schritte, {reagent:.3f} mL Reagenz + {water:.3f} mL Wasser = {total:.3f} mL "
                           "in den Reaktor, ca. {seconds:.0f} s. Schritte: {steps}", title=title, n=len(steps),
@@ -287,6 +405,16 @@ class ValveDosingMixIn:
             return
         step = run.steps[run.index]
         run.index += 1
+        if step.label is not None and step.label != run.label:
+            run.label = step.label
+            labels = []
+            for other in run.steps:
+                if other.label is not None and other.label not in labels:
+                    labels.append(other.label)
+            number = labels.index(step.label) + 1
+            self._dosing_emit({"dosing_addition": f"{number}/{len(labels)}: {step.label}"})
+            self.log.info("{title}: Zugabe {n}/{total} '{label}'", title=run.title, n=number,
+                          total=len(labels), label=step.label)
         if step.kind == "valve":
             deferred, limit = self._dosing_valve_step(run, step), self._dosing_settings.valve_timeout_s
         elif step.kind == "pump":
@@ -450,7 +578,7 @@ class ValveDosingMixIn:
         run.open = False
         self.log.info("{title} fertig: {reagent:.3f} mL Reagenz + {water:.3f} mL Wasser in den Reaktor.",
                       title=run.title, reagent=run.dosed_ml, water=run.flushed_ml)
-        self._dosing_emit({"dosing_step": "fertig", DOSING_OBSERVABLE: "finished"})
+        self._dosing_emit({"dosing_step": "fertig", "dosing_addition": "fertig", DOSING_OBSERVABLE: "finished"})
 
     def _dosing_close(self, run, outcome, message):
         """Gemeinsames Ende fuer Fehler und Abbruch: Timer weg, Warnung zum Schlauchinhalt.

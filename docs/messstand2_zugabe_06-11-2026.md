@@ -58,6 +58,7 @@ Volumen immer in mL: 0.2 = 200 uL, 0.05 = 50 uL.
 | `zugabe` | port, volume | eine Zugabe aus `port` mit Spuelen (Abschnitt 1). port = 1: nur Wasser, kein Spuelschritt |
 | `spuelen` | volume | nur Wasser aus Port 1: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen |
 | `dosiertest` | volume, repeats, pause | `repeats` mal `volume` Wasser, dazwischen `pause` Sekunden - zum Auswiegen |
+| `ansatz` | Ports/Volumina, zielvolumen, pause | ganzer Ansatz in einem Lauf (Abschnitt 9) |
 
 Im Monitoring: `dosing_step` (aktueller Schritt als Text), `dosing_flow_ml_min` (Flussrate, solange die
 Pumpe foerdert, sonst 0), `dosed_ml` (Chemikalie), `flushed_ml` (Wasser), `delivered_ml` (Summe in den
@@ -222,6 +223,49 @@ Noch zu tun:
 
 - pH-Elektrode an der Liquiline auf AI 1 legen (Setup/Outputs/Modbus/AI 1), dann in
   config.messstand2.yml unter liquiline/channels statt `ai1: 0` einen Namen wie `ph: 0` eintragen.
-- Naechste Bausteine: festes Rezept (Leitsalz, Wasser, Carbonsaeuren, NaOH, Auffuellen) mit
-  Volumenbudget, danach die pH-Schleife (Abbruch, wenn der pH nicht reagiert).
+- Festes Rezept mit Volumenbudget: GEBAUT am 10.11.2026 als Routine `ansatz` (Abschnitt 9).
+  Naechster Baustein: die pH-Schleife (Abbruch, wenn der pH nicht reagiert).
 - In der Anforderung ist vertauscht: Saeure SENKT den pH, Base HEBT ihn.
+
+## 9. Rezept-Routine `ansatz` (10.11.2026)
+
+Der ganze Ansatz in EINEM Lauf. Die Routine ruft intern dieselben Schritte wie `zugabe` auf, nur mehrmals
+hintereinander, und fuellt am Ende mit Wasser auf.
+
+| Parameter | Einheit | Bedeutung |
+|---|---|---|
+| `port_leitsalz`, `vol_leitsalz` | -, mL | Leitsalz-Loesung: Ventil-Port und Volumen |
+| `vol_wasser` | mL | Wasser vorab (z.B. "50 % des Loesungsmittels"); 0 = keins |
+| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure |
+| `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; `vol_saeure2` 0 = entfaellt |
+| `port_naoh`, `vol_naoh` | -, mL | NaOH (aequimolar, von Hand gerechnet) |
+| `zielvolumen` | mL | am Ende mit Wasser auffuellen bis hierhin; 0 = nicht auffuellen |
+| `pause` | s | Ruehrzeit zwischen den Zugaben; 0 = keine |
+
+Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH -> Auffuellen. Jede Zugabe aus einem
+Chemikalien-Port endet mit dem Spuelschritt (Abschnitt 1), das Spuelwasser zaehlt zum Gesamtvolumen.
+Ein Volumen 0 laesst die Zugabe aus. Der Port einer ausgelassenen Zugabe ist egal.
+
+**Volumenbudget:** Vor dem ersten Ventilschritt rechnet das Backend Zugaben + Spuelwasser zusammen.
+Ist das mehr als `zielvolumen`, bewegt sich nichts, der Lauf endet sofort als Failed mit der Meldung
+"Rezept ergibt x mL, mehr als das Zielvolumen y mL" (Log und `dosing_step`). Dann Zielvolumen erhoehen
+oder Zugaben verkleinern. Beispiel mit 0,75 mL Spuelmenge: Leitsalz 5 mL + Saeure 1,2 mL + NaOH 1,2 mL
+= 7,4 mL Reagenz + 3 x 0,75 mL Spuelwasser = 9,65 mL; mit `vol_wasser` 20 und `zielvolumen` 50 werden
+am Ende 20,35 mL Wasser nachgefuellt.
+
+**Im Monitoring:** `dosing_addition` zeigt die laufende Zugabe ("3/6: Saeure 1"), `dosing_step` den
+Schritt darin, `dosed_ml` die Summe aller Reagenzien, `flushed_ml` alles Wasser (Spuelen, Wasser vorab,
+Auffuellen), `delivered_ml` die Summe im Reaktor.
+
+**Abbruch/Fehler** wie in Abschnitt 4: Pumpe steht, im Log steht, welche Zugabe wie weit war und ob
+noch Reagenz im Schlauch steht. Der Ansatz ist dann unvollstaendig; was schon drin ist, steht im Log
+("Ansatz FEHLGESCHLAGEN nach x mL Reagenz + y mL Wasser"). Neu ansetzen oder den Rest von Hand.
+
+**Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Chemiker-Frage 1, Blatt 2) und die
+pH-Schleife (eigener Schritt nach `ansatz`). Die Routine nimmt nur Volumina.
+
+**Fuer andere Rezepte:** Der Treiber-Befehl `add_recipe` nimmt eine freie Rezeptzeile
+`Name=port:volumen;Name=volumen;...` (ohne Port = Wasser). Eine weitere Routine mit anderen Komponenten
+ist damit nur ein neuer Eintrag in `config.messstand2.yml` nach dem Muster von `ansatz`.
+
+Stand: am PC gegen die Dummys getestet (Abschnitt 6, Lauf vom 10.11.2026), am Geraet noch nicht.

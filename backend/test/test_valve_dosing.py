@@ -440,3 +440,123 @@ class DriverWiringTests(unittest.TestCase):
     def test_mixin_stop_comes_first_in_the_mro(self):
         self.assertIs(Device.stop, vd.ValveDosingMixIn.stop)
         self.assertIs(Device.link_devices, vd.ValveDosingMixIn.link_devices)
+
+
+# ---------------------------------------------------------------------------------------------------
+# Rezept (add_recipe, 10.11.2026)
+# ---------------------------------------------------------------------------------------------------
+
+class ParseAdditionsTests(unittest.TestCase):
+    def test_full_line(self):
+        self.assertEqual(vd.parse_additions("Leitsalz=3:5;Wasser=20;Saeure 1=4:1.2;NaOH=5:1.2"),
+                         [("Leitsalz", 3, 5.0), ("Wasser", None, 20.0), ("Saeure 1", 4, 1.2), ("NaOH", 5, 1.2)])
+
+    def test_zero_or_empty_volume_drops_the_entry(self):
+        self.assertEqual(vd.parse_additions("Leitsalz=3:5;Saeure 2=6:0;NaOH=5:;Wasser=0.0"), [("Leitsalz", 3, 5.0)])
+        self.assertEqual(vd.parse_additions(""), [])
+        self.assertEqual(vd.parse_additions(None), [])
+
+    def test_frontend_floats_for_ports(self):
+        # Die Parameter kommen aus dem Frontend als float ("3.0") in den Text.
+        self.assertEqual(vd.parse_additions("Leitsalz=3.0:5.0;NaOH=5.0:1.2"), [("Leitsalz", 3, 5.0), ("NaOH", 5, 1.2)])
+
+    def test_unnamed_entries(self):
+        self.assertEqual(vd.parse_additions("3:5; 2"), [("Port 3", 3, 5.0), ("Wasser", None, 2.0)])
+
+    def test_bad_entries(self):
+        for text in ("Leitsalz=abc:5", "Leitsalz=3:abc", "Leitsalz=2.5:1", "Leitsalz=3:-1"):
+            self.assertRaises(ValueError, vd.parse_additions, text)
+
+
+class RecipePlanTests(unittest.TestCase):
+    ADDITIONS = [("Leitsalz", 3, 5.0), ("Wasser", None, 20.0), ("Saeure 1", 4, 1.2), ("NaOH", 5, 1.2)]
+
+    def test_order_flushing_and_fill(self):
+        steps = vd.plan_recipe(self.ADDITIONS, settings(), target_volume_ml=50)
+        self.assertEqual([repr(s) for s in steps], [
+            "Ventil->Port 3", "reagent 5000 uL @ 5 mL/min", "Ventil->Port 1", "water 750 uL @ 4.5 mL/min",
+            "water 20000 uL @ 5 mL/min",                                   # Ventil steht schon auf Wasser
+            "Ventil->Port 4", "reagent 1200 uL @ 5 mL/min", "Ventil->Port 1", "water 750 uL @ 4.5 mL/min",
+            "Ventil->Port 5", "reagent 1200 uL @ 5 mL/min", "Ventil->Port 1", "water 750 uL @ 4.5 mL/min",
+            "water 20350 uL @ 5 mL/min"])                                  # Auffuellen: 50 - 29.65
+        labels = []
+        for step in steps:
+            if step.label not in labels:
+                labels.append(step.label)
+        self.assertEqual(labels, ["Leitsalz", "Wasser", "Saeure 1", "NaOH", "Auffuellen auf 50 mL"])
+        totals = vd.plan_totals(steps)
+        self.assertAlmostEqual(totals["reagent_ml"], 7.4)
+        self.assertAlmostEqual(totals["total_ml"], 50.0)
+
+    def test_pause_between_additions(self):
+        steps = vd.plan_recipe(self.ADDITIONS[:2], settings(), pause_s=30)
+        self.assertEqual([s.kind for s in steps], ["valve", "pump", "valve", "pump", "pause", "pump"])
+        self.assertEqual(steps[4].label, "Wasser")
+
+    def test_without_target_volume_nothing_is_filled(self):
+        steps = vd.plan_recipe(self.ADDITIONS[:1], settings(), target_volume_ml=0)
+        self.assertEqual(len(steps), 4)
+        steps = vd.plan_recipe(self.ADDITIONS[:1], settings(), target_volume_ml="")
+        self.assertEqual(len(steps), 4)
+
+    def test_exact_target_volume_needs_no_fill(self):
+        steps = vd.plan_recipe(self.ADDITIONS[:1], settings(), target_volume_ml=5.75)
+        self.assertEqual(len(steps), 4)
+
+    def test_start_volume_counts(self):
+        steps = vd.plan_recipe(self.ADDITIONS[:1], settings(), target_volume_ml=10, start_volume_ml=4)
+        self.assertAlmostEqual(steps[-1].volume_ml, 0.25)
+
+    def test_budget_exceeded_is_an_error_before_anything_moves(self):
+        error = self.assertRaises(ValueError, vd.plan_recipe, self.ADDITIONS, settings(), target_volume_ml=28)
+        self.assertIn("29.650 mL", str(error))
+        self.assertIn("Zielvolumen 28.000 mL", str(error))
+
+    def test_empty_recipe(self):
+        self.assertRaises(ValueError, vd.plan_recipe, [], settings())
+        self.assertEqual(len(vd.plan_recipe([], settings(), target_volume_ml=10)), 2)   # nur Auffuellen
+
+    def test_bad_numbers(self):
+        self.assertRaises(ValueError, vd.plan_recipe, self.ADDITIONS[:1], settings(), target_volume_ml=-1)
+        self.assertRaises(ValueError, vd.plan_recipe, self.ADDITIONS[:1], settings(), pause_s=-1)
+        self.assertRaises(ValueError, vd.plan_recipe, [("x", 17, 1.0)], settings(), positions=16)
+
+
+class RecipeRunTests(unittest.TestCase):
+    LINE = "Leitsalz=3.0:1.0;Wasser=2.0;Saeure 1=4.0:0.2;Saeure 2=6.0:0.0;NaOH=5.0:0.2"
+
+    def test_recipe_runs_through_and_reports_each_addition(self):
+        pump = _Pump()
+        pump.add_recipe(self.LINE, target_volume="10.0", pause_s="0.0")
+        self.assertEqual(pump.state, devicestate.Busy)
+        pump.run_all(400)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        valves = [e[1] for e in pump.events if e[0] == "valve"]
+        self.assertEqual(valves, [3, 1, 4, 1, 5, 1])
+        starts = [e for e in pump.events if e[0] == "start"]
+        self.assertEqual(len(starts), 8)       # Leitsalz, Spuelen, Wasser, Saeure, Spuelen, NaOH, Spuelen, Auffuellen
+        additions = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(additions, ["", "1/5: Leitsalz", "2/5: Wasser", "3/5: Saeure 1", "4/5: NaOH",
+                                     "5/5: Auffuellen auf 10 mL", "fertig"])
+        self.assertAlmostEqual(pump.last("dosed_ml"), 1.4)
+        self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
+        self.assertEqual(pump.log.errors, [])
+        self.assertIsNone(pump._dosing.reagent_port)
+
+    def test_budget_error_fails_cleanly_without_moving_anything(self):
+        pump = _Pump()
+        pump.add_recipe(self.LINE, target_volume=2.0)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.state, devicestate.Error)
+        self.assertEqual(pump.events, [])
+        self.assertIn("Zielvolumen", pump.last("dosing_step"))
+
+    def test_stop_in_the_middle_names_the_addition(self):
+        pump = _Pump()
+        pump.add_recipe(self.LINE, target_volume=10)
+        pump.run_all(3)                       # mitten im Leitsalz
+        pump.stop()
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "cancelled")
+        self.assertEqual(len(pump.log.errors), 1)       # Reagenz von Port 3 im Schlauch
+        self.assertIn("Port 3", pump.log.errors[0])

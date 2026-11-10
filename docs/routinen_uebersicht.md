@@ -75,6 +75,7 @@ Reaktionsloesung:
 | `zugabe` | port, volume (mL) | eine Zugabe aus einem Port des 16-Wege-Ventils, danach Spuelen mit Wasser |
 | `spuelen` | volume (mL) | nur Wasser aus Port 1 |
 | `dosiertest` | volume (mL), repeats, pause (s) | mehrmals dasselbe Wasservolumen, zum Auswiegen |
+| `ansatz` | port/vol Leitsalz, vol Wasser, port/vol Saeure 1 und 2, port/vol NaOH, zielvolumen (mL), pause (s) | ganzer Ansatz in einem Lauf: alle Zugaben nacheinander mit Spuelen, dann mit Wasser auf das Zielvolumen auffuellen (10.11.2026) |
 
 Beschreibung, Testreihenfolge fuers Labor, bekannte Grenzen und offene Fragen:
 `docs/messstand2_zugabe_06-11-2026.md`.
