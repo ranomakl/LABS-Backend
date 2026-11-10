@@ -74,10 +74,13 @@ devices:
   liquiline:
     driver: endress_hauser_liquiline
     address: 127.0.0.1:12353
-    bus_address: 247
+    bus_address: 1            # Dummy hoert auf Busadresse 1 (das echte Geraet: 247)
     byte_order: "1-0-3-2"
     channels:                   # Kanalname: Register (0-basiert = Beginn des AI-Blocks Value/Status/Unit)
-      ai1: 0                    # Platzhalter, bis am Geraet Sensoren auf AI1.. zugeordnet sind
+      # pH-Elektrode auf AI 1 (Entscheidung 06.11.2026; am Geraet unter Setup/Outputs/Modbus/AI 1 zuordnen).
+      # Solange dort nichts zugeordnet ist, liefert das Geraet ph_status "Not assigned" und ph_value 0.0 -
+      # die Routinen laufen trotzdem, nur ohne brauchbaren pH.
+      ph: 0
 
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #
@@ -278,6 +281,7 @@ experiments:
   # pause = Ruehrzeit in s zwischen den Zugaben. VOR dem ersten Ventilschritt wird gerechnet: passen Zugaben
   # + Spuelwasser nicht ins Zielvolumen, bewegt sich nichts und der Lauf endet als Failed (Meldung im Log und
   # in dosing_step). Die pH-Schleife kommt als eigener Schritt danach (noch nicht gebaut).
+  # pH (Liquiline AI 1) wird alle 2 s mitgelesen und im Monitoring gezeigt - nur Anzeige, keine Regelung.
   ansatz:
     conditions:
     stopconditions:
@@ -301,7 +305,10 @@ experiments:
       - [pump1, flushed_ml, float, mL]
       - [pump1, delivered_ml, float, mL]
       - [pump1, dosing_flow_ml_min, float, mL/min]
+      - [liquiline, ph_value, float, pH]
+      - [liquiline, ph_status, str, ""]
     commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
       - [pump1, add_recipe, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2};NaOH={port_naoh}:{vol_naoh}", target_volume: "{zielvolumen}", pause_s: "{pause}" }]
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen

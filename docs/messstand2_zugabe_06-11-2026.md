@@ -120,11 +120,14 @@ Alles zuerst nur mit Wasser an ALLEN benutzten Ports.
 - Tests: `backend/test/test_valve_dosing.py` (39 Tests, ohne Hardware).
 - Dummy-Umgebung am PC: `LABS-DeviceDummys/longer_bt100_1f.py` (Port 12363, rechnet das gefoerderte
   Volumen mit) und ein zweites Knauer-Ventil (Port 12364, nur 6 Positionen).
-  `config.messstand2.dummy.yml` wird aus `config.messstand2.yml` erzeugt (nur die drei Adressen):
+  `config.messstand2.dummy.yml` wird aus `config.messstand2.yml` erzeugt (die drei Adressen und die
+  Modbus-Busadresse der Liquiline: der Dummy hoert auf 1, das echte Geraet auf 247 - mit 247 antwortet
+  der Dummy stumm gar nicht, am 10.11.2026 gesehen):
 
       sed -e 's|address: 10.42.0.103:10001|address: 127.0.0.1:12364|' \
           -e 's|address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01X3TF-if00-port0|address: 127.0.0.1:12363|' \
           -e 's|address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG02Q3TM-if00-port0|address: 127.0.0.1:12353|' \
+          -e 's|bus_address: 247|bus_address: 1|' \
           config.messstand2.yml
 
   Start: erst `python main.py` in LABS-DeviceDummys, dann `python main.py config.messstand2.dummy.yml`.
@@ -221,8 +224,8 @@ Fragen an den Chemiker (fuer Rezept und pH-Schleife, nicht fuer diesen Baustein)
 
 Noch zu tun:
 
-- pH-Elektrode an der Liquiline auf AI 1 legen (Setup/Outputs/Modbus/AI 1), dann in
-  config.messstand2.yml unter liquiline/channels statt `ai1: 0` einen Namen wie `ph: 0` eintragen.
+- pH-Elektrode an der Liquiline auf AI 1 legen (Setup/Outputs/Modbus/AI 1). In der Config heisst der
+  Kanal seit 10.11.2026 `ph: 0`; die Routine `ansatz` liest ihn mit.
 - Festes Rezept mit Volumenbudget: GEBAUT am 10.11.2026 als Routine `ansatz` (Abschnitt 9).
   Naechster Baustein: die pH-Schleife (Abbruch, wenn der pH nicht reagiert).
 - In der Anforderung ist vertauscht: Saeure SENKT den pH, Base HEBT ihn.
@@ -255,7 +258,9 @@ am Ende 20,35 mL Wasser nachgefuellt.
 
 **Im Monitoring:** `dosing_addition` zeigt die laufende Zugabe ("3/6: Saeure 1"), `dosing_step` den
 Schritt darin, `dosed_ml` die Summe aller Reagenzien, `flushed_ml` alles Wasser (Spuelen, Wasser vorab,
-Auffuellen), `delivered_ml` die Summe im Reaktor.
+Auffuellen), `delivered_ml` die Summe im Reaktor. Dazu der pH von der Liquiline (`ph_value` als Kurve,
+`ph_status` als Text), alle 2 s gelesen. Solange am Geraet auf AI 1 keine Elektrode zugeordnet ist, steht
+dort "Not assigned" und 0.0 - der Ansatz laeuft trotzdem. Der pH wird nur angezeigt, nicht geregelt.
 
 **Abbruch/Fehler** wie in Abschnitt 4: Pumpe steht, im Log steht, welche Zugabe wie weit war und ob
 noch Reagenz im Schlauch steht. Der Ansatz ist dann unvollstaendig; was schon drin ist, steht im Log
