@@ -37,8 +37,11 @@ Umrechnung aus Konzentrationen (Blatt 2 der Exceltabelle) ist noch offen und kom
 Vor dem ersten Ventilschritt wird das Volumenbudget geprueft: passt Rezept + Spuelwasser nicht ins
 Zielvolumen, laeuft nichts an und der Lauf endet als Failed.
 
-Nicht in diesem Modul: die pH-Schleife. Sie baut auf den Schritten hier auf (plan_addition/plan_recipe
-liefern eine Schrittliste, _dosing_request faehrt sie ab).
+pH-Schleife (10.11.2026): adjust_ph misst den pH am verknuepften Messgeraet (dosing: ph_device, z.B. die
+Liquiline) und gibt in kleinen Schritten Base (pH zu niedrig) oder Saeure (pH zu hoch) zu, jede Zugabe mit
+Spuelen, dann Wartezeit, dann wieder messen - bis der pH im Zielfenster liegt. Abbruch (Failed): kein oder
+veralteter pH-Wert, Status nicht Good, Zielvolumen voll, pH reagiert nicht auf die Zugaben (Vorrat leer?),
+zu viele Zugaben. Die Schrittliste waechst dabei dynamisch (Step 'ph' haengt die naechsten Schritte an).
 """
 
 import time
@@ -55,7 +58,10 @@ DOSING_OBSERVABLE = "dosing"          # "running" / "finished" / "failed" / "can
 REQUIRED_KEYS = ("valve", "water_port", "dead_volume_ml", "flush_factor",
                  "min_rate_ml_min", "max_rate_ml_min", "min_dose_seconds")
 OPTIONAL_KEYS = {"valve_timeout_s": 20.0,    # so lange darf das Ventil brauchen, bis es die Position meldet
-                 "settle_s": 0.5}            # Pause zwischen Ventil-Bestaetigung und Pumpenstart
+                 "settle_s": 0.5,            # Pause zwischen Ventil-Bestaetigung und Pumpenstart
+                 "ph_device": None,          # Geraet, das den pH liefert (fuer adjust_ph), z.B. liquiline
+                 "ph_observable": "ph_value",  # dessen Observable mit dem pH; Status = gleicher Name mit _status
+                 "ph_max_age_s": 15.0}       # aelter darf der letzte pH-Wert nicht sein (Messgeraet liefert?)
 
 
 class DosingSettings:
@@ -80,6 +86,12 @@ class DosingSettings:
         self.min_dose_seconds = float(config["min_dose_seconds"])
         self.valve_timeout_s = float(config.get("valve_timeout_s", OPTIONAL_KEYS["valve_timeout_s"]))
         self.settle_s = float(config.get("settle_s", OPTIONAL_KEYS["settle_s"]))
+        self.ph_device = config.get("ph_device")
+        self.ph_device = None if self.ph_device in (None, "") else str(self.ph_device)
+        self.ph_observable = str(config.get("ph_observable", OPTIONAL_KEYS["ph_observable"]))
+        self.ph_max_age_s = float(config.get("ph_max_age_s", OPTIONAL_KEYS["ph_max_age_s"]))
+        if self.ph_max_age_s <= 0:
+            raise ValueError("dosing: ph_max_age_s muss > 0 sein")
         if self.water_port < 1:
             raise ValueError(f"dosing: water_port {self.water_port} muss >= 1 sein")
         if self.dead_volume_ml <= 0:
@@ -139,6 +151,8 @@ class Step:
             return f"Ventil->Port {self.port}"
         if self.kind == "pump":
             return f"{self.role} {self.volume_ml * 1000:g} uL @ {self.rate_ml_min:g} mL/min"
+        if self.kind == "ph":
+            return "pH messen"
         return f"Pause {self.seconds:g} s"
 
     def __eq__(self, other):
@@ -282,12 +296,103 @@ def plan_recipe(additions, settings: DosingSettings, target_volume_ml=None, paus
     return steps
 
 
+class PhLoop:
+    """Geprueft eingelesene Vorgaben einer pH-Schleife (adjust_ph). Die Schritte entstehen erst im Lauf."""
+
+    def __init__(self, target_ph, tolerance, port_up, port_down, wait_s, target_volume_ml, start_volume_ml,
+                 large_ml, small_ml, fine_below, max_additions, no_response_additions, no_response_delta,
+                 settings: DosingSettings, positions=None):
+        self.target_ph = float(target_ph)
+        self.tolerance = float(tolerance)
+        self.port_up = self._port(port_up, settings, positions)        # Base: hebt den pH
+        self.port_down = self._port(port_down, settings, positions)    # Saeure: senkt den pH
+        self.wait_s = _number_or_zero(wait_s)
+        self.target_volume_ml = _number_or_zero(target_volume_ml)
+        self.start_volume_ml = _number_or_zero(start_volume_ml)
+        self.large_ml, self.small_ml = float(large_ml), float(small_ml)
+        self.fine_below = float(fine_below)
+        self.max_additions = int(float(max_additions))
+        self.no_response_additions = int(float(no_response_additions))
+        self.no_response_delta = float(no_response_delta)
+        if not 0 < self.target_ph < 14:
+            raise ValueError(f"Ziel-pH {self.target_ph} ausserhalb 0-14")
+        if self.tolerance <= 0:
+            raise ValueError(f"Toleranz {self.tolerance} muss > 0 sein")
+        if self.port_up is None and self.port_down is None:
+            raise ValueError("weder Port fuer Base (port_up) noch fuer Saeure (port_down) angegeben")
+        if self.wait_s < 0 or self.target_volume_ml < 0 or self.start_volume_ml < 0:
+            raise ValueError("Wartezeit, Zielvolumen und Startvolumen duerfen nicht negativ sein")
+        if not 0 < self.small_ml <= self.large_ml:
+            raise ValueError(f"Dosen: 0 < klein ({self.small_ml}) <= gross ({self.large_ml}) verletzt")
+        if self.fine_below <= self.tolerance:
+            raise ValueError(f"fine_below ({self.fine_below}) muss groesser als die Toleranz sein")
+        if self.max_additions < 1 or self.no_response_additions < 2 or self.no_response_delta <= 0:
+            raise ValueError("max_additions >= 1, no_response_additions >= 2, no_response_delta > 0 noetig")
+        if self.target_volume_ml and self.start_volume_ml >= self.target_volume_ml:
+            raise ValueError(f"Startvolumen {self.start_volume_ml} mL >= Zielvolumen {self.target_volume_ml} mL - kein "
+                             f"Platz fuer Zugaben")
+        self.additions = 0
+        self.history = []          # (Richtung, pH vor der Zugabe) je Zugabe
+        self.fill_after = False    # True: nach erreichtem Ziel-pH mit Wasser auf target_volume_ml auffuellen
+
+    @staticmethod
+    def _port(value, settings, positions):
+        port = _number_or_zero(value)
+        if port != int(port):
+            raise ValueError(f"Port {value!r} ist keine ganze Zahl")
+        port = int(port)
+        if port == 0:
+            return None
+        if port == settings.water_port:
+            raise ValueError(f"Port {port} ist der Wasser-Port")
+        if port < 1 or (positions is not None and port > int(positions)):
+            raise ValueError(f"Port {port} gibt es nicht (Ventil hat {positions if positions is not None else '?'} Positionen)")
+        return port
+
+    def decide(self, ph, delivered_ml, settings: DosingSettings):
+        """Naechster Schritt fuer den gemessenen pH: None = Ziel erreicht; sonst (port, dose_ml, label).
+        Wirft RuntimeError, wenn die Schleife abbrechen muss."""
+        delta = self.target_ph - ph
+        if abs(delta) <= self.tolerance:
+            return None
+        if delta > 0:
+            port, what = self.port_up, "Base"
+        else:
+            port, what = self.port_down, "Saeure"
+        if port is None:
+            raise RuntimeError(f"pH {ph:.2f} liegt {'unter' if delta > 0 else 'ueber'} dem Ziel {self.target_ph:g}, "
+                               f"aber kein Port fuer {what} angegeben")
+        if self.additions >= self.max_additions:
+            raise RuntimeError(f"Ziel-pH nach {self.additions} Zugaben nicht erreicht (pH {ph:.2f}, Ziel {self.target_ph:g})")
+        # Reagiert der pH? Die letzten n Zugaben in dieselbe Richtung muessen ihn zusammen um mindestens
+        # no_response_delta IN DIE RICHTIGE RICHTUNG bewegt haben (Base: nach oben, Saeure: nach unten).
+        same = [h for h in self.history[-self.no_response_additions:] if h[0] == what]
+        if len(same) >= self.no_response_additions:
+            moved = (ph - same[0][1]) if what == "Base" else (same[0][1] - ph)
+            if moved < self.no_response_delta:
+                raise RuntimeError(f"pH reagiert nicht auf {len(same)} Zugaben {what} (pH {same[0][1]:.2f} -> {ph:.2f}) - "
+                                   f"Vorrat leer, Schlauch nicht gefuellt oder Elektrode haengt?")
+        dose = self.large_ml if abs(delta) > self.fine_below else self.small_ml
+        if self.target_volume_ml:
+            room = self.target_volume_ml - self.start_volume_ml - delivered_ml
+            if dose + settings.flush_volume_ml > room + 1e-9:
+                raise RuntimeError(f"Zielvolumen {self.target_volume_ml:g} mL erreicht (noch {max(room, 0):.2f} mL frei), "
+                                   f"Ziel-pH nicht erreicht: pH {ph:.2f}, Ziel {self.target_ph:g}")
+        self.additions += 1
+        self.history.append((what, ph))
+        return port, dose, f"Zugabe {self.additions}: {what} {dose * 1000:g} uL (pH {ph:.2f} -> Ziel {self.target_ph:g})"
+
+
 def plan_totals(steps) -> dict:
     """Summe der Schrittliste: Reagenz, Wasser, Gesamtvolumen in den Reaktor (mL) und Dauer (s, ohne Ventil)."""
     reagent = sum(s.volume_ml for s in steps if s.kind == "pump" and s.role == "reagent")
     water = sum(s.volume_ml for s in steps if s.kind == "pump" and s.role == "water")
     return {"reagent_ml": reagent, "water_ml": water, "total_ml": reagent + water,
             "duration_s": sum(s.duration_s for s in steps)}
+
+
+class NoPhValueYet(RuntimeError):
+    """Noch kein (oder nur ein veralteter) pH-Wert - kann sich geben, wenn das Messgeraet gerade erst anlaeuft."""
 
 
 class _Run:
@@ -301,6 +406,7 @@ class _Run:
         self.pump_running = False
         self.reagent_port = None  # Port, dessen Reagenz evtl. noch im Schlauch steht
         self.label = None         # Zugabe des Rezepts, die gerade laeuft (Observable dosing_addition)
+        self.ph_loop = None       # PhLoop bei adjust_ph, sonst None
         self.dosed_ml = 0.0
         self.flushed_ml = 0.0
 
@@ -311,6 +417,7 @@ class ValveDosingMixIn:
 
     _dosing_settings = None
     _dosing_valve = None
+    _dosing_ph_device = None
     _dosing = None                         # aktueller/letzter _Run
     _dosing_now = staticmethod(time.time)  # Tests setzen eine task.Clock ein
     WATCHDOG_MARGIN_S = 15.0               # so viel laenger als geplant darf ein Schritt dauern
@@ -329,6 +436,13 @@ class ValveDosingMixIn:
         except KeyError:
             self.log.error("dosing: Ventil {valve} ist kein verbundenes Geraet - Zugaben scheitern, bis es in der "
                            "Konfiguration eingetragen und erreichbar ist.", valve=self._dosing_settings.valve)
+        self._dosing_ph_device = None
+        if self._dosing_settings.ph_device is not None:
+            try:
+                self._dosing_ph_device = devices_and_channels[self._dosing_settings.ph_device]
+            except KeyError:
+                self.log.error("dosing: pH-Geraet {name} ist kein verbundenes Geraet - die pH-Schleife scheitert, bis es "
+                               "in der Konfiguration eingetragen und erreichbar ist.", name=self._dosing_settings.ph_device)
 
     # -- oeffentliche Befehle ------------------------------------------------------------------------
 
@@ -361,6 +475,58 @@ class ValveDosingMixIn:
             lambda settings, positions: plan_recipe(parse_additions(additions), settings, target_volume,
                                                     pause_s, start_volume, positions=positions))
 
+    def adjust_ph(self, target_ph, tolerance=0.2, port_up=0, port_down=0, wait_s=30, target_volume=0,
+                  start_volume=0, large_ml=0.2, small_ml=0.05, fine_below=0.5, max_additions=40,
+                  no_response_additions=3, no_response_delta=0.1, title="pH einstellen", **kwargs):
+        """pH-Schleife: pH vom Geraet `dosing: ph_device` lesen; liegt er nicht in target_ph +- tolerance,
+        eine Dose Base (port_up, pH zu niedrig) bzw. Saeure (port_down, pH zu hoch) zugeben, spuelen,
+        wait_s warten, wieder messen. Dose: large_ml, wenn der pH weiter als fine_below vom Ziel weg ist,
+        sonst small_ml. Port 0 = kein Reagenz fuer diese Richtung. target_volume > 0: Zugaben + Spuelwasser
+        + start_volume duerfen es nicht ueberschreiten. Das Messgeraet muss waehrenddessen messen
+        (Routine: [liquiline, start_measuring, ...]). Die Pumpe ist bis zum Ende Busy."""
+        def plan(settings, positions):
+            if settings.ph_device is None:
+                raise ValueError("dosing: kein ph_device eingetragen - die pH-Schleife weiss nicht, wo sie messen soll")
+            if self._dosing_ph_device is None:
+                raise ValueError(f"pH-Geraet {settings.ph_device} ist nicht verbunden")
+            loop = PhLoop(target_ph, tolerance, port_up, port_down, wait_s, target_volume, start_volume, large_ml,
+                          small_ml, fine_below, max_additions, no_response_additions, no_response_delta,
+                          settings, positions)
+            step = Step("ph", label="pH messen")
+            step.loop = loop
+            return [step]
+        return self._dosing_request(str(title), plan)
+
+    def add_recipe_ph(self, additions, target_ph, tolerance=0.2, port_up=0, port_down=0, wait_s=30,
+                      target_volume=0, pause_s=0.0, start_volume=0.0, title="Ansatz", **kwargs):
+        """Der ganze Ansatz in einem Lauf: erst die Zugaben aus `additions` (wie add_recipe, ohne Auffuellen),
+        dann wait_s warten, dann den pH mit Base (port_up) / Saeure (port_down) auf target_ph +- tolerance
+        regeln (wie adjust_ph), zum Schluss mit Wasser auf target_volume auffuellen (0 = nicht auffuellen).
+        Vor dem Start: passen die festen Zugaben samt Spuelwasser nicht ins Zielvolumen -> Failed ohne Bewegung."""
+        def plan(settings, positions):
+            if settings.ph_device is None:
+                raise ValueError("dosing: kein ph_device eingetragen - die pH-Regelung weiss nicht, wo sie messen soll")
+            if self._dosing_ph_device is None:
+                raise ValueError(f"pH-Geraet {settings.ph_device} ist nicht verbunden")
+            loop = PhLoop(target_ph, tolerance, port_up, port_down, wait_s, target_volume, start_volume,
+                          0.2, 0.05, 0.5, 40, 3, 0.1, settings, positions)
+            loop.fill_after = True
+            parsed = parse_additions(additions)
+            steps = plan_recipe(parsed, settings, target_volume_ml=0, pause_s=pause_s,
+                                start_volume_ml=start_volume, positions=positions) if parsed else []
+            fixed = loop.start_volume_ml + plan_totals(steps)["total_ml"]
+            if loop.target_volume_ml and fixed > loop.target_volume_ml + 1e-9:
+                raise ValueError(f"Rezept ergibt {fixed:.3f} mL (Zugaben + Spuelwasser + Startvolumen), mehr als das "
+                                 f"Zielvolumen {loop.target_volume_ml:.3f} mL - Zielvolumen erhoehen oder Zugaben "
+                                 f"verkleinern")
+            if steps and loop.wait_s:
+                steps.append(Step("pause", seconds=loop.wait_s, label="Ruehren vor der pH-Messung"))
+            step = Step("ph", label="pH messen")
+            step.loop = loop
+            steps.append(step)
+            return steps
+        return self._dosing_request(str(title), plan)
+
     # -- Ablauf ----------------------------------------------------------------------------------------
 
     def _dosing_emit(self, values: dict):
@@ -380,6 +546,9 @@ class ValveDosingMixIn:
         except (ValueError, TypeError) as exc:
             error = exc
         run = _Run(steps, title)
+        for step in steps:
+            if getattr(step, "loop", None) is not None:
+                run.ph_loop = step.loop
         if error is None:
             self._dosing = run
         # Auch ein Eingabefehler laeuft ueber Busy + Fehlerpfad: so endet das Experiment sauber als
@@ -409,7 +578,10 @@ class ValveDosingMixIn:
             return
         step = run.steps[run.index]
         run.index += 1
-        if step.label is not None and step.label != run.label:
+        if step.label is not None and step.label != run.label and run.ph_loop is not None:
+            run.label = step.label
+            self._dosing_emit({"dosing_addition": step.label})
+        elif step.label is not None and step.label != run.label:
             run.label = step.label
             labels = []
             for other in run.steps:
@@ -423,6 +595,8 @@ class ValveDosingMixIn:
             deferred, limit = self._dosing_valve_step(run, step), self._dosing_settings.valve_timeout_s
         elif step.kind == "pump":
             deferred, limit = self._dosing_pump_step(run, step), step.duration_s
+        elif step.kind == "ph":
+            deferred, limit = self._dosing_ph_step(run, step), self._dosing_settings.ph_max_age_s + 1.0
         else:
             deferred, limit = self._dosing_pause_step(run, step), step.duration_s
 
@@ -577,6 +751,92 @@ class ValveDosingMixIn:
                 result.callback(None)
         run.timer = self.callLater(step.seconds, done)
         return result
+
+    def _dosing_read_ph(self):
+        """(pH, Alter in s) vom pH-Geraet; RuntimeError, wenn kein/alter Wert oder Status nicht Good."""
+        settings, device = self._dosing_settings, self._dosing_ph_device
+        try:
+            timestamp, value = device.get_latest_update(settings.ph_observable)
+        except (IndexError, KeyError, AttributeError):
+            raise NoPhValueYet(f"kein pH-Wert von {settings.ph_device} ({settings.ph_observable}) - misst das Geraet?")
+        age = self._dosing_now() - float(timestamp)
+        if age > settings.ph_max_age_s:
+            raise NoPhValueYet(f"letzter pH-Wert ist {age:.0f} s alt (erlaubt {settings.ph_max_age_s:g} s) - "
+                               f"{settings.ph_device} liefert nicht mehr")
+        status_name = settings.ph_observable[:-len("_value")] + "_status" if settings.ph_observable.endswith("_value") else None
+        if status_name:
+            try:
+                _, status = device.get_latest_update(status_name)
+            except (IndexError, KeyError, AttributeError):
+                status = None
+            if status is not None and str(status) != "Good":
+                raise RuntimeError(f"pH-Status ist '{status}', nicht Good - Elektrode/Zuordnung am Geraet pruefen")
+        return float(value), age
+
+    def _dosing_ph_step(self, run, step):
+        """pH lesen und entscheiden: fertig, oder naechste Zugabe + Pause + erneut messen anhaengen.
+        Fehlt der pH-Wert noch (das Messgeraet laeuft im selben Moment erst an) oder ist er veraltet, wird bis
+        zu ph_max_age_s lang alle 0,5 s nachgesehen, erst dann ist es ein Fehler."""
+        loop = getattr(step, "loop", None) or run.ph_loop
+        run.ph_loop = loop
+        result = defer.Deferred()
+        deadline = self._dosing_now() + self._dosing_settings.ph_max_age_s
+        self._dosing_emit({"dosing_step": "pH messen"})
+
+        def attempt():
+            run.timer = None
+            if not run.open:
+                return
+            try:
+                ph, _age = self._dosing_read_ph()
+            except NoPhValueYet as exc:
+                if self._dosing_now() < deadline:
+                    self._dosing_emit({"dosing_step": "warte auf pH-Wert"})
+                    run.timer = self.callLater(0.5, attempt)
+                else:
+                    result.errback(exc)
+                return
+            except RuntimeError as exc:
+                result.errback(exc)
+                return
+            self._dosing_emit({"ph_measured": round(ph, 3), "ph_delta": round(loop.target_ph - ph, 3)})
+            try:
+                decision = loop.decide(ph, run.dosed_ml + run.flushed_ml, self._dosing_settings)
+            except RuntimeError as exc:
+                result.errback(exc)
+                return
+            if decision is None:
+                self.log.info("{title}: pH {ph:.2f} liegt im Ziel {target:g} +- {tol:g} nach {n} Zugaben.",
+                              title=run.title, ph=ph, target=loop.target_ph, tol=loop.tolerance, n=loop.additions)
+                self._dosing_emit({"ph_additions": loop.additions})
+                if loop.fill_after and loop.target_volume_ml:
+                    fill = loop.target_volume_ml - loop.start_volume_ml - (run.dosed_ml + run.flushed_ml)
+                    if fill > 1e-9:
+                        label = f"Auffuellen auf {loop.target_volume_ml:g} mL"
+                        for new in plan_addition(self._dosing_settings.water_port, fill, self._dosing_settings):
+                            new.label = label
+                            run.steps.append(new)
+                result.callback(None)
+                return
+            self._dosing_ph_schedule(run, loop, ph, decision)
+            result.callback(None)
+
+        attempt()
+        return result
+
+    def _dosing_ph_schedule(self, run, loop, ph, decision):
+        port, dose, label = decision
+        self.log.info("{title}: pH {ph:.2f}, Ziel {target:g} -> {label}", title=run.title, ph=ph,
+                      target=loop.target_ph, label=label)
+        new_steps = plan_addition(port, dose, self._dosing_settings,
+                                  positions=getattr(self._dosing_valve, "positions", None))
+        for new in new_steps:
+            new.label = label
+        if loop.wait_s:
+            new_steps.append(Step("pause", seconds=loop.wait_s, label=label))
+        new_steps.append(Step("ph", label=label))
+        run.steps.extend(new_steps)
+        self._dosing_emit({"ph_additions": loop.additions})
 
     def _dosing_finish(self, run):
         run.open = False

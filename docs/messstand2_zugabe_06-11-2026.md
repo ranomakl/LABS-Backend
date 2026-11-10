@@ -60,7 +60,7 @@ Volumen immer in mL: 0.2 = 200 uL, 0.05 = 50 uL.
 | `zugabe` | port, volume | eine Zugabe aus `port` mit Spuelen (Abschnitt 1). port = 1: nur Wasser, kein Spuelschritt |
 | `spuelen` | volume | nur Wasser aus Port 1: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen |
 | `dosiertest` | volume, repeats, pause | `repeats` mal `volume` Wasser, dazwischen `pause` Sekunden - zum Auswiegen |
-| `ansatz` | Ports/Volumina, zielvolumen, pause | ganzer Ansatz in einem Lauf (Abschnitt 9) |
+| `ansatz` | Ports/Volumina, ziel_ph, toleranz, wartezeit, zielvolumen, pause | ganzer Ansatz in einem Lauf samt pH-Regelung (Abschnitt 9) |
 | `vorfuellen` | vol_wasser, port_a..d, vol_je_port | vor dem ersten Ansatz alle Schlaeuche fuellen (Abschnitt 11) |
 
 Im Monitoring: `dosing_step` (aktueller Schritt als Text), `dosing_flow_ml_min` (Flussrate, solange die
@@ -232,54 +232,64 @@ Noch zu tun:
 - pH-Elektrode an der Liquiline auf AI 1 legen (Setup/Outputs/Modbus/AI 1). In der Config heisst der
   Kanal seit 10.11.2026 `ph: 0`; die Routine `ansatz` liest ihn mit.
 - Festes Rezept mit Volumenbudget: GEBAUT am 10.11.2026 als Routine `ansatz` (Abschnitt 9).
-  Naechster Baustein: die pH-Schleife (Abbruch, wenn der pH nicht reagiert).
+  pH-Regelung: GEBAUT am 10.11.2026, Teil der Routine `ansatz` (Abschnitt 9).
 - In der Anforderung ist vertauscht: Saeure SENKT den pH, Base HEBT ihn.
 
-## 9. Rezept-Routine `ansatz` (10.11.2026)
+## 9. Routine `ansatz`: Loesung ansetzen und auf den Ziel-pH bringen (10.11.2026)
 
-Der ganze Ansatz in EINEM Lauf. Die Routine ruft intern dieselben Schritte wie `zugabe` auf, nur mehrmals
-hintereinander, und fuellt am Ende mit Wasser auf.
+Der ganze Ansatz in EINEM Lauf: feste Zugaben, dann pH-Regelung, dann Auffuellen. Der Sinn des Ansatzes ist
+der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026).
 
 | Parameter | Einheit | Bedeutung |
 |---|---|---|
 | `port_leitsalz`, `vol_leitsalz` | -, mL | Leitsalz-Loesung: Ventil-Port und Volumen |
-| `vol_wasser` | mL | Wasser vorab (z.B. "50 % des Loesungsmittels"); 0 = keins |
-| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure |
+| `vol_wasser` | mL | Wasser vorab; 0 = keins |
+| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure. Derselbe Port dient in der pH-Regelung zum Senken |
 | `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; `vol_saeure2` 0 = entfaellt |
-| `port_naoh`, `vol_naoh` | -, mL | NaOH (aequimolar, von Hand gerechnet) |
-| `zielvolumen` | mL | am Ende mit Wasser auffuellen bis hierhin; 0 = nicht auffuellen |
-| `pause` | s | Ruehrzeit zwischen den Zugaben; 0 = keine |
+| `port_naoh` | - | NaOH: hebt den pH in der Regelung. Keine feste Menge mehr |
+| `ziel_ph`, `toleranz` | pH | Ziel, z.B. 9 und 0.2: Schluss, wenn der pH zwischen 8,8 und 9,2 liegt |
+| `wartezeit` | s | Ruehren nach den festen Zugaben und nach jeder Dose, bevor gemessen wird, z.B. 30 |
+| `zielvolumen` | mL | am Ende mit Wasser auffuellen bis hierhin; 0 = nicht auffuellen, keine Grenze |
+| `pause` | s | Ruehrzeit zwischen den festen Zugaben; 0 = keine |
 
-Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH -> Auffuellen. Jede Zugabe aus einem
-Chemikalien-Port endet mit dem Spuelschritt (Abschnitt 1), das Spuelwasser zaehlt zum Gesamtvolumen.
-Ein Volumen 0 laesst die Zugabe aus. Der Port einer ausgelassenen Zugabe ist egal.
+**Ablauf**
 
-**Volumenbudget:** Vor dem ersten Ventilschritt rechnet das Backend Zugaben + Spuelwasser zusammen.
-Ist das mehr als `zielvolumen`, bewegt sich nichts, der Lauf endet sofort als Failed mit der Meldung
-"Rezept ergibt x mL, mehr als das Zielvolumen y mL" (Log und `dosing_step`). Dann Zielvolumen erhoehen
-oder Zugaben verkleinern. Beispiel mit 0,75 mL Spuelmenge: Leitsalz 5 mL + Saeure 1,2 mL + NaOH 1,2 mL
-= 7,4 mL Reagenz + 3 x 0,75 mL Spuelwasser = 9,65 mL; mit `vol_wasser` 20 und `zielvolumen` 50 werden
-am Ende 20,35 mL Wasser nachgefuellt.
+1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen `pause`.
+2. `wartezeit` ruehren, pH messen.
+3. pH unter dem Ziel: eine Dose NaOH aus `port_naoh`. Ueber dem Ziel: eine Dose Saeure aus `port_saeure1`.
+   Weiter als 0,5 pH vom Ziel 200 uL, naeher 50 uL. Spuelen, `wartezeit` warten, wieder messen. Das
+   wiederholt sich, auch hin und her, bis der pH im Fenster liegt.
+4. Mit Wasser auf `zielvolumen` auffuellen.
 
-**Im Monitoring:** `dosing_addition` zeigt die laufende Zugabe ("3/6: Saeure 1"), `dosing_step` den
-Schritt darin, `dosed_ml` die Summe aller Reagenzien, `flushed_ml` alles Wasser (Spuelen, Wasser vorab,
-Auffuellen), `delivered_ml` die Summe im Reaktor. Dazu der pH von der Liquiline (`ph_value` als Kurve,
-`ph_status` als Text), alle 2 s gelesen. Solange am Geraet auf AI 1 keine Elektrode zugeordnet ist, steht
-dort "Not assigned" und 0.0 - der Ansatz laeuft trotzdem. Der pH wird nur angezeigt, nicht geregelt.
+**Volumenbudget:** Vor dem ersten Ventilschritt werden die festen Zugaben + Spuelwasser gerechnet; passt das
+nicht ins Zielvolumen, bewegt sich nichts (Failed mit Meldung). Waehrend der pH-Regelung wird vor jeder Dose
+geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmenge mit (2,25 mL bei Totvolumen
+1,5 mL); zehn Dosen sind 22,5 mL Wasser. Darum `zielvolumen` setzen.
 
-**Abbruch/Fehler** wie in Abschnitt 4: Pumpe steht, im Log steht, welche Zugabe wie weit war und ob
-noch Reagenz im Schlauch steht. Der Ansatz ist dann unvollstaendig; was schon drin ist, steht im Log
-("Ansatz FEHLGESCHLAGEN nach x mL Reagenz + y mL Wasser"). Neu ansetzen oder den Rest von Hand.
+**Abbruch als Failed, mit Meldung im Log und in `dosing_step`:**
 
-**Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Chemiker-Frage 1, Blatt 2) und die
-pH-Schleife (eigener Schritt nach `ansatz`). Die Routine nimmt nur Volumina.
+- pH bewegt sich nach drei Dosen in dieselbe Richtung um weniger als 0,1 in die erwartete Richtung: Vorrat
+  leer, Zuleitung nicht gefuellt (`vorfuellen`, Abschnitt 11) oder Elektrode haengt.
+- Zielvolumen voll, Ziel-pH nicht erreicht.
+- Kein pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s,
+  oder Status nicht "Good" (AI 1 am Geraet nicht zugeordnet).
+- pH auf der Seite, fuer die kein Port angegeben ist (Port 0).
+- Mehr als 40 Dosen.
 
-**Fuer andere Rezepte:** Der Treiber-Befehl `add_recipe` nimmt eine freie Rezeptzeile
-`Name=port:volumen;Name=volumen;...` (ohne Port = Wasser). Eine weitere Routine mit anderen Komponenten
-ist damit nur ein neuer Eintrag in `config.messstand2.yml` nach dem Muster von `ansatz`.
+**Im Monitoring:** `ph_value` (Kurve), `ph_additions` (Zahl der Dosen), `dosing_addition` (laufender Schritt,
+z.B. "Saeure 1" oder "Zugabe 3: Base 50 uL (pH 8.62 -> Ziel 9)"), `dosing_step`, `dosed_ml` (alle Reagenzien),
+`flushed_ml` (alles Wasser), `delivered_ml` (Summe im Gefaess).
 
-Stand: am PC gegen die Dummys getestet (Abschnitt 6, Lauf vom 10.11.2026); am Geraet am 10.11.2026 mit Wasser
-gelaufen (Abschnitt 10).
+**Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Blatt 2). Die Routine nimmt Volumina.
+
+**Technik:** `add_recipe_ph` in valve_dosing.py = `plan_recipe` (ohne Auffuellen) + Schritt "pH messen"
+(`PhLoop`, haengt je nach Messwert die naechste Dose an) + Auffuellen nach erreichtem Ziel. `add_recipe` (nur
+Zugaben) und `adjust_ph` (nur Regelung) gibt es im Treiber weiterhin fuer eigene Routinen.
+
+Fuer die Dummy-Umgebung am PC: der Liquiline-Dummy liefert einen festen pH um 7,0, der auf Dosen nicht
+reagiert. Ziel 7 regelt dort nichts und fuellt auf, Ziel 9 endet nach drei NaOH-Dosen mit "pH reagiert
+nicht" - der Abbruchpfad. Die Regelung selbst ist in backend/test/test_valve_dosing.py (PhLoopTests,
+RecipeWithPhTests) mit einer pH-Attrappe geprueft, die auf Base und Saeure reagiert.
 
 ## 10. Erster Lauf am Geraet (10.11.2026)
 
