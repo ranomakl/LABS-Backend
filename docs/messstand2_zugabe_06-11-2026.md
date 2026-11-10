@@ -60,7 +60,7 @@ Volumen immer in mL: 0.2 = 200 uL, 0.05 = 50 uL.
 | `zugabe` | port, volume | eine Zugabe aus `port` mit Spuelen (Abschnitt 1). port = 1: nur Wasser, kein Spuelschritt |
 | `spuelen` | volume | nur Wasser aus Port 1: Schlauch fuellen, nach einem Abbruch spuelen, von Hand auffuellen |
 | `dosiertest` | volume, repeats, pause | `repeats` mal `volume` Wasser, dazwischen `pause` Sekunden - zum Auswiegen |
-| `ansatz` | Ports/Volumina, ziel_ph, toleranz, wartezeit, zielvolumen, pause | ganzer Ansatz in einem Lauf samt pH-Regelung (Abschnitt 9) |
+| `ansatz` | Ports/Volumina, ziel_ph, toleranz, wartezeit_ph_messung, zielvolumen, pause_zugabe | ganzer Ansatz in einem Lauf samt pH-Regelung (Abschnitt 9) |
 | `vorfuellen` | vol_wasser, port_a..d, vol_je_port | vor dem ersten Ansatz alle Schlaeuche fuellen (Abschnitt 11) |
 
 Im Monitoring: `dosing_step` (aktueller Schritt als Text), `dosing_flow_ml_min` (Flussrate, solange die
@@ -248,16 +248,16 @@ der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026).
 | `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; `vol_saeure2` 0 = entfaellt |
 | `port_naoh` | - | NaOH: hebt den pH in der Regelung. Keine feste Menge mehr |
 | `ziel_ph`, `toleranz` | pH | Ziel, z.B. 9 und 0.2: Schluss, wenn der pH zwischen 8,8 und 9,2 liegt |
-| `wartezeit` | s | Ruehren nach den festen Zugaben und nach jeder Dose, bevor gemessen wird, z.B. 30 |
+| `wartezeit_ph_messung` | s | Wartezeit nach den festen Zugaben und nach jeder Dose, bevor der pH gemessen wird, z.B. 30 |
 | `zielvolumen` | mL | am Ende mit Wasser auffuellen bis hierhin; 0 = nicht auffuellen, keine Grenze |
-| `pause` | s | Ruehrzeit zwischen den festen Zugaben; 0 = keine |
+| `pause_zugabe` | s | Ruhezeit zwischen den festen Zugaben (Leitsalz, Wasser, Saeuren); 0 = keine |
 
 **Ablauf**
 
-1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen `pause`.
-2. `wartezeit` ruehren, pH messen.
+1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen `pause_zugabe`.
+2. `wartezeit_ph_messung` warten, pH messen.
 3. pH unter dem Ziel: eine Dose NaOH aus `port_naoh`. Ueber dem Ziel: eine Dose Saeure aus `port_saeure1`.
-   Weiter als 0,5 pH vom Ziel 200 uL, naeher 50 uL. Spuelen, `wartezeit` warten, wieder messen. Das
+   Weiter als 0,5 pH vom Ziel 200 uL, naeher 50 uL. Spuelen, `wartezeit_ph_messung` warten, wieder messen. Das
    wiederholt sich, auch hin und her, bis der pH im Fenster liegt.
 4. Mit Wasser auf `zielvolumen` auffuellen.
 

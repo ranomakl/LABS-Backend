@@ -265,7 +265,7 @@ experiments:
     parameters:
       volume: [float, mL]
       repeats: [float, ""]
-      pause: [float, s]
+      pause_zugabe: [float, s]
     observables:
       - [valve1, position, str, ""]
       - [pump1, dosing_step, str, ""]
@@ -277,12 +277,12 @@ experiments:
   # ---- Ansatz: Reaktionsloesung ansetzen UND auf den Ziel-pH bringen (10.11.2026) -----------------------------
   # EINE Routine fuer den ganzen Ansatz, Volumina direkt in mL (die Umrechnung aus Konzentrationen nach
   # Blatt 2 der Exceltabelle ist noch offen und wird vorher von Hand gemacht).
-  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> 'wartezeit' s ruehren -> pH-Regelung -> Auffuellen.
+  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> 'wartezeit_ph_messung' s warten -> pH-Regelung -> Auffuellen.
   # pH-Regelung: pH von der Liquiline lesen; zu niedrig -> NaOH aus port_naoh, zu hoch -> Saeure aus port_saeure1,
-  # je Dose 200 uL (weiter als 0,5 pH vom Ziel) bzw. 50 uL (naeher), dann Spuelen, 'wartezeit' s warten, wieder
+  # je Dose 200 uL (weiter als 0,5 pH vom Ziel) bzw. 50 uL (naeher), dann Spuelen, 'wartezeit_ph_messung' s warten, wieder
   # messen - bis ziel_ph +- toleranz erreicht ist. Dann mit Wasser auf 'zielvolumen' auffuellen (0 = nicht).
   # Jede Zugabe aus einem Chemikalien-Port wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
-  # Volumen 0 = feste Zugabe entfaellt (z.B. vol_saeure2 0). pause = Ruehrzeit in s zwischen den festen Zugaben.
+  # Volumen 0 = feste Zugabe entfaellt (z.B. vol_saeure2 0). pause_zugabe = Ruhezeit in s zwischen den festen Zugaben.
   # VOR dem ersten Ventilschritt wird gerechnet: passen die festen Zugaben + Spuelwasser nicht ins Zielvolumen,
   # bewegt sich nichts und der Lauf endet als Failed. Abbruch waehrend der pH-Regelung (Failed mit Meldung):
   # pH reagiert nicht auf 3 Dosen (Vorrat leer?), Zielvolumen voll, kein/veralteter pH-Wert, Status nicht Good,
@@ -301,9 +301,9 @@ experiments:
       port_naoh: [float, ""]
       ziel_ph: [float, pH]
       toleranz: [float, pH]
-      wartezeit: [float, s]
+      wartezeit_ph_messung: [float, s]
       zielvolumen: [float, mL]
-      pause: [float, s]
+      pause_zugabe: [float, s]
     observables:
       - [liquiline, ph_value, float, pH]
       - [liquiline, ph_status, str, ""]
@@ -317,7 +317,7 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", port_up: "{port_naoh}", port_down: "{port_saeure1}", wait_s: "{wartezeit}", target_volume: "{zielvolumen}", pause_s: "{pause}" }]
+      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", port_up: "{port_naoh}", port_down: "{port_saeure1}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
 
   # ---- Schlaeuche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
   # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je
