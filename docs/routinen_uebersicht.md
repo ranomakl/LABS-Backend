@@ -4,6 +4,7 @@ Alle Routinen aus config.yml, die im Frontend unter "Routines" erscheinen, und w
 Faustregel: **kolbe_...** sind Versuchsschritte, **test_.../stop_...** sind Geraetetests (einzelnes Geraet
 pruefen, nicht fuer den Versuch). Ein Versuch = mehrere Schritte nacheinander, jeder Schritt eine Routine,
 im Schrittmodus je ein Klick auf "Start Experiments" (docs/ablauf_versuch_im_labor.md, Abschnitt 6).
+Wie die Konfigurationsdatei aufgebaut ist und wie man Routinen aendert: docs/yaml_fuer_chemiker.md.
 
 ## Elektrolyse - welche Routine fuer welchen Aufbau
 
