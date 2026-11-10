@@ -19,6 +19,8 @@ nicht nur Timer sondern auch Uhrzeit (wann versuch fertig ist)
 einzelne Experimente in einem großen Experiment, wenn du gespült hast z.b drücke enter … to the next step button; 
 
 die Excel file soll übernommen werden können für exp. darin sind auch noch nicht integrierbare Parameter. Testung auch ob geräte angeschlossen sidn siehe measurement Setup
+  -> 10.11.: Konzept geschrieben, noch nicht gebaut: docs/konzept_excel_versuchsplan_10-11-2026.md
+     (Zellen-Zuordnung aus Versuch 26174, drei Stufen, offene Fragen an die Chemiker).
 microgc soll immer werte auslesen, messen wenn sie wieder Ready ist. 
   -> 13.10.: im Messplan startet ein faelliger Lauf sofort, sobald der vorige fertig ist (runWhenReady).
 
