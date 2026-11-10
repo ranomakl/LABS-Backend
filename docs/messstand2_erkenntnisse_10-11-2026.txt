@@ -1,0 +1,139 @@
+Messstand II - Erkenntnisse vom 10.11.2026 (Nachmittag, Pi)
+============================================================
+
+Geschrieben auf dem Pi mit Claude Code, damit Rafael es daheim lesen kann.
+Zugehoerig: docs/messstand2_zugabe_06-11-2026.md (Abschnitt 9 ansatz, Abschnitt 10 erster Lauf).
+
+
+1. Frontend: geaenderte Routinen werden NICHT nachgeladen
+---------------------------------------------------------
+
+Symptom 1 (12:35): "neue Routine runtergeladen, ansatz hat keinen pH-Wert". Das Backend lieferte
+ziel_ph/toleranz/wartezeit schon aus, im Frontend-Formular fehlten sie.
+
+Symptom 2 (14:09): nach dem Pull des Commits 2d67381 (pause -> pause_zugabe, wartezeit ->
+wartezeit_ph_messung) lehnte das Backend jeden Lauf mit HTTP 500 / KeyError 'wartezeit' ab. Das
+Frontend zeigt dann nur "Internal Server Error" - das sah aus wie "LABS geht nicht auf".
+
+Ursache: LABS-User-Interface/app/experiments/views.py, get_available_experiments_for_station:
+beim "Routinen laden" werden nur Routinen angelegt, deren NAME noch nicht in der Frontend-DB
+(database-devel.sqlite3, gitignored) steht. Bekannte Routinen werden mit "Routine ... already
+exists" uebersprungen, ihre Parameterliste bleibt alt. Jede Umbenennung oder Ergaenzung eines
+Parameters im Backend bricht so lange alle Laeufe dieser Routine, bis das Frontend nachgezogen ist.
+
+Abhilfe heute: Tabellen parameters + association_Parameters_in_Routines auf dem Pi direkt
+angepasst (vol_naoh raus, ziel_ph/toleranz/wartezeit rein, dann Umbenennung pause/wartezeit in
+ansatz und dosiertest). Designs und eingegebene Werte blieben erhalten. Backups der DB liegen im
+Scratch-Verzeichnis der Claude-Sitzung, nicht im Repo.
+
+Abhilfe im Betrieb: unter "Edit Routines" die Routine loeschen und neu laden (Designs darauf gehen
+mit verloren).
+
+Vorschlag fuer den Laptop: Import in views.py so aendern, dass bekannte Routinen abgeglichen
+werden (fehlende Parameter anlegen, weggefallene entfernen, Werte behalten). Bis dahin
+Parameternamen stabil lassen.
+
+
+2. Backend-Zustand "Failed" blockiert alles
+-------------------------------------------
+
+Nach einem fehlgeschlagenen Lauf steht das Setup auf Failed und nimmt keine neuen Laeufe an:
+  "Can't add experiment, setup is in failed state."  (Frontend: Internal Server Error)
+Dasselbe bei einem Lauf mit schon vergebenem Namen: "ersterT-1-2 already used." (NonUniqueIDError).
+Beides heisst: LABS beenden, LABS starten, Lauf neu senden, Start Experiments.
+
+Nebenbefund: nach jedem fehlgeschlagenen Lauf verliert die Liquiline die Verbindung
+("CONNECTION LOST ... list index out of range", reconnect alle 2 s) und faengt sich erst mit dem
+Neustart. Stoert aktuell nicht, aber in die Liste.
+
+
+3. Vorabpruefung der Volumina (funktioniert)
+--------------------------------------------
+
+Erster Versuch 14:08 / 14:14 / 14:15 mit vol_wasser 20, vol_saeure1 60, zielvolumen 50:
+  "Rezept ergibt 82.250 mL (Zugaben + Spuelwasser + Startvolumen), mehr als das Zielvolumen
+   50.000 mL - Zielvolumen erhoehen oder Zugaben verkleinern"
+Die Pruefung greift VOR dem ersten Ventilschritt, es bewegt sich nichts. Gut so. Hinweis an die
+Bediener: Spuelwasser (2,25 mL je Chemikalien-Zugabe) zaehlt mit.
+
+
+4. Lauf ersterT-1-2 (Finished, 14:29:41 - 14:40:58)
+---------------------------------------------------
+
+Parameter: vol_wasser 20, keine festen Saeurezugaben, port_saeure1 2, port_naoh 3, ziel_ph 10,
+toleranz 0,2, wartezeit_ph_messung 5, zielvolumen 50, pause_zugabe 0.
+
+  14:33:43  Wasser 20,000 mL, Laufzeit Soll 240,00 s / Ist 240,00 s
+  14:33:48  pH  3,39 -> Zugabe 1: NaOH 200 uL
+  14:34:34  pH 10,58 -> Zugabe 2: Saeure 200 uL
+  14:35:20  pH  3,09 -> Zugabe 3: NaOH 200 uL
+  14:36:06  pH 10,43 -> Zugabe 4: Saeure 50 uL
+  14:36:51  pH 10,07 liegt im Ziel 10 +- 0,2 nach 4 Zugaben
+  14:40:58  Auffuellen Wasser 20,350 mL (244,20 s); fertig: 0,650 mL Reagenz + 49,350 mL Wasser
+
+Auffaellig: pH nach 20 mL reinem Wasser war 3,39 (Vormittag mit Wasser: 7,96). Im Reaktor oder
+im Schlauch zum Reaktor stand also schon Saeure. Beim zweiten Lauf lag der Startwert bei 6,98.
+Das Ziel wurde nur durch die eine 50-uL-Dose getroffen, davor volle Schwingung.
+Bericht: logs/2026/11/10/ersterT-1-2/bericht.html
+
+
+5. Lauf exp2_an-1-1 (Failed, 14:54:05 - 15:00:xx)
+-------------------------------------------------
+
+Parameter: vol_wasser 25, port_saeure1 2, port_naoh 3, ziel_ph 5, toleranz 0,2,
+wartezeit_ph_messung 10, zielvolumen 50, pause_zugabe 5.
+
+  14:59:06  Wasser 25,000 mL, Laufzeit Soll 300,00 s / Ist 300,00 s
+  Zugabe  1  pH  6,98 -> Saeure 200 uL
+  Zugabe  2  pH  2,36 -> NaOH  200 uL
+  Zugabe  3  pH  3,15 -> NaOH  200 uL
+  Zugabe  4  pH 11,19 -> Saeure 200 uL
+  Zugabe  5  pH  9,96 -> Saeure 200 uL
+  Zugabe  6  pH  2,58 -> NaOH  200 uL
+  Zugabe  7  pH  3,37 -> NaOH  200 uL
+  Zugabe  8  pH 11,15 -> Saeure 200 uL
+  Zugabe  9  pH  9,30 -> Saeure 200 uL
+  Zugabe 10  pH  2,67 -> NaOH  200 uL
+  Ende       pH  3,31
+  "Ansatz FEHLGESCHLAGEN nach 2.000 mL Reagenz + 47.500 mL Wasser: Zielvolumen 50 mL erreicht
+   (noch 0.50 mL frei), Ziel-pH nicht erreicht: pH 3.31, Ziel 5"
+
+Alle 21 Pumpschritte exakt auf Soll-Laufzeit (10,00 s Reagenz, 27,00 s Spuelen). Die Technik
+(Ventil, Pumpe, Liquiline, Zeitsteuerung, Volumenbuchhaltung, Abbruchbedingung) hat sauber
+gearbeitet. Bericht: logs/2026/11/10/exp2_an-1-1/bericht.html
+Der Reaktor enthaelt danach ca. 49,5 mL bei pH 3,3 - vor dem naechsten Lauf leeren.
+
+
+6. Was die beiden Laeufe ueber die pH-Regelung sagen
+----------------------------------------------------
+
+a) Die Dosen sind fuer ungepuffertes Wasser viel zu gross. 200 uL in 35-50 mL Wasser springen
+   jedes Mal ueber den Aequivalenzpunkt (pH 2,5 <-> 11). Die 50-uL-Dose kommt praktisch nie zum
+   Zug, weil der Abstand zum Ziel fast immer > 0,5 pH ist.
+
+b) Saeure und Lauge wirken ungleich stark, das Muster war zweimal identisch:
+   Saeure 200 uL -> pH ~2,5; NaOH 200 uL -> nur pH ~3,3; zweite NaOH 200 uL -> pH ~11.
+   Zwei NaOH-Dosen entsprechen etwa einer Saeuredose. Entweder ist die Saeure rund doppelt so
+   konzentriert wie die Lauge, oder pro Dose kommt unterschiedlich viel an (Schlauchinhalt?).
+   Pruefen: Konzentrationen der Vorratsloesungen; dosiertest mit Auswiegen (Abschnitt 5 der
+   Zugabe-Doku, noch offen).
+
+c) Vorschlaege:
+   - Dosen deutlich kleiner (z.B. 20 uL "weit weg" / 5 uL "nah dran") oder beide Reagenzien
+     stark verduennen. Grenze: minimale sinnvolle Pumpdauer der BT100 bei 1,2 mL/min.
+   - Konzentrationen von Saeure und Lauge angleichen, dann schwingt es symmetrisch.
+   - Dosisgroesse vom pH-Abstand abhaengig machen (mehr Stufen als 0,5 pH), oder nach einem
+     Richtungswechsel die Dose halbieren (klassische Bisektion). Das waere eine kleine Aenderung
+     in backend/drivers/valve_dosing.py (PhLoop.decide).
+   - In echten Ansaetzen mit Leitsalz/Puffer wird es gutmuetiger - die Tests mit reinem Wasser
+     sind der Worst Case.
+   - Zielvolumen grosszuegiger waehlen oder 0 (kein Auffuellen), sonst frisst das Spuelwasser
+     (2,25 mL je Zugabe) den Spielraum: 10 Zugaben = 22,5 mL Spuelwasser.
+
+
+7. Sonstiges
+------------
+
+- IP des Pi im WLAN ufz-m2m heute: 141.65.157.28 (Frontend :5000); im Hotspot vorher
+  172.20.10.11. Geraetenetz eth0 10.42.0.1 (Ventil 10.42.0.103).
+- Claude-Memory auf dem Pi hat jetzt einen Eintrag zum Routinen-Import (Abschnitt 1).
