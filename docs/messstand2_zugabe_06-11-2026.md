@@ -24,7 +24,7 @@ Er ist zwischen zwei Zugaben immer mit Wasser gefuellt. Eine Zugabe aus Port P l
    Wasser im Schlauch.
 
 In den Reaktor gelangen also **V + Spuelmenge**, davon V Chemikalie.
-Spuelmenge = `dead_volume_ml` x `flush_factor` (gemessen 10.11.2026: 1,85 mL x 1,5 = 2,775 mL).
+Spuelmenge = `dead_volume_ml` x `flush_factor` (Nachmessung 10.11.2026: 1,5 mL x 1,5 = 2,25 mL).
 Zwei Chemikalien treffen sich nie im Schlauch, erst im Reaktor.
 
 Das Ventil schaltet nur bei stehender Pumpe. Port 1 muss Wasser sein: dorthin faehrt das Ventil beim
@@ -39,7 +39,7 @@ und im Geraetestatus) - lieber kein Start als still falsche Konzentrationen.
 |---|---|---|
 | `valve` | valve1 | Name des Ventils unter devices |
 | `water_port` | 1 | Port mit Wasser |
-| `dead_volume_ml` | 1.85 | Totvolumen Ventil -> Reaktor, am Aufbau gemessen am 10.11.2026 (1850 uL) |
+| `dead_volume_ml` | 1.5 | Totvolumen Ventil -> Reaktor, am Aufbau gemessen am 10.11.2026 (erste Messung 1850 uL, Nachmessung ca. 1520 uL) |
 | `flush_factor` | 1.5 | Spuelmenge als Vielfaches des Totvolumens (Anforderung: 1 bis 2) |
 | `min_rate_ml_min` | 0.018 | kleinste Flussrate (Kopf DG 6 Rollen, Schlauch Nr. 5 = 1,65 mm) |
 | `max_rate_ml_min` | 5.0 | groesste Flussrate; am Geraet bis 5 mL/min getestet, Handbuch nennt 18 |
