@@ -5,7 +5,9 @@ EINE Zugabe aus einem Port des 16-Wege-Ventils in den Reaktor, gefolgt vom Spuel
 Noch NICHT gebaut: die Rezeptrechnung (Volumina aus Konzentrationen, Blatt 2 der Exceltabelle) und die
 pH-Schleife. Beide bauen auf diesem Baustein auf.
 
-Stand: am PC gegen die Dummys getestet (Abschnitt 6). Am Geraet noch NICHT gelaufen.
+Stand 10.11.2026: am Geraet gelaufen (Abschnitt 10): spuelen 5 und 10 mL, ansatz nur mit Wasser aus Port 1,
+pH kommt an. Noch nicht am Geraet: Ventil auf einen Chemikalien-Port im Lauf (zugabe), Auswiegen (dosiertest),
+Ansatz mit Reagenzien.
 
 ## 1. Aufbau und Prinzip
 
@@ -191,7 +193,8 @@ Labortest und bei den naechsten Bausteinen beachtet werden.
 
 **Test und Dummys**
 
-- **Am Geraet ist dieser Baustein noch nicht gelaufen.** Getestet ist die Logik, nicht die Mechanik.
+- **Am Geraet gelaufen am 10.11.2026 (Abschnitt 10):** spuelen und ansatz, nur Wasser aus Port 1. Das Schalten
+  des Ventils auf einen anderen Port und das Auswiegen kleiner Dosen stehen noch aus.
 - **Das Dummy-Ventil hat nur 6 Positionen.** Ports 7-16 sind erst am echten Ventil pruefbar (der
   Treiber liest die Anzahl der Positionen beim Start vom Ventil).
 - **Wie lange das echte Ventil zum Schalten braucht, ist nicht gemessen.** Der Baustein fragt die
@@ -273,4 +276,35 @@ pH-Schleife (eigener Schritt nach `ansatz`). Die Routine nimmt nur Volumina.
 `Name=port:volumen;Name=volumen;...` (ohne Port = Wasser). Eine weitere Routine mit anderen Komponenten
 ist damit nur ein neuer Eintrag in `config.messstand2.yml` nach dem Muster von `ansatz`.
 
-Stand: am PC gegen die Dummys getestet (Abschnitt 6, Lauf vom 10.11.2026), am Geraet noch nicht.
+Stand: am PC gegen die Dummys getestet (Abschnitt 6, Lauf vom 10.11.2026); am Geraet am 10.11.2026 mit Wasser
+gelaufen (Abschnitt 10).
+
+## 10. Erster Lauf am Geraet (10.11.2026)
+
+Alles nur mit Wasser aus Port 1, zweiter Behaelter fehlte. Totvolumen vorher auf 1,85 mL gesetzt. Backend-Log:
+"Laufzeit Soll / Ist" je Pumpschritt, pH ueber die Liquiline (AI 1 = CH1 pH Glas, am Geraet zugeordnet).
+
+| Lauf | Routine | Parameter | Ergebnis |
+|---|---|---|---|
+| Test_spuelen-1-1 | spuelen | 5 mL | Finished, Soll 60,0 s / Ist 60,003 s, Ventil 1 |
+| Test_spuelen-1-2 | spuelen | 10 mL | Finished, Soll 120,0 s / Ist 120,00 s |
+| phwertcheck-1-3 | test_liquiline_scan | - | AI 1 "Not assigned": Elektrode war nur als Sensorkanal CH1 da, Modbus-AI 1 nicht zugeordnet |
+| phwertcheck-1-1 | test_liquiline_scan | - | nach Zuordnung Setup/Outputs/Modbus/AI 1: Status Good, Einheit pH, 7,96 |
+| ansatz_test_wasser-1-1 | ansatz | alle Ports 1; 2 / 3 / 1 / 0 / 1 mL, zielvolumen 10, pause 10 | Finished, 10 Schritte, 10,0 mL, Saeure 2 ausgelassen, Auffuellen 3 mL |
+
+Laufzeiten im Ansatz: 24,0/24,002 s, 36,0/36,002 s, 12,0/12,002 s, 12,0/12,002 s, 36,0/36,002 s - alle
+Abweichungen etwa 2 ms, weit unter den 0,1 s aus Abschnitt 5. pH waehrend des Ansatzes 81 Punkte, Status Good,
+7,965-7,978 (Leitungswasser, flache Linie wie erwartet).
+
+Gelernt:
+
+- Die Zeitsteuerung stimmt am Geraet genauso wie am Dummy. Offen bleibt, ob die Flussrate der Pumpe stimmt
+  (Auswiegen, Abschnitt 5 Punkt 4).
+- "pH CH1 Glas" in der Geraeteanzeige heisst nur, dass die Elektrode am Sensorkanal erkannt ist. Der Modbus-Block
+  AI 1 muss zusaetzlich unter Setup/Outputs/Modbus/AI 1 auf CH1/pH gelegt werden, sonst liest LABS "Not assigned".
+- test_liquiline_scan liest einmal und ist nach 0,5 s fertig; das Ergebnis steht im Bericht, nicht live.
+- Die Routine ansatz kennt den Anfangsstand im Gefaess nicht (der Treiber haette start_volume, die Routine
+  reicht es nicht durch). Bei vorgefuelltem Gefaess zielvolumen 0 setzen oder den Parameter ergaenzen.
+
+Noch zu tun am Geraet (Reihenfolge wie Abschnitt 5): zugabe mit Wasser an Port 3 (Ventil schaltet im Lauf),
+dosiertest 10 x 0,2 mL und 10 x 0,05 mL auswiegen, dann erster Ansatz mit Reagenzien.
