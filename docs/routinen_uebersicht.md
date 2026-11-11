@@ -77,8 +77,8 @@ Reaktionsloesung:
 | `spuelen` | volume (mL) | nur Wasser aus Port 1 |
 | `dosiertest` | volume (mL), repeats, pause (s) | mehrmals dasselbe Wasservolumen, zum Auswiegen |
 | `vorfuellen` | vol_wasser (mL), port_a..port_d (0 = ungenutzt), vol_je_port (mL) | vor dem ersten Ansatz alle Schlaeuche fuellen: Wasser, dann je Port seine Chemikalie mit Spuelen; Auslauf ins Becherglas (10.11.2026) |
-| `ph_regeln` | ziel_ph, toleranz, 4 Ports (Base/Saeure x stark/schwach, 0 = nicht da), vol_gross, vol_klein (mL), wartezeit_ph_messung (s), startvolumen, zielvolumen (mL) | nur pH-Regelung in vier Stufen nach Vorgabe des Chemikers (docs/ph_schleife_vorschlag_11-11-2026.txt); kein Auffuellen (11.11.2026) |
-| `ansatz` | port/vol Leitsalz, vol Wasser, port/vol Saeure 1 und 2, port_naoh, ziel_ph, toleranz, wartezeit_ph_messung (s), zielvolumen (mL), pause_zugabe (s) | ganzer Ansatz in einem Lauf: feste Zugaben mit Spuelen, dann pH mit NaOH/Saeure 1 auf ziel_ph regeln, dann mit Wasser auf das Zielvolumen auffuellen (10.11.2026) |
+| `ph_regelung` | ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), startvolumen, zielvolumen (mL) | pH in vier Schritten nach Vorgabe des Chemikers auf ziel_ph regeln, Flaschen fest aus config (dosing: ph_ports), dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
+| `ansatz` | port/vol Leitsalz, vol Wasser, port/vol Saeure 1 und 2, ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), zielvolumen (mL), pause_zugabe (s) | ganzer Ansatz in einem Lauf: feste Zugaben mit Spuelen, dann pH-Regelung wie ph_regelung, dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
 
 Beschreibung, Testreihenfolge fuers Labor, bekannte Grenzen und offene Fragen:
 `docs/messstand2_zugabe_06-11-2026.md`.

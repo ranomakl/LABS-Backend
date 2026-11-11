@@ -57,8 +57,15 @@ devices:
       min_rate_ml_min: 0.018   # Bereich der Pumpe mit Kopf DG 6 Rollen / Schlauch Nr. 5 (1,65 mm)
       max_rate_ml_min: 5.0     # am Geraet getestet bis 5 mL/min (04.11.2026); laut Handbuch bis 18
       min_dose_seconds: 10     # kleine Volumen so langsam, dass die Pumpe mindestens 10 s laeuft
-      ph_device: liquiline     # pH fuer die Regelung im Ansatz kommt von der Liquiline (Kanal ph = AI 1)
+      ph_device: liquiline     # pH fuer die Regelung (ph_regelung, ansatz) kommt von der Liquiline (Kanal ph = AI 1)
       ph_observable: ph_value
+      # Flaschen der pH-Regelung, fest verdrahtet (Rafael 11.11.2026) - NICHT im Frontend. 0 = Flasche nicht da,
+      # dann nimmt die Regelung die andere Staerke derselben Richtung. Base hebt den pH, Saeure senkt ihn.
+      ph_ports:
+        saeure_schwach: 2
+        saeure_stark: 3
+        base_schwach: 4
+        base_stark: 5
 
   # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
   # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
@@ -268,19 +275,15 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [pump1, pump_water, [], { volume: "{volume}", repeats: "{repeats}", pause_s: "{pause}" }]
-  # ---- Ansatz: Reaktionsloesung ansetzen UND auf den Ziel-pH bringen (10.11.2026) -----------------------------
+  # ---- Ansatz: Reaktionsloesung ansetzen UND auf den Ziel-pH bringen (11.11.2026) -----------------------------
   # EINE Routine fuer den ganzen Ansatz, Volumina direkt in mL (die Umrechnung aus Konzentrationen nach
   # Blatt 2 der Exceltabelle ist noch offen und wird vorher von Hand gemacht).
-  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> 'wartezeit_ph_messung' s warten -> pH-Regelung -> Auffuellen.
-  # pH-Regelung: pH von der Liquiline lesen; zu niedrig -> NaOH aus port_naoh, zu hoch -> Saeure aus port_saeure1,
-  # je Dose 200 uL (weiter als 0,5 pH vom Ziel) bzw. 50 uL (naeher), dann Spuelen, 'wartezeit_ph_messung' s warten, wieder
-  # messen - bis ziel_ph +- toleranz erreicht ist. Dann mit Wasser auf 'zielvolumen' auffuellen (0 = nicht).
-  # Jede Zugabe aus einem Chemikalien-Port wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
-  # Volumen 0 = feste Zugabe entfaellt (z.B. vol_saeure2 0). pause_zugabe = Ruhezeit in s zwischen den festen Zugaben.
+  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 (feste Zugaben, Volumen 0 = entfaellt, dazwischen
+  #         pause_zugabe s) -> wartezeit_ph_messung s warten -> pH-Regelung wie ph_regelung (Flaschen aus
+  #         dosing: ph_ports) -> mit Wasser auf zielvolumen auffuellen (0 = nicht auffuellen, keine Grenze).
+  # Jede Chemikalien-Zugabe und jede Dose wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
   # VOR dem ersten Ventilschritt wird gerechnet: passen die festen Zugaben + Spuelwasser nicht ins Zielvolumen,
-  # bewegt sich nichts und der Lauf endet als Failed. Abbruch waehrend der pH-Regelung (Failed mit Meldung):
-  # pH reagiert nicht auf 3 Dosen (Vorrat leer?), Zielvolumen voll, kein/veralteter pH-Wert, Status nicht Good,
-  # mehr als 40 Dosen.
+  # bewegt sich nichts, Lauf endet als Failed. Abbrueche in der Regelung: siehe ph_regelung.
   ansatz:
     conditions:
     stopconditions:
@@ -292,9 +295,10 @@ experiments:
       vol_saeure1: [float, mL]
       port_saeure2: [float, ""]
       vol_saeure2: [float, mL]
-      port_naoh: [float, ""]
       ziel_ph: [float, pH]
       toleranz: [float, pH]
+      vol_gross: [float, mL]
+      vol_klein: [float, mL]
       wartezeit_ph_messung: [float, s]
       zielvolumen: [float, mL]
       pause_zugabe: [float, s]
@@ -311,7 +315,7 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", port_up: "{port_naoh}", port_down: "{port_saeure1}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
+      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
 
   # ---- Schlaeuche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
   # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je
@@ -338,25 +342,22 @@ experiments:
     commands:
       - [pump1, add_recipe, [], { additions: "Wasser={vol_wasser};{port_a}:{vol_je_port};{port_b}:{vol_je_port};{port_c}:{vol_je_port};{port_d}:{vol_je_port}", target_volume: 0, pause_s: 0, title: Vorfuellen }]
 
-  # ---- pH regeln (11.11.2026, Vorgabe des Chemikers) ---------------------------------------------------------
-  # Nur die pH-Regelung, keine festen Zugaben, kein Auffuellen. Vier Flaschen an vier Ports (0 = nicht da),
-  # vier Stufen in fester Reihenfolge: 1 stark/vol_gross -> 2 stark/vol_klein -> 3 schwach/vol_gross ->
-  # 4 schwach/vol_klein. Richtung nach dem aktuellen pH: unter dem Ziel Base (hebt), ueber dem Ziel Saeure (senkt).
-  # Gleiche Richtung wie die letzte Dose: Stufe bleibt. Ziel ueber-/unterschritten: naechste Stufe, nie zurueck.
-  # Fehlt die Flasche einer Staerke, wird die andere Staerke derselben Richtung genommen. Nach jeder Dose:
-  # Spuelen, wartezeit_ph_messung s warten, wieder messen - bis ziel_ph +- toleranz.
-  # Abbruch (Failed) mit Meldung: pH reagiert nicht auf 3 Dosen, Zielvolumen voll (0 = keine Grenze),
-  # kein/veralteter pH-Wert, Status nicht Good, mehr als 40 Dosen, keine Flasche fuer die noetige Richtung.
-  ph_regeln:
+  # ---- pH-Regelung (11.11.2026, Vorgabe des Chemikers) --------------------------------------------------------
+  # Nur die pH-Regelung plus Auffuellen, keine festen Zugaben. Flaschen fest aus dosing: ph_ports (nicht im
+  # Frontend). Vier Schritte in fester Reihenfolge: 1 stark/vol_gross -> 2 stark/vol_klein -> 3 schwach/vol_gross
+  # -> 4 schwach/vol_klein. Richtung nach dem aktuellen pH: unter dem Ziel Base (hebt), ueber dem Ziel Saeure
+  # (senkt). Liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose: Schritt bleibt. Seite
+  # gewechselt (ueber-/unterschossen): naechster Schritt, nie zurueck. Nach jeder Dose: Spuelen,
+  # wartezeit_ph_messung s warten, wieder messen - bis ziel_ph +- toleranz. Dann mit Wasser auf zielvolumen
+  # auffuellen (0 = nicht auffuellen, keine Grenze). startvolumen = was schon im Gefaess ist.
+  # Abbruch (Failed) mit Meldung: pH reagiert nicht auf 3 Dosen, Zielvolumen voll, kein/veralteter pH-Wert,
+  # Status nicht Good, mehr als 40 Dosen. Vorher Schlaeuche fuellen: Routine vorfuellen (Ports 2, 3, 4, 5).
+  ph_regelung:
     conditions:
     stopconditions:
     parameters:
       ziel_ph: [float, pH]
       toleranz: [float, pH]
-      port_base_stark: [float, ""]
-      port_base_schwach: [float, ""]
-      port_saeure_stark: [float, ""]
-      port_saeure_schwach: [float, ""]
       vol_gross: [float, mL]
       vol_klein: [float, mL]
       wartezeit_ph_messung: [float, s]
@@ -375,7 +376,7 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [pump1, adjust_ph_staged, [], { target_ph: "{ziel_ph}", tolerance: "{toleranz}", port_base_stark: "{port_base_stark}", port_base_schwach: "{port_base_schwach}", port_saeure_stark: "{port_saeure_stark}", port_saeure_schwach: "{port_saeure_schwach}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", start_volume: "{startvolumen}" }]
+      - [pump1, regulate_ph, [], { target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", start_volume: "{startvolumen}" }]
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).

@@ -209,8 +209,9 @@ class _Pump(vd.ValveDosingMixIn, _Base):
         if ph_meter is not None:
             devices["liquiline"] = ph_meter
         self.link_devices(devices)
-        self.per_ml_up = 5.0      # pH-Aenderung je mL Base (Saeure: negativ), wirkt beim Pumpenstopp
-        self.ph_effect = {2: 5.0, 3: -5.0, 4: 1.0, 5: -1.0}
+        # pH-Aenderung je mL nach Port, wirkt beim Pumpenstopp. Wie im Labor (11.11.2026): 2 Saeure schwach,
+        # 3 Saeure stark, 4 Base schwach, 5 Base stark. stark 20/mL (200 uL = 4), schwach 4/mL (200 uL = 0,8).
+        self.ph_effect = {2: -4.0, 3: -20.0, 4: 4.0, 5: 20.0}
 
     def busy(self, condition):
         self.state = devicestate.Busy
@@ -234,14 +235,12 @@ class _Pump(vd.ValveDosingMixIn, _Base):
     def _dosing_pump_stop(self):
         command = _Command(time=self.clock.seconds())
         self.events.append(("stop", round(self.clock.seconds(), 3)))
-        # pH-Attrappe: Reagenz wirkt, sobald es gefoerdert ist. Wirkung je mL nach Port (ph_effect):
-        # 2 = Base stark, 3 = Saeure stark, 4 = Base schwach, 5 = Saeure schwach; andere Ports wie Saeure stark.
+        # pH-Attrappe: Reagenz wirkt, sobald es gefoerdert ist. Wirkung je mL nach Port (ph_effect), andere Ports 0.
         run = self._dosing
         if self.ph_meter is not None and run is not None and run.index and not self.ph_meter.dead:
             step = run.steps[run.index - 1]
             if step.kind == "pump" and step.role == "reagent":
-                effect = self.ph_effect.get(self.valve.position, -self.per_ml_up)
-                self.ph_meter.ph += effect * step.volume_ml
+                self.ph_meter.ph += self.ph_effect.get(self.valve.position, 0.0) * step.volume_ml
         command.deferred_result.callback(None)
         return command
 
@@ -610,279 +609,207 @@ class RecipeRunTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------------------------------
-# pH-Schleife (adjust_ph, 10.11.2026)
+# pH-Regelung in vier Schritten (regulate_ph / add_recipe_ph, 11.11.2026) - Flaschen fest in der Config
 # ---------------------------------------------------------------------------------------------------
 
-PH_CONFIG = {**CONFIG, "ph_device": "liquiline"}
+PH_PORTS = {"saeure_schwach": 2, "saeure_stark": 3, "base_schwach": 4, "base_stark": 5}
+PH_CONFIG = {**CONFIG, "ph_device": "liquiline", "ph_ports": PH_PORTS}
 
 
-class PhLoopTests(unittest.TestCase):
-    def make(self, ph=7.0, **changes):
-        pump = _Pump(dosing={**PH_CONFIG, **changes.pop("dosing", {})}, ph_meter=None)
-        meter = _PhMeter(pump.clock, ph=ph)
-        pump.ph_meter = meter
-        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
-        pump.log.errors = []       # die Meldung "pH-Geraet nicht verbunden" vom Bau ohne Messgeraet
-        return pump, meter
+def make_ph_pump(ph, ports=PH_PORTS):
+    pump = _Pump(dosing={**PH_CONFIG, "ph_ports": ports})
+    meter = _PhMeter(pump.clock, ph=ph)
+    pump.ph_meter = meter
+    pump.link_devices({"valve1": pump.valve, "liquiline": meter})
+    pump.log.errors = []
+    return pump, meter
 
-    def test_settings_accept_ph_keys(self):
+
+def doses(pump):
+    """[(Port, Dose uL)] je Reagenz-Dose in der Reihenfolge der Ausfuehrung (Rate = Volumen / 10 s)."""
+    out, port = [], None
+    for e in pump.events:
+        if e[0] == "valve":
+            port = e[1]
+        elif e[0] == "start" and port != 1:
+            out.append((port, round(e[2] / 6.0 * 1000)))
+    return out
+
+
+class PhPortsSettingsTests(unittest.TestCase):
+    def test_ports_are_read(self):
         s = vd.DosingSettings(PH_CONFIG)
+        self.assertEqual(s.ph_ports, PH_PORTS)
         self.assertEqual((s.ph_device, s.ph_observable, s.ph_max_age_s), ("liquiline", "ph_value", 15.0))
-        self.assertIsNone(vd.DosingSettings(CONFIG).ph_device)
+        self.assertIsNone(vd.DosingSettings(CONFIG).ph_ports)
 
-    def test_already_in_window_finishes_without_moving(self):
-        pump, meter = self.make(ph=8.9)
-        pump.adjust_ph(9.0, tolerance=0.2, port_up=2, port_down=3)
-        pump.run_all(5)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        self.assertEqual(pump.events, [])
-        self.assertEqual(pump.last("ph_additions"), 0)
-        self.assertAlmostEqual(pump.last("ph_measured"), 8.9)
+    def test_missing_bottle_is_zero(self):
+        s = vd.DosingSettings({**PH_CONFIG, "ph_ports": {"saeure_stark": 3, "base_stark": 5}})
+        self.assertEqual(s.ph_ports, {"base_stark": 5, "base_schwach": 0, "saeure_stark": 3, "saeure_schwach": 0})
 
-    def test_raises_ph_with_large_then_small_doses(self):
-        # pH 7 -> Ziel 9: 5 pH/mL. 200 uL = +1.0, 50 uL = +0.25.
-        pump, meter = self.make(ph=7.0)
-        pump.adjust_ph(9.0, tolerance=0.2, port_up=2, port_down=3, wait_s=20)
-        pump.run_all(600)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        doses = [round(e[2], 3) for e in pump.events if e[0] == "start"]
-        # Dosen (Rate 1,2 = 200 uL, 0,3 = 50 uL) wechseln sich mit Spuelen (4,5) ab
-        reagent_rates = [d for d in doses if d != 4.5]
-        self.assertEqual(reagent_rates, [1.2, 1.2])               # 7 -> 8 -> 9: zweimal 200 uL, dann im Fenster
-        self.assertGreaterEqual(meter.ph, 8.8)
-        self.assertLessEqual(meter.ph, 9.2)
-        self.assertEqual(pump.last("ph_additions"), len(reagent_rates))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"][:2], [2, 1])
-        self.assertEqual(pump.log.errors, [])
-
-    def test_lowers_ph_with_acid(self):
-        pump, meter = self.make(ph=9.3)
-        pump.adjust_ph(9.0, tolerance=0.2, port_up=2, port_down=3, wait_s=0)
-        pump.run_all(300)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1])
-        self.assertAlmostEqual(meter.ph, 9.05)
-
-    def test_wrong_direction_without_port_fails(self):
-        pump, meter = self.make(ph=9.5)
-        pump.adjust_ph(9.0, port_up=2, port_down=0)
-        pump.run_all(5)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
-        self.assertEqual(pump.events, [])
-        self.assertIn("kein Port fuer Saeure", pump.last("dosing_step"))
-
-    def test_no_response_stops(self):
-        pump, meter = self.make(ph=7.0)
-        meter.dead = True
-        pump.adjust_ph(9.0, port_up=2, wait_s=0, no_response_additions=3)
-        pump.run_all(600)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
-        self.assertEqual(pump.state, devicestate.Error)
-        self.assertIn("reagiert nicht", pump.last("dosing_step"))
-        self.assertEqual(len([e for e in pump.events if e[0] == "valve" and e[1] == 2]), 3)
-
-    def test_volume_budget_stops_before_the_dose(self):
-        pump, meter = self.make(ph=7.0)
-        pump.adjust_ph(9.0, port_up=2, wait_s=0, target_volume=10, start_volume=9.5)   # 0,5 mL Platz < 0,95
-        pump.run_all(10)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
-        self.assertEqual(pump.events, [])
-        self.assertIn("Zielvolumen", pump.last("dosing_step"))
-
-    def test_waits_for_the_first_ph_value(self):
-        """Liquiline und Pumpe starten gleichzeitig; der erste Modbus-Wert kommt erst nach dem ersten Abfrageintervall."""
-        pump, meter = self.make(ph=8.9)
-        meter.empty = True
-        pump.clock.callLater(3.0, setattr, meter, "empty", False)
-        pump.adjust_ph(9.0, port_up=2)
-        pump.run_all(10)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        self.assertIn("warte auf pH-Wert", [u.get("dosing_step") for u in pump.updates])
-        self.assertEqual(pump.events, [])
-
-    def test_stale_or_missing_or_bad_ph_fails(self):
-        for prepare, text in ((lambda m: setattr(m, "age", 60.0), "alt"),
-                              (lambda m: setattr(m, "empty", True), "kein pH-Wert"),
-                              (lambda m: setattr(m, "status", "Not assigned"), "nicht Good")):
-            pump, meter = self.make(ph=7.0)
-            prepare(meter)
-            pump.adjust_ph(9.0, port_up=2)
-            pump.run_all(30)                       # laenger als ph_max_age_s (15 s) warten
-            self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed", text)
-            self.assertIn(text, pump.last("dosing_step"))
-            self.assertEqual(pump.events, [])
-
-    def test_without_ph_device_in_config_fails_cleanly(self):
-        pump = _Pump()
-        pump.adjust_ph(9.0, port_up=2)
-        pump.run_all(5)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
-        self.assertIn("ph_device", pump.last("dosing_step"))
-
-    def test_bad_inputs_fail_cleanly(self):
-        for kwargs in ({"port_up": 1}, {"port_up": 0, "port_down": 0}, {"port_up": 2, "tolerance": 0},
-                       {"port_up": 2, "target_volume": 5, "start_volume": 5}, {"port_up": 17}):
-            pump, meter = self.make(ph=7.0)
-            pump.adjust_ph(9.0, **kwargs)
-            pump.run_all(5)
-            self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed", kwargs)
-            self.assertEqual(pump.events, [])
-
-    def test_stop_during_loop(self):
-        pump, meter = self.make(ph=7.0)
-        pump.adjust_ph(9.0, port_up=2, wait_s=30)
-        pump.run_all(3)
-        pump.stop()
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "cancelled")
+    def test_bad_ports_are_rejected(self):
+        for ports in ({"base_stark": 1}, {"base_stark": 2.5}, {"base_stark": 5, "base_schwach": 5}, {"naoh": 5}, "5"):
+            self.assertRaises(ValueError, vd.DosingSettings, {**PH_CONFIG, "ph_ports": ports})
 
 
-class RecipeWithPhTests(unittest.TestCase):
-    LINE = "Leitsalz=4.0:0.1;Wasser=0.2;Saeure 1=3.0:0.05;Saeure 2=0.0:0.1"
+class PhRegelungTests(unittest.TestCase):
+    """Attrappe: stark 20 pH/mL (200 uL = 4, 50 uL = 1), schwach 4 pH/mL (200 uL = 0,8, 50 uL = 0,2)."""
 
-    def make(self, ph):
-        pump = _Pump(dosing=PH_CONFIG)
-        meter = _PhMeter(pump.clock, ph=ph)
-        pump.ph_meter = meter
-        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
-        pump.log.errors = []
-        return pump, meter
-
-    def test_additions_then_ph_then_fill(self):
-        # Port 4 = Leitsalz (wirkt in der Attrappe wie Saeure: -5 pH/mL -> -0.5), Port 3 = Saeure (-0.25), Port 2 = NaOH
-        pump, meter = self.make(ph=7.0)
-        pump.add_recipe_ph(self.LINE, target_ph=9.0, tolerance=0.2, port_up=2, port_down=3, wait_s=20,
-                           target_volume=10, pause_s=0)
-        pump.run_all(900)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        valves = [e[1] for e in pump.events if e[0] == "valve"]
-        self.assertEqual(valves[:4], [4, 1, 3, 1])                  # Rezept: Leitsalz, Spuelen, (Wasser), Saeure, Spuelen
-        self.assertIn(2, valves[4:])                                # danach NaOH-Dosen
-        self.assertGreaterEqual(meter.ph, 8.8)
-        self.assertLessEqual(meter.ph, 9.2)
-        self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)     # am Ende aufgefuellt
-        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertEqual(labels[1:4], ["Leitsalz", "Wasser", "Saeure 1"])
-        self.assertTrue(any(l.startswith("Zugabe 1: Base") for l in labels), labels)
-        self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
-        self.assertEqual(pump.log.errors, [])
-
-    def test_overshoot_is_corrected_with_acid(self):
-        pump, meter = self.make(ph=8.8)
-        # Leitsalz aus Port 2 hebt den pH in der Attrappe (+0.5 -> 9.3), 50-uL-Saeure (Port 3) senkt um 0.25 -> 9.05
-        pump.add_recipe_ph("Leitsalz=2.0:0.1", target_ph=9.0, tolerance=0.2, port_up=2, port_down=3, wait_s=0,
-                           target_volume=0)
-        pump.run_all(300)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [2, 1, 3, 1])
-        self.assertAlmostEqual(meter.ph, 9.05)
-
-    def test_budget_of_fixed_additions_is_checked_before_start(self):
-        pump, meter = self.make(ph=7.0)
-        pump.add_recipe_ph(self.LINE, target_ph=9.0, port_up=2, port_down=3, target_volume=1.0)
-        pump.run_all(5)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
-        self.assertEqual(pump.events, [])
-        self.assertIn("Zielvolumen", pump.last("dosing_step"))
-
-    def test_without_fixed_additions_only_ph_and_fill(self):
-        pump, meter = self.make(ph=8.9)
-        pump.add_recipe_ph("Leitsalz=4.0:0", target_ph=9.0, port_up=2, port_down=3, target_volume=2.0)
-        pump.run_all(60)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [1])
-        self.assertAlmostEqual(pump.last("delivered_ml"), 2.0)
-
-
-class PhStageLoopTests(unittest.TestCase):
-    """Vier Stufen nach Vorgabe des Chemikers. Attrappe: stark 20 pH/mL (200 uL = 4, 50 uL = 1),
-    schwach 4 pH/mL (200 uL = 0,8, 50 uL = 0,2). Ports: 2 Base stark, 3 Saeure stark, 4 Base schwach, 5 Saeure schwach."""
-    PORTS = dict(port_base_stark=2, port_base_schwach=4, port_saeure_stark=3, port_saeure_schwach=5)
-
-    def make(self, ph):
-        pump = _Pump(dosing=PH_CONFIG)
-        meter = _PhMeter(pump.clock, ph=ph)
-        pump.ph_meter = meter
-        pump.ph_effect = {2: 20.0, 3: -20.0, 4: 4.0, 5: -4.0}
-        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
-        pump.log.errors = []
-        return pump, meter
-
-    def doses(self, pump):
-        """[(Port, Dose uL)] je Reagenz-Dose in der Reihenfolge der Ausfuehrung."""
-        out, port = [], None
-        for e in pump.events:
-            if e[0] == "valve":
-                port = e[1]
-            elif e[0] == "start" and port != 1:
-                out.append((port, round(e[2] / 6.0 * 1000)))   # rate = volumen / 10 s -> uL
-        return out
-
-    def test_stage_1_and_2(self):
-        # 4 -> +4 -> 8 (gleiche Richtung) -> 12: ueberschritten -> Stufe 2: stark/klein Saeure -1 -> 11, 10, 9 fertig
-        pump, meter = self.make(ph=4.0)
-        pump.adjust_ph_staged(9.0, 0.2, wait_s=0, **self.PORTS)
+    def test_schritt_1_und_2(self):
+        # 4 -> +4 -> 8 (gleiche Seite) -> 12: Seite gewechselt -> Schritt 2 starke Saeure 50 uL: 11, 10, 9 fertig
+        pump, meter = make_ph_pump(4.0)
+        pump.regulate_ph(9.0, 0.2, wait_s=0)
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual(self.doses(pump), [(2, 200), (2, 200), (3, 50), (3, 50), (3, 50)])
+        self.assertEqual(doses(pump), [(5, 200), (5, 200), (3, 50), (3, 50), (3, 50)])
         self.assertAlmostEqual(meter.ph, 9.0)
         self.assertEqual(pump.last("ph_additions"), 5)
 
-    def test_all_four_stages_and_never_back(self):
-        # 8,4 -> 12,4 (St.1) -> Saeure klein -1 x4 -> 8,4 (St.2, unterschritten) -> St.3 schwach gross +0,8 -> 9,2
-        # -> ueberschritten (Tol 0,1) -> St.4 schwach klein -0,2 -> 9,0 fertig
-        pump, meter = self.make(ph=8.4)
-        pump.adjust_ph_staged(9.0, 0.1, wait_s=0, **self.PORTS)
+    def test_alle_vier_schritte_nie_zurueck(self):
+        # 8,4 -> 12,4 (S1) -> starke Saeure 50 x4 -> 8,4 (S2, Seite gewechselt) -> S3 schwache Base 200 +0,8 -> 9,2
+        # -> Toleranz 0,1: Seite gewechselt -> S4 schwache Saeure 50 -0,2 -> 9,0 fertig
+        pump, meter = make_ph_pump(8.4)
+        pump.regulate_ph(9.0, 0.1, wait_s=0)
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual(self.doses(pump), [(2, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (5, 50)])
+        self.assertEqual(doses(pump), [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50)])
         self.assertAlmostEqual(meter.ph, 9.0)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertTrue(any(l.startswith("Dose 6, Stufe 3: schwache Base 200 uL") for l in labels), labels)
-        self.assertTrue(any(l.startswith("Dose 7, Stufe 4: schwache Saeure 50 uL") for l in labels), labels)
+        self.assertTrue(any(l.startswith("Dose 6, Schritt 3: schwache Base 200 uL (Port 4") for l in labels), labels)
+        self.assertTrue(any(l.startswith("Dose 7, Schritt 4: schwache Saeure 50 uL (Port 2") for l in labels), labels)
 
-    def test_missing_weak_bottles_use_strong_with_stage_sizes(self):
-        pump, meter = self.make(ph=8.4)
-        pump.adjust_ph_staged(9.0, 0.1, wait_s=0, port_base_stark=2, port_base_schwach=0,
-                              port_saeure_stark=3, port_saeure_schwach=0)
+    def test_eigene_volumina(self):
+        pump, meter = make_ph_pump(4.0)
+        pump.regulate_ph(9.0, 0.2, vol_gross=0.1, vol_klein=0.02, wait_s=0)
+        pump.run_all(600)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertEqual(doses(pump)[0], (5, 100))
+
+    def test_auffuellen_nach_erreichtem_ziel(self):
+        pump, meter = make_ph_pump(4.0)
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=20, start_volume=5)
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertAlmostEqual(pump.last("delivered_ml"), 15.0)          # 20 - 5 schon drin
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(labels[-2], "Auffuellen auf 20 mL")
+
+    def test_ohne_zielvolumen_kein_auffuellen(self):
+        pump, meter = make_ph_pump(8.9)
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=0)
+        pump.run_all(10)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertEqual(pump.events, [])
+
+    def test_fehlende_schwache_flaschen_nehmen_die_starken(self):
+        pump, meter = make_ph_pump(8.4, ports={"saeure_stark": 3, "base_stark": 5})
+        pump.regulate_ph(9.0, 0.1, wait_s=0)
         pump.run_all(2000)
-        ports = {p for p, _ in self.doses(pump)}
-        self.assertEqual(ports, {2, 3})
-        self.assertIn(pump.last(vd.DOSING_OBSERVABLE), ("finished", "failed"))   # je nach Pendeln, aber nie Port 4/5
+        self.assertEqual({p for p, _ in doses(pump)}, {3, 5})
+        self.assertIn(pump.last(vd.DOSING_OBSERVABLE), ("finished", "failed"))
 
-    def test_missing_both_bottles_of_a_direction_fails_cleanly(self):
-        pump, meter = self.make(ph=7.0)
-        pump.adjust_ph_staged(9.0, 0.2, wait_s=0, port_base_stark=0, port_base_schwach=0,
-                              port_saeure_stark=3, port_saeure_schwach=5)
+    def test_keine_flasche_fuer_eine_richtung(self):
+        pump, meter = make_ph_pump(7.0, ports={"saeure_stark": 3, "saeure_schwach": 2})
+        pump.regulate_ph(9.0, 0.2, wait_s=0)
         pump.run_all(5)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertEqual(pump.events, [])
         self.assertIn("keine Flasche fuer Base", pump.last("dosing_step"))
 
-    def test_in_window_from_the_start(self):
-        pump, meter = self.make(ph=9.1)
-        pump.adjust_ph_staged(9.0, 0.2, wait_s=0, **self.PORTS)
+    def test_ph_ports_fehlen_in_der_config(self):
+        pump = _Pump(dosing={**CONFIG, "ph_device": "liquiline"})
+        meter = _PhMeter(pump.clock, ph=7.0)
+        pump.ph_meter = meter
+        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
+        pump.regulate_ph(9.0, 0.2)
         pump.run_all(5)
-        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
-        self.assertEqual(pump.events, [])
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertIn("ph_ports", pump.last("dosing_step"))
 
-    def test_no_response_and_budget(self):
-        pump, meter = self.make(ph=4.0)
+    def test_reagiert_nicht_und_zielvolumen(self):
+        pump, meter = make_ph_pump(4.0)
         meter.dead = True
-        pump.adjust_ph_staged(9.0, 0.2, wait_s=0, **self.PORTS)
+        pump.regulate_ph(9.0, 0.2, wait_s=0)
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertIn("reagiert nicht", pump.last("dosing_step"))
-        pump, meter = self.make(ph=4.0)
-        pump.adjust_ph_staged(9.0, 0.2, wait_s=0, target_volume=10, start_volume=9.5, **self.PORTS)
+        self.assertEqual(len(doses(pump)), 3)
+        pump, meter = make_ph_pump(4.0)
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=10, start_volume=9.5)
         pump.run_all(10)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertEqual(pump.events, [])
         self.assertIn("Zielvolumen", pump.last("dosing_step"))
 
-    def test_bad_inputs(self):
-        for kwargs in ({"vol_klein": 0.3}, {"tolerance": 0}, {"port_base_stark": 1}, {"port_base_stark": 17}):
-            pump, meter = self.make(ph=7.0)
-            pump.adjust_ph_staged(9.0, wait_s=0, **{**self.PORTS, "tolerance": 0.2, **kwargs})
+    def test_falsche_eingaben(self):
+        for kwargs in ({"vol_klein": 0.3}, {"tolerance": 0}, {"target_ph": 15}, {"target_volume": 5, "start_volume": 5}):
+            pump, meter = make_ph_pump(7.0)
+            pump.regulate_ph(**{"target_ph": 9.0, "tolerance": 0.2, "wait_s": 0, **kwargs})
             pump.run_all(5)
             self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed", kwargs)
             self.assertEqual(pump.events, [])
+
+    def test_wartet_auf_den_ersten_ph_wert(self):
+        pump, meter = make_ph_pump(8.9)
+        meter.empty = True
+        pump.clock.callLater(3.0, setattr, meter, "empty", False)
+        pump.regulate_ph(9.0, 0.2, wait_s=0)
+        pump.run_all(10)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
+        self.assertIn("warte auf pH-Wert", [u.get("dosing_step") for u in pump.updates])
+
+    def test_alter_fehlender_schlechter_ph_wert(self):
+        for prepare, text in ((lambda m: setattr(m, "age", 60.0), "alt"),
+                              (lambda m: setattr(m, "empty", True), "kein pH-Wert"),
+                              (lambda m: setattr(m, "status", "Not assigned"), "nicht Good")):
+            pump, meter = make_ph_pump(7.0)
+            prepare(meter)
+            pump.regulate_ph(9.0, 0.2, wait_s=0)
+            pump.run_all(30)
+            self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed", text)
+            self.assertIn(text, pump.last("dosing_step"))
+            self.assertEqual(pump.events, [])
+
+    def test_stop_mitten_in_der_regelung(self):
+        pump, meter = make_ph_pump(4.0)
+        pump.regulate_ph(9.0, 0.2, wait_s=30)
+        pump.run_all(3)
+        pump.stop()
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "cancelled")
+
+
+class AnsatzTests(unittest.TestCase):
+    """ansatz = feste Zugaben -> pH-Regelung -> Auffuellen. Leitsalz an Port 6 (wirkt nicht), Saeure 1 = Port 3."""
+    LINE = "Leitsalz=6.0:0.1;Wasser=0.2;Saeure 1=3.0:0.01;Saeure 2=0.0:0.1"
+
+    def test_zugaben_dann_regelung_dann_auffuellen(self):
+        # Saeure 1 10 uL stark = -0,2 -> 4,8; dann starke Base 200 = +4 -> 8,8: im Fenster; auffuellen auf 10
+        pump, meter = make_ph_pump(5.0)
+        pump.add_recipe_ph(self.LINE, target_ph=9.0, tolerance=0.2, wait_s=20, target_volume=10, pause_s=0)
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        valves = [e[1] for e in pump.events if e[0] == "valve"]
+        self.assertEqual(valves, [6, 1, 3, 1, 5, 1, 1])
+        self.assertAlmostEqual(meter.ph, 8.8)
+        self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(labels[1:4], ["Leitsalz", "Wasser", "Saeure 1"])
+        self.assertTrue(any(l.startswith("Dose 1, Schritt 1: starke Base 200 uL (Port 5") for l in labels), labels)
+        self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
+        self.assertEqual(pump.log.errors, [])
+
+    def test_ohne_feste_zugaben_wie_ph_regelung(self):
+        pump, meter = make_ph_pump(8.4)
+        pump.add_recipe_ph("Leitsalz=6.0:0", target_ph=9.0, tolerance=0.1, wait_s=0, target_volume=20)
+        pump.run_all(1200)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual(doses(pump), [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50)])
+        self.assertAlmostEqual(pump.last("delivered_ml"), 20.0)
+
+    def test_budget_der_festen_zugaben_vor_dem_start(self):
+        pump, meter = make_ph_pump(7.0)
+        pump.add_recipe_ph(self.LINE, target_ph=9.0, target_volume=1.0)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("Zielvolumen", pump.last("dosing_step"))

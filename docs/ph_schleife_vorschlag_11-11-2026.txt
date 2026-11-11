@@ -2,8 +2,9 @@ pH-Schleife - Regel fuer die Routine ph_regeln (11.11.2026)
 ============================================================
 
 Nach der Vorgabe des Chemikers (Mail an Rafael, Zitat unten), besprochen mit Rafael am 11.11.2026.
-Gebaut am 11.11.2026: backend/drivers/valve_dosing.py (PhStageLoop, adjust_ph_staged), Routine ph_regeln
-in config.messstand2.yml. Grundlage: die Laeufe vom 10.11.2026 (docs/messstand2_erkenntnisse_10-11-2026.txt,
+Gebaut am 11.11.2026: backend/drivers/valve_dosing.py (PhRegelung, regulate_ph, add_recipe_ph), Routinen
+ph_regelung und ansatz in config.messstand2.yml. Die Flaschen stehen FEST in der Config (dosing: ph_ports),
+nicht im Frontend (Rafael): Port 1 Wasser, 2 Saeure schwach, 3 Saeure stark, 4 Base schwach, 5 Base stark. Grundlage: die Laeufe vom 10.11.2026 (docs/messstand2_erkenntnisse_10-11-2026.txt,
 Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind (pH 2,5 <-> 11).
 
 
@@ -23,49 +24,46 @@ Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind 
   Saeure SENKT ihn. So ist es gebaut.
 
 
-1. Parameter der Routine ph_regeln
-----------------------------------
+1. Parameter der Routine ph_regelung
+------------------------------------
 
+  (Flaschen: fest in der Config, dosing: ph_ports - Port 0 = Flasche nicht vorhanden)
   ziel_ph, toleranz           Ziel und Fenster, z.B. 9 und 0,2 -> fertig zwischen 8,8 und 9,2
-  port_base_stark             Ventil-Ports der vier Flaschen, 0 = Flasche nicht vorhanden
-  port_base_schwach
-  port_saeure_stark
-  port_saeure_schwach
   vol_gross                   grosse Dose in mL, Start 0.2
   vol_klein                   kleine Dose in mL, Start 0.05
   wartezeit_ph_messung        Sekunden nach jeder Dose (nach dem Spuelen) bis zur Messung, z.B. 30
   startvolumen                was schon im Gefaess ist, mL
-  zielvolumen                 Obergrenze fuer alles, was dazukommt (Dosen + Spuelwasser); 0 = keine
-                              Grenze. KEIN Auffuellen in dieser Routine.
+  zielvolumen                 Obergrenze fuer alles, was dazukommt (Dosen + Spuelwasser); am Ende wird
+                              mit Wasser bis dorthin aufgefuellt. 0 = keine Grenze, kein Auffuellen.
 
 
 2. Die Schleife (einmal pro Messung)
 ------------------------------------
 
-  Stufen:   1 = stark/vol_gross   2 = stark/vol_klein   3 = schwach/vol_gross   4 = schwach/vol_klein
-  Merker:   stufe = 1, letzte Dose: richtung, pH davor
+  Schritte: 1 = stark/vol_gross   2 = stark/vol_klein   3 = schwach/vol_gross   4 = schwach/vol_klein
+  Merker:   schritt = 1, letzte Dose: richtung, pH davor
 
   pH messen
 
   WENN |ziel_ph - pH| <= toleranz:
-      fertig
+      fertig -> mit Wasser auf zielvolumen auffuellen (wenn > 0)
 
   # 1. Richtung nach dem aktuellen pH
   WENN pH < ziel_ph:   richtung = "Base"      (hebt)
   SONST:               richtung = "Saeure"    (senkt)
 
-  # 2. Stufe
-  WENN erste Dose:                                   stufe = 1
-  SONST WENN richtung = richtung der letzten Dose:   stufe bleibt
-  SONST (Ziel ueber-/unterschritten):                stufe = stufe + 1, hoechstens 4, nie zurueck
+  # 2. Schritt
+  WENN erste Dose:                                   schritt = 1
+  SONST WENN richtung = richtung der letzten Dose:   schritt bleibt      (pH noch auf derselben Seite des Ziels)
+  SONST (Seite gewechselt, ueber-/unterschossen):    schritt = schritt + 1, hoechstens 4, nie zurueck
 
-  # 3. Flasche und Dose aus der Stufe
-  stufe 1: stark,   vol_gross
-  stufe 2: stark,   vol_klein
-  stufe 3: schwach, vol_gross
-  stufe 4: schwach, vol_klein
-  port = port_<richtung>_<staerke>
-  WENN port = 0:   die andere Staerke derselben Richtung (Dose bleibt wie in der Stufe)
+  # 3. Flasche und Dose aus dem Schritt
+  schritt 1: stark,   vol_gross
+  schritt 2: stark,   vol_klein
+  schritt 3: schwach, vol_gross
+  schritt 4: schwach, vol_klein
+  port = ph_ports[<richtung>_<staerke>]   (Config: 2 Saeure schwach, 3 Saeure stark, 4 Base schwach, 5 Base stark)
+  WENN port = 0:   die andere Staerke derselben Richtung (Dose bleibt wie im Schritt)
   WENN auch 0:     ABBRUCH "keine Flasche fuer <richtung>"   (wird schon vor dem Start geprueft)
 
   # 4. Sicherheit
@@ -89,21 +87,21 @@ Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind 
 
 Ziel 9, Toleranz 0,2, vol_gross 200 uL, vol_klein 50 uL, Start pH 4,0. Werte erfunden, Muster wie 10.11.
 
-  Dose  pH davor  Richtung  Stufe  Dose                       Grund
-  ----  --------  --------  -----  -------------------------  ---------------------------------------
-   1      4,0      Base       1    starke Base 200 uL         erste Dose
-   2      4,3      Base       1    starke Base 200 uL         gleiche Richtung, Stufe bleibt
-   3     11,2      Saeure     2    starke Saeure 50 uL        Ziel ueberschritten -> Stufe 2
-   4     10,4      Saeure     2    starke Saeure 50 uL        gleiche Richtung
-   5      8,6      Base       3    schwache Base 200 uL       Ziel unterschritten -> Stufe 3
-   6      9,3      Saeure     4    schwache Saeure 50 uL      Ziel ueberschritten -> Stufe 4
-   7      9,1      -          -    FERTIG                     im Fenster 8,8-9,2
+  Dose  pH davor  Seite   Schritt  Flasche                          Grund
+  ----  --------  ------  -------  -------------------------------  ---------------------------------
+   1      4,0     unter      1     Port 5 starke Base 200 uL        erste Dose
+   2      4,3     unter      1     Port 5 starke Base 200 uL        gleiche Seite, Schritt bleibt
+   3     11,2     ueber      2     Port 3 starke Saeure 50 uL       Seite gewechselt -> Schritt 2
+   4     10,4     ueber      2     Port 3 starke Saeure 50 uL       gleiche Seite
+   5      8,6     unter      3     Port 4 schwache Base 200 uL      Seite gewechselt -> Schritt 3
+   6      9,3     ueber      4     Port 2 schwache Saeure 50 uL     Seite gewechselt -> Schritt 4
+   7      9,1     im Fenster        FERTIG, dann Auffuellen          8,8-9,2
 
   Verbrauch: 0,9 mL Reagenz, 6 Spuelungen = 13,5 mL Wasser.
   Zum Vergleich 10.11. (nur stark/gross in beide Richtungen): 10 Dosen, 22,5 mL Wasser, Abbruch.
 
-Faellt der pH auf Stufe 4 weiter hin und her, bleibt es bei schwach/klein, bis es trifft oder nach
-40 Dosen abbricht. Dann ist vol_klein zu gross oder die schwache Flasche zu konzentriert - beim naechsten
+Faellt der pH in Schritt 4 weiter hin und her, bleibt es bei schwach/klein, bis es trifft oder nach
+40 Dosen abbricht (kein Rueckweg - bewusst so, Variante 1, Rafael 11.11.2026). Dann ist vol_klein zu gross oder die schwache Flasche zu konzentriert - beim naechsten
 Lauf kleiner einstellen bzw. verduennen.
 
 
@@ -120,9 +118,10 @@ Lauf kleiner einstellen bzw. verduennen.
   gutmuetiger.
 
 
-5. Spaeter
-----------
+5. In der Routine ansatz
+------------------------
 
-- Dieselbe Vier-Stufen-Logik in die Routine ansatz uebernehmen (nach den festen Zugaben, vor dem
-  Auffuellen), sobald der Test der Regelung allein gelaufen ist. ansatz regelt bis dahin noch mit der
-  alten Zwei-Flaschen-Logik (NaOH / Saeure 1, 200 uL weit weg, 50 uL nah dran).
+ansatz regelt mit genau dieser Logik: nach den festen Zugaben (Leitsalz, Wasser, Saeure 1, Saeure 2) und
+vor dem Auffuellen. Die alte Zwei-Flaschen-Logik vom 10.11. (port_naoh / Saeure 1, Dose nach Abstand) ist
+entfernt. ansatz hat dieselben Regel-Parameter wie ph_regelung (ziel_ph, toleranz, vol_gross, vol_klein,
+wartezeit_ph_messung, zielvolumen) plus die festen Zugaben und pause_zugabe.

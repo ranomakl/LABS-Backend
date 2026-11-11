@@ -236,61 +236,44 @@ Noch zu tun:
   pH-Regelung: GEBAUT am 10.11.2026, Teil der Routine `ansatz` (Abschnitt 9).
 - In der Anforderung ist vertauscht: Saeure SENKT den pH, Base HEBT ihn.
 
-## 9. Routine `ansatz`: Loesung ansetzen und auf den Ziel-pH bringen (10.11.2026)
+## 9. Routine `ansatz`: Loesung ansetzen und auf den Ziel-pH bringen (11.11.2026)
 
-Der ganze Ansatz in EINEM Lauf: feste Zugaben, dann pH-Regelung, dann Auffuellen. Der Sinn des Ansatzes ist
-der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026).
+Der ganze Ansatz in EINEM Lauf: feste Zugaben, dann die pH-Regelung aus Abschnitt 12, dann Auffuellen. Der
+Sinn des Ansatzes ist der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026). Die Flaschen
+der Regelung stehen fest in der Config (`dosing: ph_ports`), nicht im Frontend (Rafael, 11.11.2026).
 
 | Parameter | Einheit | Bedeutung |
 |---|---|---|
-| `port_leitsalz`, `vol_leitsalz` | -, mL | Leitsalz-Loesung: Ventil-Port und Volumen |
+| `port_leitsalz`, `vol_leitsalz` | -, mL | Leitsalz-Loesung: Ventil-Port und Volumen; 0 = keine |
 | `vol_wasser` | mL | Wasser vorab; 0 = keins |
-| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure. Derselbe Port dient in der pH-Regelung zum Senken |
-| `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; `vol_saeure2` 0 = entfaellt |
-| `port_naoh` | - | NaOH: hebt den pH in der Regelung. Keine feste Menge mehr |
+| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure (Reaktand), feste Zugabe; 0 = keine |
+| `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; 0 = keine |
 | `ziel_ph`, `toleranz` | pH | Ziel, z.B. 9 und 0.2: Schluss, wenn der pH zwischen 8,8 und 9,2 liegt |
-| `wartezeit_ph_messung` | s | Wartezeit nach den festen Zugaben und nach jeder Dose, bevor der pH gemessen wird, z.B. 30 |
+| `vol_gross`, `vol_klein` | mL | Dosen der Regelung, Start 0.2 und 0.05 |
+| `wartezeit_ph_messung` | s | nach den festen Zugaben und nach jeder Dose warten, bevor gemessen wird |
 | `zielvolumen` | mL | am Ende mit Wasser auffuellen bis hierhin; 0 = nicht auffuellen, keine Grenze |
-| `pause_zugabe` | s | Ruhezeit zwischen den festen Zugaben (Leitsalz, Wasser, Saeuren); 0 = keine |
+| `pause_zugabe` | s | Ruhezeit zwischen den festen Zugaben; 0 = keine |
 
 **Ablauf**
 
-1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen `pause_zugabe`.
+1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen
+   `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
 2. `wartezeit_ph_messung` warten, pH messen.
-3. pH unter dem Ziel: eine Dose NaOH aus `port_naoh`. Ueber dem Ziel: eine Dose Saeure aus `port_saeure1`.
-   Weiter als 0,5 pH vom Ziel 200 uL, naeher 50 uL. Spuelen, `wartezeit_ph_messung` warten, wieder messen. Das
-   wiederholt sich, auch hin und her, bis der pH im Fenster liegt.
+3. pH-Regelung in vier Schritten, genau wie `ph_regelung` (Abschnitt 12).
 4. Mit Wasser auf `zielvolumen` auffuellen.
 
 **Volumenbudget:** Vor dem ersten Ventilschritt werden die festen Zugaben + Spuelwasser gerechnet; passt das
-nicht ins Zielvolumen, bewegt sich nichts (Failed mit Meldung). Waehrend der pH-Regelung wird vor jeder Dose
+nicht ins Zielvolumen, bewegt sich nichts (Failed mit Meldung). Waehrend der Regelung wird vor jeder Dose
 geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmenge mit (2,25 mL bei Totvolumen
-1,5 mL); zehn Dosen sind 22,5 mL Wasser. Darum `zielvolumen` setzen.
+1,5 mL); zehn Dosen sind 22,5 mL Wasser. Darum `zielvolumen` grosszuegig setzen.
 
-**Abbruch als Failed, mit Meldung im Log und in `dosing_step`:**
-
-- pH bewegt sich nach drei Dosen in dieselbe Richtung um weniger als 0,1 in die erwartete Richtung: Vorrat
-  leer, Zuleitung nicht gefuellt (`vorfuellen`, Abschnitt 11) oder Elektrode haengt.
-- Zielvolumen voll, Ziel-pH nicht erreicht.
-- Kein pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s,
-  oder Status nicht "Good" (AI 1 am Geraet nicht zugeordnet).
-- pH auf der Seite, fuer die kein Port angegeben ist (Port 0).
-- Mehr als 40 Dosen.
-
-**Im Monitoring:** `ph_value` (Kurve), `ph_additions` (Zahl der Dosen), `dosing_addition` (laufender Schritt,
-z.B. "Saeure 1" oder "Zugabe 3: Base 50 uL (pH 8.62 -> Ziel 9)"), `dosing_step`, `dosed_ml` (alle Reagenzien),
-`flushed_ml` (alles Wasser), `delivered_ml` (Summe im Gefaess).
+**Abbruch** wie bei `ph_regelung` (Abschnitt 12). **Monitoring** wie dort, dazu die festen Zugaben in
+`dosing_addition` ("Leitsalz", "Saeure 1", ...).
 
 **Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Blatt 2). Die Routine nimmt Volumina.
 
 **Technik:** `add_recipe_ph` in valve_dosing.py = `plan_recipe` (ohne Auffuellen) + Schritt "pH messen"
-(`PhLoop`, haengt je nach Messwert die naechste Dose an) + Auffuellen nach erreichtem Ziel. `add_recipe` (nur
-Zugaben) und `adjust_ph` (nur Regelung) gibt es im Treiber weiterhin fuer eigene Routinen.
-
-Fuer die Dummy-Umgebung am PC: der Liquiline-Dummy liefert einen festen pH um 7,0, der auf Dosen nicht
-reagiert. Ziel 7 regelt dort nichts und fuellt auf, Ziel 9 endet nach drei NaOH-Dosen mit "pH reagiert
-nicht" - der Abbruchpfad. Die Regelung selbst ist in backend/test/test_valve_dosing.py (PhLoopTests,
-RecipeWithPhTests) mit einer pH-Attrappe geprueft, die auf Base und Saeure reagiert.
+(`PhRegelung`) + Auffuellen. Tests: AnsatzTests in backend/test/test_valve_dosing.py.
 
 ## 10. Erster Lauf am Geraet (10.11.2026)
 
@@ -343,37 +326,54 @@ muss das vor weiteren Ansaetzen nicht wiederholt werden.
 Technisch ist es derselbe Baustein wie `ansatz` (`add_recipe`, Titel "Vorfuellen", kein Zielvolumen).
 Im Log und im Monitoring (`dosing_addition`) steht, welcher Port gerade gefuellt wird.
 
-## 12. Routine `ph_regeln`: pH-Regelung in vier Stufen (11.11.2026)
+## 12. Routine `ph_regelung`: pH in vier Schritten auf das Ziel bringen (11.11.2026)
 
-Nach der Vorgabe des Chemikers, besprochen mit Rafael am 11.11.2026; die Regel in Textform mit Beispielen
-steht in docs/ph_schleife_vorschlag_11-11-2026.txt. Anlass: die Laeufe vom 10.11. (Erkenntnisse-Datei,
+Nach der Vorgabe des Chemikers, besprochen mit Rafael am 11.11.2026. Die Regel in Textform mit Beispiel ab
+Dose 1: docs/ph_schleife_vorschlag_11-11-2026.txt. Anlass: die Laeufe vom 10.11. (Erkenntnisse-Datei,
 Abschnitt 4-6), bei denen 200-uL-Dosen in beide Richtungen gependelt haben.
 
-Vier Flaschen an vier Ports: Base stark, Base schwach, Saeure stark, Saeure schwach (Port 0 = nicht da).
-Vier Stufen in fester Reihenfolge:
+**Flaschen, fest in config.messstand2.yml bei pump1 unter `dosing: ph_ports`** (nicht im Frontend):
 
-| Stufe | Flasche | Dose |
+| Port | Flasche |
+|---|---|
+| 1 | Wasser (`water_port`) |
+| 2 | Saeure schwach |
+| 3 | Saeure stark |
+| 4 | Base schwach |
+| 5 | Base stark |
+
+Port 0 = Flasche nicht da, dann nimmt die Regelung die andere Staerke derselben Richtung. Base hebt den pH,
+Saeure senkt ihn. Vor dem ersten Lauf die Zuleitungen fuellen: `vorfuellen` mit Ports 2, 3, 4, 5.
+
+**Parameter:** `ziel_ph`, `toleranz`, `vol_gross`, `vol_klein` (mL, Start 0.2 und 0.05),
+`wartezeit_ph_messung` (s), `startvolumen` (was schon im Gefaess ist), `zielvolumen` (Obergrenze fuer Dosen +
+Spuelwasser und am Ende Auffuellen mit Wasser; 0 = keine Grenze, kein Auffuellen).
+
+**Die vier Schritte, feste Reihenfolge:**
+
+| Schritt | Flasche | Dose |
 |---|---|---|
 | 1 | stark | `vol_gross` |
 | 2 | stark | `vol_klein` |
 | 3 | schwach | `vol_gross` |
 | 4 | schwach | `vol_klein` |
 
-Richtung nach dem aktuellen pH: unter dem Ziel Base (hebt), ueber dem Ziel Saeure (senkt). Gleiche
-Richtung wie die letzte Dose: Stufe bleibt. Ziel ueber- oder unterschritten: naechste Stufe, nie zurueck.
-Auf Stufe 4 bleibt es, bis der pH im Fenster liegt. Fehlt die Flasche einer Staerke, nimmt die Routine die
-andere Staerke derselben Richtung. Nach jeder Dose: Spuelen, `wartezeit_ph_messung`, wieder messen.
+Je Messung: pH im Fenster -> fertig, auffuellen. Sonst Richtung nach dem aktuellen pH (unter dem Ziel Base,
+ueber dem Ziel Saeure). Liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose: Schritt bleibt.
+Hat er die Seite gewechselt (ueber- oder unterschossen): naechster Schritt, hoechstens 4, nie zurueck. Dose
+foerdern, Spuelen, `wartezeit_ph_messung`, wieder messen.
 
-Parameter: `ziel_ph`, `toleranz`, `port_base_stark`, `port_base_schwach`, `port_saeure_stark`,
-`port_saeure_schwach`, `vol_gross`, `vol_klein` (mL, Start 0.2 und 0.05), `wartezeit_ph_messung`,
-`startvolumen`, `zielvolumen` (Obergrenze fuer Dosen + Spuelwasser, 0 = keine; kein Auffuellen).
+**Abbruch als Failed mit Meldung:** pH bewegt sich nach drei Dosen in dieselbe Richtung nicht (< 0,1):
+Vorrat leer, Zuleitung nicht gefuellt oder Elektrode haengt. Zielvolumen voll, Ziel-pH nicht erreicht. Kein
+pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s, Status
+nicht "Good". Mehr als 40 Dosen.
 
-Abbruch als Failed mit Meldung: pH reagiert auf drei Dosen in dieselbe Richtung nicht, Zielvolumen voll,
-kein oder veralteter pH-Wert, Status nicht Good, mehr als 40 Dosen, keine Flasche fuer die noetige Richtung.
+**Im Monitoring** `dosing_addition` je Dose, z.B. "Dose 3, Schritt 2: starke Saeure 50 uL (Port 3, pH 10.60,
+Ziel 9) - Seite gewechselt, naechster Schritt". `ph_additions` zaehlt die Dosen, `ph_value` ist die Kurve.
 
-Im Monitoring `dosing_addition` je Dose: "Dose 3, Stufe 2: starke Saeure 50 uL (pH 10.60, Ziel 9) - Ziel
-ueberschritten, naechste Stufe". `ph_additions` zaehlt die Dosen.
+**Bekannte Grenze:** Schiesst selbst `vol_klein` der schwachen Flasche noch ueber das Ziel, pendelt es in
+Schritt 4, bis es trifft oder nach 40 Dosen abbricht. Dann `vol_klein` kleiner oder die schwache Flasche
+verduennen. Die Regel kennt keinen Rueckweg zu groesseren Dosen (bewusst, Rafael 11.11.2026, Variante 1).
 
-Technik: `PhStageLoop` und `adjust_ph_staged` in valve_dosing.py, gleiche Schnittstelle wie die bisherige
-`PhLoop` (die in `ansatz` steckt). Sobald der Test der Regelung allein gelaufen ist, kommt die Vier-Stufen-
-Logik auch in `ansatz`. Tests: PhStageLoopTests in backend/test/test_valve_dosing.py.
+Technik: `PhRegelung` und `regulate_ph` in valve_dosing.py. Dieselbe Regelung steckt in `ansatz`
+(Abschnitt 9). Tests: PhRegelungTests in backend/test/test_valve_dosing.py.
