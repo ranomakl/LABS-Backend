@@ -68,8 +68,7 @@ Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind 
   WENN auch 0:     ABBRUCH "keine Flasche fuer <richtung>"   (wird schon vor dem Start geprueft)
 
   # 4. Sicherheit
-  WENN 3 Dosen in Folge gleiche richtung UND pH dabei < 0,1 in die erwartete Richtung bewegt:
-      ABBRUCH "pH reagiert nicht"                    (Vorrat leer, Schlauch leer, Elektrode haengt)
+  (keine "pH reagiert nicht"-Pruefung - auf Wunsch von Rafael 11.11.2026 entfernt, war zu streng)
   WENN zielvolumen > 0 UND dose + spuelmenge > zielvolumen - startvolumen - bisher gefoerdert:
       ABBRUCH "Zielvolumen voll, Ziel-pH nicht erreicht"
   WENN das die 41. Dose waere:

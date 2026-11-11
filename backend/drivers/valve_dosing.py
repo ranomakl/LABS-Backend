@@ -44,7 +44,7 @@ gleiche Seite wie vor der letzten Dose = Schritt bleibt, Seite gewechselt = naec
 Jede Dose mit Spuelen, dann Wartezeit, dann wieder messen, bis der pH im Zielfenster liegt; danach mit Wasser
 auf das Zielvolumen auffuellen. regulate_ph = nur Regelung + Auffuellen (Routine ph_regelung); add_recipe_ph =
 feste Zugaben + Regelung + Auffuellen (Routine ansatz). Abbruch (Failed): kein oder veralteter pH-Wert,
-Status nicht Good, Zielvolumen voll, pH reagiert nicht (Vorrat leer?), zu viele Dosen. Die Schrittliste
+Status nicht Good, Zielvolumen voll, Notbremse nach 40 Dosen. Die Schrittliste
 waechst dabei dynamisch (Step 'ph' haengt die naechsten Schritte an).
 """
 
@@ -335,15 +335,14 @@ class PhRegelung:
       - Schritt: erste Dose 1; liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose, bleibt der
         Schritt; hat er die Seite gewechselt (ueber-/unterschossen), naechster Schritt, hoechstens 4, nie zurueck.
       - Fehlt die Flasche der noetigen Staerke (Port 0), wird die andere Staerke derselben Richtung genommen.
-      - Sicherheit: 3 Dosen in Folge gleiche Richtung ohne Bewegung (< no_response_delta) -> Abbruch;
-        Dose + Spuelmenge passt nicht mehr unter das Zielvolumen -> Abbruch; max_additions -> Abbruch.
+      - Abbruch nur, wenn Dose + Spuelmenge nicht mehr unter das Zielvolumen passen (Rafael 11.11.2026:
+        keine "pH reagiert nicht"-Pruefung mehr, die war zu streng). Notbremse: max_additions Dosen.
     Nach erreichtem Ziel: fill_after -> mit Wasser auf target_volume_ml auffuellen (0 = nicht)."""
 
     STAGES = (("stark", "gross"), ("stark", "klein"), ("schwach", "gross"), ("schwach", "klein"))
 
     def __init__(self, target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume_ml, start_volume_ml,
-                 settings: DosingSettings, positions=None, max_additions=40, no_response_additions=3,
-                 no_response_delta=0.1):
+                 settings: DosingSettings, positions=None, max_additions=40):
         if settings.ph_ports is None:
             raise ValueError("dosing: ph_ports fehlt - die Flaschen der pH-Regelung muessen in der Konfiguration stehen")
         self.ports = {}
@@ -358,8 +357,6 @@ class PhRegelung:
         self.target_volume_ml = _number_or_zero(target_volume_ml)
         self.start_volume_ml = _number_or_zero(start_volume_ml)
         self.max_additions = int(float(max_additions))
-        self.no_response_additions = int(float(no_response_additions))
-        self.no_response_delta = float(no_response_delta)
         self.fill_after = True
         if not 0 < self.target_ph < 14:
             raise ValueError(f"Ziel-pH {self.target_ph} ausserhalb 0-14")
@@ -397,12 +394,6 @@ class PhRegelung:
                 reason = "gleiche Seite, Schritt bleibt"
         if self.additions >= self.max_additions:
             raise RuntimeError(f"Ziel-pH nach {self.additions} Dosen nicht erreicht (pH {ph:.2f}, Ziel {self.target_ph:g})")
-        same = [h for h in self.history[-self.no_response_additions:] if h[0] == direction]
-        if len(same) >= self.no_response_additions:
-            moved = (ph - same[0][1]) if direction == "Base" else (same[0][1] - ph)
-            if moved < self.no_response_delta:
-                raise RuntimeError(f"pH reagiert nicht auf {len(same)} Dosen {direction} (pH {same[0][1]:.2f} -> {ph:.2f}) - "
-                                   f"Vorrat leer, Schlauch nicht gefuellt oder Elektrode haengt?")
         strength, size = self.STAGES[self.stage]
         port = self.ports.get((direction, strength))
         used_strength = strength

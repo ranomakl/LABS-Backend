@@ -367,8 +367,8 @@ ueber dem Ziel Saeure). Liegt der pH auf derselben Seite des Ziels wie vor der l
 Hat er die Seite gewechselt (ueber- oder unterschossen): naechster Schritt, hoechstens 4, nie zurueck. Dose
 foerdern, Spuelen, `wartezeit_ph_messung`, wieder messen.
 
-**Abbruch als Failed mit Meldung:** pH bewegt sich nach drei Dosen in dieselbe Richtung nicht (< 0,1):
-Vorrat leer, Zuleitung nicht gefuellt oder Elektrode haengt. Zielvolumen voll, Ziel-pH nicht erreicht. Kein
+**Abbruch als Failed mit Meldung:** Zielvolumen voll, Ziel-pH nicht erreicht (einzige fachliche Grenze; die
+"pH reagiert nicht"-Pruefung wurde am 11.11. auf Wunsch von Rafael entfernt, sie war zu streng). Kein
 pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s, Status
 nicht "Good". Mehr als 40 Dosen.
 

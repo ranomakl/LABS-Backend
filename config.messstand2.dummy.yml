@@ -358,7 +358,7 @@ experiments:
   # gewechselt (ueber-/unterschossen): naechster Schritt, nie zurueck. Nach jeder Dose: Spuelen,
   # wartezeit_ph_messung s warten, wieder messen - bis ziel_ph +- toleranz. Dann mit Wasser auf zielvolumen
   # auffuellen (0 = nicht auffuellen, keine Grenze). startvolumen = was schon im Gefaess ist.
-  # Abbruch (Failed) mit Meldung: pH reagiert nicht auf 3 Dosen, Zielvolumen voll, kein/veralteter pH-Wert,
+  # Abbruch (Failed) mit Meldung: Zielvolumen voll (einzige fachliche Grenze, Rafael 11.11.), kein/veralteter pH-Wert,
   # Status nicht Good, mehr als 40 Dosen. Vorher Schlaeuche fuellen: Routine vorfuellen (Ports 2, 3, 4, 5).
   ph_regelung:
     conditions:
