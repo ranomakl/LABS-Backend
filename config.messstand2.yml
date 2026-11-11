@@ -280,9 +280,11 @@ experiments:
   # ---- Ansatz: Reaktionsloesung ansetzen UND auf den Ziel-pH bringen (11.11.2026) -----------------------------
   # EINE Routine fuer den ganzen Ansatz, Volumina direkt in mL (die Umrechnung aus Konzentrationen nach
   # Blatt 2 der Exceltabelle ist noch offen und wird vorher von Hand gemacht).
-  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 (feste Zugaben, Volumen 0 = entfaellt, dazwischen
-  #         pause_zugabe s) -> wartezeit_ph_messung s warten -> pH-Regelung wie ph_regelung (Flaschen aus
-  #         dosing: ph_ports) -> mit Wasser auf zielvolumen auffuellen (0 = nicht auffuellen, keine Grenze).
+  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH (feste Zugaben, Volumen 0 = entfaellt,
+  #         dazwischen pause_zugabe s) -> wartezeit_ph_messung s warten -> pH-Regelung wie ph_regelung
+  #         (Flaschen aus dosing: ph_ports) -> mit Wasser auf zielvolumen auffuellen (0 = nicht, keine Grenze).
+  # vol_naoh = aequimolare Menge 10 M NaOH zur Carbonsaeure, VON HAND gerechnet (Vorgabe: 1 M CA auf 100 mL
+  #         Gesamtvolumen -> 10 mL 10 M NaOH); kommt aus dem Port der starken Base (ph_ports base_stark = 4).
   # Jede Chemikalien-Zugabe und jede Dose wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
   # VOR dem ersten Ventilschritt wird gerechnet: passen die festen Zugaben + Spuelwasser nicht ins Zielvolumen,
   # bewegt sich nichts, Lauf endet als Failed. Abbrueche in der Regelung: siehe ph_regelung.
@@ -297,6 +299,7 @@ experiments:
       vol_saeure1: [float, mL]
       port_saeure2: [float, ""]
       vol_saeure2: [float, mL]
+      vol_naoh: [float, mL]
       ziel_ph: [float, pH]
       toleranz: [float, pH]
       vol_gross: [float, mL]
@@ -317,7 +320,7 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
+      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}", vol_naoh: "{vol_naoh}" }]
 
   # ---- Schlaeuche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
   # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je

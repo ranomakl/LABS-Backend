@@ -248,6 +248,7 @@ der Regelung stehen fest in der Config (`dosing: ph_ports`), nicht im Frontend (
 | `vol_wasser` | mL | Wasser vorab; 0 = keins |
 | `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure (Reaktand), feste Zugabe; 0 = keine |
 | `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; 0 = keine |
+| `vol_naoh` | mL | aequimolare Menge NaOH zur Carbonsaeure, von Hand gerechnet (Vorgabe: 1 M CA auf 100 mL -> 10 mL 10 M NaOH); aus dem Port der starken Base (`ph_ports base_stark`); 0 = keine |
 | `ziel_ph`, `toleranz` | pH | Ziel, z.B. 9 und 0.2: Schluss, wenn der pH zwischen 8,8 und 9,2 liegt |
 | `vol_gross`, `vol_klein` | mL | Dosen der Regelung, Start 0.2 und 0.05 |
 | `wartezeit_ph_messung` | s | nach den festen Zugaben und nach jeder Dose warten, bevor gemessen wird |
@@ -256,8 +257,8 @@ der Regelung stehen fest in der Config (`dosing: ph_ports`), nicht im Frontend (
 
 **Ablauf**
 
-1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen
-   `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
+1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH (`vol_naoh`), jede Chemikalie mit Spuelen
+   (Abschnitt 1), dazwischen `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
 2. `wartezeit_ph_messung` warten, pH messen.
 3. pH-Regelung in vier Schritten, genau wie `ph_regelung` (Abschnitt 12).
 4. Mit Wasser auf `zielvolumen` auffuellen.

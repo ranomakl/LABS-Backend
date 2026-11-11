@@ -809,6 +809,28 @@ class AnsatzTests(unittest.TestCase):
         self.assertEqual(doses(pump), [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50)])
         self.assertAlmostEqual(pump.last("delivered_ml"), 20.0)
 
+    def test_naoh_aequimolar_vor_der_regelung(self):
+        # Saeure 1 10 uL stark (-0,2) -> 4,8; NaOH 200 uL aus dem Port der starken Base (im Test 5, +4) -> 8,8:
+        # im Fenster, keine Dose noetig
+        pump, meter = make_ph_pump(5.0)
+        pump.add_recipe_ph("Saeure 1=3.0:0.01", target_ph=9.0, tolerance=0.2, wait_s=0, target_volume=10,
+                           vol_naoh=0.2)
+        pump.run_all(600)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1, 5, 1, 1])
+        self.assertAlmostEqual(meter.ph, 8.8)
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(labels[1:3], ["Saeure 1", "NaOH"])
+        self.assertEqual(pump.last("ph_additions"), 0)
+
+    def test_naoh_ohne_starke_base_in_der_config(self):
+        pump, meter = make_ph_pump(5.0, ports={"saeure_stark": 3, "base_schwach": 4})
+        pump.add_recipe_ph("Saeure 1=3.0:0.01", target_ph=9.0, vol_naoh=0.2)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("base_stark", pump.last("dosing_step"))
+
     def test_budget_der_festen_zugaben_vor_dem_start(self):
         pump, meter = make_ph_pump(7.0)
         pump.add_recipe_ph(self.LINE, target_ph=9.0, target_volume=1.0)

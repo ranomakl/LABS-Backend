@@ -536,15 +536,25 @@ class ValveDosingMixIn:
         return self._dosing_request(str(title), plan)
 
     def add_recipe_ph(self, additions, target_ph, tolerance=0.2, vol_gross=0.2, vol_klein=0.05, wait_s=30,
-                      target_volume=0, pause_s=0.0, start_volume=0.0, title="Ansatz", **kwargs):
-        """Routine ansatz: erst die festen Zugaben aus `additions` (wie add_recipe, ohne Auffuellen), dann wait_s
-        warten, dann die pH-Regelung wie regulate_ph, zum Schluss mit Wasser auf target_volume auffuellen.
-        Vor dem Start: passen die festen Zugaben samt Spuelwasser nicht ins Zielvolumen -> Failed ohne Bewegung."""
+                      target_volume=0, pause_s=0.0, start_volume=0.0, vol_naoh=0.0, title="Ansatz", **kwargs):
+        """Routine ansatz: erst die festen Zugaben aus `additions` (wie add_recipe, ohne Auffuellen), dann
+        vol_naoh mL NaOH aus dem Port der starken Base (dosing: ph_ports base_stark; aequimolare Menge, von Hand
+        gerechnet; 0 = keine), dann wait_s warten, dann die pH-Regelung wie regulate_ph, zum Schluss mit Wasser
+        auf target_volume auffuellen. Vor dem Start: passen die festen Zugaben samt Spuelwasser nicht ins
+        Zielvolumen -> Failed ohne Bewegung."""
         def plan(settings, positions):
             self._dosing_check_ph(settings)
             loop = PhRegelung(target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume, start_volume,
                               settings, positions)
             parsed = parse_additions(additions)
+            naoh_ml = _number_or_zero(vol_naoh)
+            if naoh_ml < 0:
+                raise ValueError(f"vol_naoh {naoh_ml} mL darf nicht negativ sein")
+            if naoh_ml > 0:
+                naoh_port = settings.ph_ports.get("base_stark") or 0
+                if not naoh_port:
+                    raise ValueError("vol_naoh > 0, aber dosing: ph_ports hat keine starke Base (base_stark = 0)")
+                parsed.append(("NaOH", naoh_port, naoh_ml))
             steps = plan_recipe(parsed, settings, target_volume_ml=0, pause_s=pause_s,
                                 start_volume_ml=start_volume, positions=positions) if parsed else []
             fixed = loop.start_volume_ml + plan_totals(steps)["total_ml"]
