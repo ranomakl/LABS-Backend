@@ -317,7 +317,7 @@ ein Becherglas**, nicht in den Reaktor.
 | Parameter | Einheit | Bedeutung |
 |---|---|---|
 | `vol_wasser` | mL | Wasser zuerst: Wasserweg und Schlauch zum Reaktor luftfrei (z.B. 5) |
-| `port_a` .. `port_d` | - | die Chemikalien-Ports, z.B. 2 und 3; nicht genutzte auf 0 |
+| `port_a` .. `port_f` | - | die Chemikalien-Ports 2 bis 7 (z.B. 2, 3, 4, 5, 6, 7); nicht genutzte auf 0; sechs Felder seit 11.11.2026 |
 | `vol_je_port` | mL | Menge je Zuleitung (2 mL reichen fuer etwa 1 m Schlauch mit 1,65 mm innen) |
 
 Ablauf: Wasser -> Port a mit Spuelen -> Port b mit Spuelen -> ... Jede Chemikalie laeuft bis zum Ventil
