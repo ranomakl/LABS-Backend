@@ -10,9 +10,12 @@ den Ventil-Ports und stehen in der Konfiguration, nicht im Frontend.
 
   Port 1   Wasser
   Port 2   Saeure schwach
-  Port 3   Saeure stark
-  Port 4   Base schwach
-  Port 5   Base stark
+  Port 3   Base schwach
+  Port 4   Base stark
+  Port 5   Saeure stark
+  Port 6   Carbonsaeure   (feste Zugabe in ansatz, Port dort eingeben)
+  Port 7   Leitsalz       (feste Zugabe in ansatz, Port dort eingeben)
+  (so angesteckt am 11.11.2026)
 
 Base HEBT den pH, Saeure SENKT ihn.
 
@@ -99,11 +102,11 @@ am 10.11. gemessen.
 
   Dose  pH gemessen  Seite    Schritt  Flasche                        Warum
   ----  -----------  -------  -------  -----------------------------  ------------------------------
-   1       4,0       unter       1     Port 5 starke Base 200 uL      Anfang
-   2       4,3       unter       1     Port 5 starke Base 200 uL      gleiche Seite, Schritt bleibt
-   3      11,2       ueber       2     Port 3 starke Saeure 50 uL     Seite gewechselt -> Schritt 2
-   4      10,4       ueber       2     Port 3 starke Saeure 50 uL     gleiche Seite
-   5       8,6       unter       3     Port 4 schwache Base 200 uL    Seite gewechselt -> Schritt 3
+   1       4,0       unter       1     Port 4 starke Base 200 uL      Anfang
+   2       4,3       unter       1     Port 4 starke Base 200 uL      gleiche Seite, Schritt bleibt
+   3      11,2       ueber       2     Port 5 starke Saeure 50 uL     Seite gewechselt -> Schritt 2
+   4      10,4       ueber       2     Port 5 starke Saeure 50 uL     gleiche Seite
+   5       8,6       unter       3     Port 3 schwache Base 200 uL    Seite gewechselt -> Schritt 3
    6       9,3       ueber       4     Port 2 schwache Saeure 50 uL   Seite gewechselt -> Schritt 4
            9,1       im Fenster         FERTIG, Auffuellen auf zielvolumen
 
@@ -119,7 +122,7 @@ in Schritt 4, bis es trifft oder nach 40 Dosen abbricht. Dann vol_klein kleiner 
 verduennen. Einen Rueckweg zu groesseren Dosen gibt es bewusst nicht (Variante 1, Rafael 11.11.2026).
 
 Im Monitoring steht je Dose (dosing_addition), z.B.:
-  "Dose 3, Schritt 2: starke Saeure 50 uL (Port 3, pH 10.40, Ziel 9) - Seite gewechselt, naechster Schritt"
+  "Dose 3, Schritt 2: starke Saeure 50 uL (Port 5, pH 10.40, Ziel 9) - Seite gewechselt, naechster Schritt"
 
 
 6. Wo es im Code steht
@@ -149,8 +152,8 @@ backend/drivers/valve_dosing.py
 
 config.messstand2.yml
 
-  Zeile 64    ph_ports                die Flaschen: saeure_schwach 2, saeure_stark 3, base_schwach 4,
-                                      base_stark 5 (bei pump1 unter dosing:)
+  Zeile 64    ph_ports                die Flaschen: saeure_schwach 2, base_schwach 3, base_stark 4,
+                                      saeure_stark 5 (bei pump1 unter dosing:)
   Zeile 287   ansatz                  Routine mit festen Zugaben + Regelung + Auffuellen
   Zeile 325   vorfuellen              Schlaeuche fuellen, VOR dem ersten Lauf des Tages
   Zeile 355   ph_regelung             Routine nur Regelung + Auffuellen

@@ -338,9 +338,13 @@ Abschnitt 4-6), bei denen 200-uL-Dosen in beide Richtungen gependelt haben.
 |---|---|
 | 1 | Wasser (`water_port`) |
 | 2 | Saeure schwach |
-| 3 | Saeure stark |
-| 4 | Base schwach |
-| 5 | Base stark |
+| 3 | Base schwach |
+| 4 | Base stark |
+| 5 | Saeure stark |
+| 6 | Carbonsaeure (feste Zugabe in `ansatz`, Port dort eingeben) |
+| 7 | Leitsalz (feste Zugabe in `ansatz`, Port dort eingeben) |
+
+So angesteckt am 11.11.2026.
 
 Port 0 = Flasche nicht da, dann nimmt die Regelung die andere Staerke derselben Richtung. Base hebt den pH,
 Saeure senkt ihn. Vor dem ersten Lauf die Zuleitungen fuellen: `vorfuellen` mit Ports 2, 3, 4, 5.

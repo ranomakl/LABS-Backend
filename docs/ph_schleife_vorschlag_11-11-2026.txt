@@ -4,7 +4,8 @@ pH-Schleife - Regel fuer die Routine ph_regeln (11.11.2026)
 Nach der Vorgabe des Chemikers (Mail an Rafael, Zitat unten), besprochen mit Rafael am 11.11.2026.
 Gebaut am 11.11.2026: backend/drivers/valve_dosing.py (PhRegelung, regulate_ph, add_recipe_ph), Routinen
 ph_regelung und ansatz in config.messstand2.yml. Die Flaschen stehen FEST in der Config (dosing: ph_ports),
-nicht im Frontend (Rafael): Port 1 Wasser, 2 Saeure schwach, 3 Saeure stark, 4 Base schwach, 5 Base stark. Grundlage: die Laeufe vom 10.11.2026 (docs/messstand2_erkenntnisse_10-11-2026.txt,
+nicht im Frontend (Rafael): Port 1 Wasser, 2 Saeure schwach, 3 Base schwach, 4 Base stark, 5 Saeure stark,
+6 Carbonsaeure, 7 Leitsalz (so angesteckt am 11.11.2026). Grundlage: die Laeufe vom 10.11.2026 (docs/messstand2_erkenntnisse_10-11-2026.txt,
 Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind (pH 2,5 <-> 11).
 
 
@@ -62,7 +63,7 @@ Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind 
   schritt 2: stark,   vol_klein
   schritt 3: schwach, vol_gross
   schritt 4: schwach, vol_klein
-  port = ph_ports[<richtung>_<staerke>]   (Config: 2 Saeure schwach, 3 Saeure stark, 4 Base schwach, 5 Base stark)
+  port = ph_ports[<richtung>_<staerke>]   (Config: 2 Saeure schwach, 3 Base schwach, 4 Base stark, 5 Saeure stark)
   WENN port = 0:   die andere Staerke derselben Richtung (Dose bleibt wie im Schritt)
   WENN auch 0:     ABBRUCH "keine Flasche fuer <richtung>"   (wird schon vor dem Start geprueft)
 
@@ -89,11 +90,11 @@ Ziel 9, Toleranz 0,2, vol_gross 200 uL, vol_klein 50 uL, Start pH 4,0. Werte erf
 
   Dose  pH davor  Seite   Schritt  Flasche                          Grund
   ----  --------  ------  -------  -------------------------------  ---------------------------------
-   1      4,0     unter      1     Port 5 starke Base 200 uL        erste Dose
-   2      4,3     unter      1     Port 5 starke Base 200 uL        gleiche Seite, Schritt bleibt
-   3     11,2     ueber      2     Port 3 starke Saeure 50 uL       Seite gewechselt -> Schritt 2
-   4     10,4     ueber      2     Port 3 starke Saeure 50 uL       gleiche Seite
-   5      8,6     unter      3     Port 4 schwache Base 200 uL      Seite gewechselt -> Schritt 3
+   1      4,0     unter      1     Port 4 starke Base 200 uL        erste Dose
+   2      4,3     unter      1     Port 4 starke Base 200 uL        gleiche Seite, Schritt bleibt
+   3     11,2     ueber      2     Port 5 starke Saeure 50 uL       Seite gewechselt -> Schritt 2
+   4     10,4     ueber      2     Port 5 starke Saeure 50 uL       gleiche Seite
+   5      8,6     unter      3     Port 3 schwache Base 200 uL      Seite gewechselt -> Schritt 3
    6      9,3     ueber      4     Port 2 schwache Saeure 50 uL     Seite gewechselt -> Schritt 4
    7      9,1     im Fenster        FERTIG, dann Auffuellen          8,8-9,2
 

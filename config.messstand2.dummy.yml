@@ -66,11 +66,13 @@ devices:
       ph_observable: ph_value
       # Flaschen der pH-Regelung, fest verdrahtet (Rafael 11.11.2026) - NICHT im Frontend. 0 = Flasche nicht da,
       # dann nimmt die Regelung die andere Staerke derselben Richtung. Base hebt den pH, Saeure senkt ihn.
+      # Angesteckt am 11.11.2026 (Rafael): 1 Wasser, 2 Saeure schwach, 3 Base schwach, 4 Base stark, 5 Saeure stark,
+      # 6 Carbonsaeure, 7 Leitsalz (6 und 7 sind die festen Zugaben in ansatz, dort als Port eingeben).
       ph_ports:
         saeure_schwach: 2
-        saeure_stark: 3
-        base_schwach: 4
-        base_stark: 5
+        base_schwach: 3
+        base_stark: 4
+        saeure_stark: 5
 
   # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
   # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
