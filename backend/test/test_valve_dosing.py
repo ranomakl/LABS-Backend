@@ -730,7 +730,7 @@ class PhRegelungTests(unittest.TestCase):
         # Rafael 11.11.2026: keine "reagiert nicht"-Pruefung - es dosiert weiter, bis das Zielvolumen voll ist
         pump, meter = make_ph_pump(4.0)
         meter.dead = True
-        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=30, start_volume=10)   # Platz fuer 6 Dosen a 3,2 mL
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=15.7, start_volume=10)   # Platz fuer 6 Dosen a 0,95 mL
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertIn("Zielvolumen", pump.last("dosing_step"))
