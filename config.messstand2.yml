@@ -52,7 +52,7 @@ devices:
     dosing:
       valve: valve1
       water_port: 1            # Wasser gehoert an Port 1: dorthin faehrt das Ventil beim Backend-Start
-      dead_volume_ml: 1.5      # 10.11.2026 Rafael: Nachmessung ca. 1520 uL, eingetragen als 1,5 mL. Spuelmenge = 1,5 x = 2,25 mL. Vorher 1.85 (erste Messung 10.11.)
+      dead_volume_ml: 2.0      # 11.11.2026 Rafael: neu gemessen 2,0 mL. Spuelmenge = 1,5 x = 3,0 mL. Vorher 1,5 (10.11.), davor 1,85
       flush_factor: 1.5        # Spuelmenge = 1,5 x Totvolumen (Anforderung: 1- bis 2-fach)
       min_rate_ml_min: 0.018   # Bereich der Pumpe mit Kopf DG 6 Rollen / Schlauch Nr. 5 (1,65 mm)
       max_rate_ml_min: 5.0     # am Geraet getestet bis 5 mL/min (04.11.2026); laut Handbuch bis 18
