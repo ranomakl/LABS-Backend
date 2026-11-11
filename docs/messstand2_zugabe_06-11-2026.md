@@ -381,3 +381,8 @@ verduennen. Die Regel kennt keinen Rueckweg zu groesseren Dosen (bewusst, Rafael
 
 Technik: `PhRegelung` und `regulate_ph` in valve_dosing.py. Dieselbe Regelung steckt in `ansatz`
 (Abschnitt 9). Tests: PhRegelungTests in backend/test/test_valve_dosing.py.
+
+**Aenderungswunsch (Rafael, 11.11.2026, am Geraet, erster Lauf abgebrochen):** `startvolumen` soll das Volumen
+sein, das aufgefuellt werden soll, nicht das, was schon im Gefaess ist. Heute steht in config.messstand2.yml
+(Kommentar zu `ph_regelung`), in der Parameterliste oben und in routinen_uebersicht.md noch "was schon im
+Gefaess ist"; Treiber (`start_volume` in regulate_ph), Konfig und Doku entsprechend umstellen.
