@@ -1,0 +1,128 @@
+pH-Schleife - Regel fuer die Routine ph_regeln (11.11.2026)
+============================================================
+
+Nach der Vorgabe des Chemikers (Mail an Rafael, Zitat unten), besprochen mit Rafael am 11.11.2026.
+Gebaut am 11.11.2026: backend/drivers/valve_dosing.py (PhStageLoop, adjust_ph_staged), Routine ph_regeln
+in config.messstand2.yml. Grundlage: die Laeufe vom 10.11.2026 (docs/messstand2_erkenntnisse_10-11-2026.txt,
+Abschnitt 4-6), bei denen feste 200-uL-Dosen in beide Richtungen gependelt sind (pH 2,5 <-> 11).
+
+
+0. Vorgabe des Chemikers (Wortlaut, gekuerzt)
+---------------------------------------------
+
+  "wir haben jeweils eine starke und eine schwache Saeure und Base. Je nachdem ob der pH steigen oder
+   sinken soll, wird ein Volumen X (wsl. erstmal 200 uL) der starken hinzugegeben, gewartet bis der pH
+   sich eingestellt hat, dann entweder bestaetigt, noch etwas hinzugegeben, oder wenn der pH ueber-/
+   untertroffen wurde, wird die Gegenrichtung in Volumen Y zugegeben, bis der pH erreicht bzw. ueber-/
+   untertroffen wurde. Das Ganze erst mit stark/hohes Volumen, dann stark/kleines Volumen, dann
+   schwach/hohes Volumen, dann schwach/kleines Volumen. Mathematisch geht es nicht einfacher, weil der
+   pH sich logarithmisch und substanzabhaengig aendert. Die Volumina muessen in der Testung optimiert
+   werden; erstmal 200 und 50 uL."
+
+  Hinweis: in der Vorgabe steht "Saeure steigert pH, Base senkt" - das ist vertauscht. Base HEBT den pH,
+  Saeure SENKT ihn. So ist es gebaut.
+
+
+1. Parameter der Routine ph_regeln
+----------------------------------
+
+  ziel_ph, toleranz           Ziel und Fenster, z.B. 9 und 0,2 -> fertig zwischen 8,8 und 9,2
+  port_base_stark             Ventil-Ports der vier Flaschen, 0 = Flasche nicht vorhanden
+  port_base_schwach
+  port_saeure_stark
+  port_saeure_schwach
+  vol_gross                   grosse Dose in mL, Start 0.2
+  vol_klein                   kleine Dose in mL, Start 0.05
+  wartezeit_ph_messung        Sekunden nach jeder Dose (nach dem Spuelen) bis zur Messung, z.B. 30
+  startvolumen                was schon im Gefaess ist, mL
+  zielvolumen                 Obergrenze fuer alles, was dazukommt (Dosen + Spuelwasser); 0 = keine
+                              Grenze. KEIN Auffuellen in dieser Routine.
+
+
+2. Die Schleife (einmal pro Messung)
+------------------------------------
+
+  Stufen:   1 = stark/vol_gross   2 = stark/vol_klein   3 = schwach/vol_gross   4 = schwach/vol_klein
+  Merker:   stufe = 1, letzte Dose: richtung, pH davor
+
+  pH messen
+
+  WENN |ziel_ph - pH| <= toleranz:
+      fertig
+
+  # 1. Richtung nach dem aktuellen pH
+  WENN pH < ziel_ph:   richtung = "Base"      (hebt)
+  SONST:               richtung = "Saeure"    (senkt)
+
+  # 2. Stufe
+  WENN erste Dose:                                   stufe = 1
+  SONST WENN richtung = richtung der letzten Dose:   stufe bleibt
+  SONST (Ziel ueber-/unterschritten):                stufe = stufe + 1, hoechstens 4, nie zurueck
+
+  # 3. Flasche und Dose aus der Stufe
+  stufe 1: stark,   vol_gross
+  stufe 2: stark,   vol_klein
+  stufe 3: schwach, vol_gross
+  stufe 4: schwach, vol_klein
+  port = port_<richtung>_<staerke>
+  WENN port = 0:   die andere Staerke derselben Richtung (Dose bleibt wie in der Stufe)
+  WENN auch 0:     ABBRUCH "keine Flasche fuer <richtung>"   (wird schon vor dem Start geprueft)
+
+  # 4. Sicherheit
+  WENN 3 Dosen in Folge gleiche richtung UND pH dabei < 0,1 in die erwartete Richtung bewegt:
+      ABBRUCH "pH reagiert nicht"                    (Vorrat leer, Schlauch leer, Elektrode haengt)
+  WENN zielvolumen > 0 UND dose + spuelmenge > zielvolumen - startvolumen - bisher gefoerdert:
+      ABBRUCH "Zielvolumen voll, Ziel-pH nicht erreicht"
+  WENN das die 41. Dose waere:
+      ABBRUCH "zu viele Dosen"
+  (ausserdem: kein pH-Wert innerhalb 15 s, Wert aelter als 15 s, Status nicht Good -> ABBRUCH)
+
+  # 5. Ausfuehren
+  dose aus port foerdern, mit Wasser spuelen, wartezeit_ph_messung warten
+  merken: richtung, pH davor
+  Monitoring/Log: "Dose n, Stufe s: <Flasche> <dose> uL (pH davor, Ziel) - Grund"
+  zurueck zu "pH messen"
+
+
+3. Beispiel ab Dose 1
+---------------------
+
+Ziel 9, Toleranz 0,2, vol_gross 200 uL, vol_klein 50 uL, Start pH 4,0. Werte erfunden, Muster wie 10.11.
+
+  Dose  pH davor  Richtung  Stufe  Dose                       Grund
+  ----  --------  --------  -----  -------------------------  ---------------------------------------
+   1      4,0      Base       1    starke Base 200 uL         erste Dose
+   2      4,3      Base       1    starke Base 200 uL         gleiche Richtung, Stufe bleibt
+   3     11,2      Saeure     2    starke Saeure 50 uL        Ziel ueberschritten -> Stufe 2
+   4     10,4      Saeure     2    starke Saeure 50 uL        gleiche Richtung
+   5      8,6      Base       3    schwache Base 200 uL       Ziel unterschritten -> Stufe 3
+   6      9,3      Saeure     4    schwache Saeure 50 uL      Ziel ueberschritten -> Stufe 4
+   7      9,1      -          -    FERTIG                     im Fenster 8,8-9,2
+
+  Verbrauch: 0,9 mL Reagenz, 6 Spuelungen = 13,5 mL Wasser.
+  Zum Vergleich 10.11. (nur stark/gross in beide Richtungen): 10 Dosen, 22,5 mL Wasser, Abbruch.
+
+Faellt der pH auf Stufe 4 weiter hin und her, bleibt es bei schwach/klein, bis es trifft oder nach
+40 Dosen abbricht. Dann ist vol_klein zu gross oder die schwache Flasche zu konzentriert - beim naechsten
+Lauf kleiner einstellen bzw. verduennen.
+
+
+4. Was die Zahl der Dosen staerker bestimmt als die Regel
+---------------------------------------------------------
+
+- Jede Dose kostet dasselbe: 2,25 mL Spuelwasser (Totvolumen 1,5 mL x 1,5) und eine Wartezeit. Das
+  Glas wird durch das Spuelwasser voll, nicht durch die Dosen (10 Dosen = 2 mL Reagenz, 22,5 mL Wasser).
+- Konzentration der schwachen Flaschen so waehlen, dass 200 uL nah am Ziel etwa 0,3 pH bewegen.
+- Schlauch Ventil -> Reaktor kuerzen: bei 0,5 mL Totvolumen nur 0,75 mL Spuelen je Dose (Faktor 3).
+- Grosses Volumen einer verduennten Loesung dosiert die Pumpe genauer als kleines Volumen einer starken
+  (ein Rollensegment des Schlauchs fasst ca. 30 uL).
+- Reines Wasser ist der schwerste Fall (ungepuffert); echte Ansaetze mit Leitsalz/Carbonsaeure sind
+  gutmuetiger.
+
+
+5. Spaeter
+----------
+
+- Dieselbe Vier-Stufen-Logik in die Routine ansatz uebernehmen (nach den festen Zugaben, vor dem
+  Auffuellen), sobald der Test der Regelung allein gelaufen ist. ansatz regelt bis dahin noch mit der
+  alten Zwei-Flaschen-Logik (NaOH / Saeure 1, 200 uL weit weg, 50 uL nah dran).

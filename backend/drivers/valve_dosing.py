@@ -383,6 +383,94 @@ class PhLoop:
         return port, dose, f"Zugabe {self.additions}: {what} {dose * 1000:g} uL (pH {ph:.2f} -> Ziel {self.target_ph:g})"
 
 
+class PhStageLoop:
+    """pH-Regelung nach der Vorgabe des Chemikers (11.11.2026): vier Flaschen (Base stark/schwach, Saeure
+    stark/schwach) und vier Stufen in fester Reihenfolge
+        1 stark/gross -> 2 stark/klein -> 3 schwach/gross -> 4 schwach/klein.
+    Richtung nach dem aktuellen pH (unter dem Ziel: Base hebt; ueber dem Ziel: Saeure senkt). Gleiche Richtung
+    wie bei der letzten Dose: Stufe bleibt. Richtungswechsel (Ziel ueber-/unterschritten): naechste Stufe,
+    hoechstens 4, nie zurueck. Fehlt die Flasche einer Staerke (Port 0), wird die andere Staerke derselben
+    Richtung genommen. Gleiche Schnittstelle wie PhLoop (decide, additions, fill_after, ...)."""
+
+    STAGES = (("stark", "gross"), ("stark", "klein"), ("schwach", "gross"), ("schwach", "klein"))
+
+    def __init__(self, target_ph, tolerance, ports: dict, vol_gross, vol_klein, wait_s, target_volume_ml,
+                 start_volume_ml, settings: DosingSettings, positions=None, max_additions=40,
+                 no_response_additions=3, no_response_delta=0.1):
+        self.target_ph = float(target_ph)
+        self.tolerance = float(tolerance)
+        # ports: {("Base","stark"): port, ("Base","schwach"): port, ("Saeure","stark"): ..., ("Saeure","schwach"): ...}
+        self.ports = {key: PhLoop._port(value, settings, positions) for key, value in ports.items()}
+        self.vol_gross, self.vol_klein = float(vol_gross), float(vol_klein)
+        self.wait_s = _number_or_zero(wait_s)
+        self.target_volume_ml = _number_or_zero(target_volume_ml)
+        self.start_volume_ml = _number_or_zero(start_volume_ml)
+        self.max_additions = int(float(max_additions))
+        self.no_response_additions = int(float(no_response_additions))
+        self.no_response_delta = float(no_response_delta)
+        self.fill_after = False
+        if not 0 < self.target_ph < 14:
+            raise ValueError(f"Ziel-pH {self.target_ph} ausserhalb 0-14")
+        if self.tolerance <= 0:
+            raise ValueError(f"Toleranz {self.tolerance} muss > 0 sein")
+        if not 0 < self.vol_klein <= self.vol_gross:
+            raise ValueError(f"Dosen: 0 < vol_klein ({self.vol_klein}) <= vol_gross ({self.vol_gross}) verletzt")
+        if self.wait_s < 0 or self.target_volume_ml < 0 or self.start_volume_ml < 0:
+            raise ValueError("Wartezeit, Zielvolumen und Startvolumen duerfen nicht negativ sein")
+        if self.target_volume_ml and self.start_volume_ml >= self.target_volume_ml:
+            raise ValueError(f"Startvolumen {self.start_volume_ml} mL >= Zielvolumen {self.target_volume_ml} mL - kein "
+                             f"Platz fuer Dosen")
+        for direction in ("Base", "Saeure"):
+            if self.ports.get((direction, "stark")) is None and self.ports.get((direction, "schwach")) is None:
+                raise ValueError(f"keine Flasche fuer {direction} (beide Ports 0)")
+        self.additions = 0
+        self.stage = 0             # Index in STAGES
+        self.history = []          # (Richtung, pH vor der Dose, Stufe) je Dose
+
+    def decide(self, ph, delivered_ml, settings: DosingSettings):
+        """None = Ziel erreicht; sonst (port, dose_ml, label). RuntimeError = Abbruch."""
+        delta = self.target_ph - ph
+        if abs(delta) <= self.tolerance:
+            return None
+        direction = "Base" if delta > 0 else "Saeure"
+        reason = "erste Dose"
+        if self.history:
+            if direction != self.history[-1][0]:
+                if self.stage < len(self.STAGES) - 1:
+                    self.stage += 1
+                    reason = "Ziel ueberschritten, naechste Stufe"
+                else:
+                    reason = "Ziel ueberschritten, bleibt auf der feinsten Stufe"
+            else:
+                reason = "gleiche Richtung, Stufe bleibt"
+        if self.additions >= self.max_additions:
+            raise RuntimeError(f"Ziel-pH nach {self.additions} Dosen nicht erreicht (pH {ph:.2f}, Ziel {self.target_ph:g})")
+        same = [h for h in self.history[-self.no_response_additions:] if h[0] == direction]
+        if len(same) >= self.no_response_additions:
+            moved = (ph - same[0][1]) if direction == "Base" else (same[0][1] - ph)
+            if moved < self.no_response_delta:
+                raise RuntimeError(f"pH reagiert nicht auf {len(same)} Dosen {direction} (pH {same[0][1]:.2f} -> {ph:.2f}) - "
+                                   f"Vorrat leer, Schlauch nicht gefuellt oder Elektrode haengt?")
+        strength, size = self.STAGES[self.stage]
+        port = self.ports.get((direction, strength))
+        used_strength = strength
+        if port is None:
+            used_strength = "schwach" if strength == "stark" else "stark"
+            port = self.ports.get((direction, used_strength))
+            reason += f", keine {strength}e Flasche -> {used_strength}"
+        dose = self.vol_gross if size == "gross" else self.vol_klein
+        if self.target_volume_ml:
+            room = self.target_volume_ml - self.start_volume_ml - delivered_ml
+            if dose + settings.flush_volume_ml > room + 1e-9:
+                raise RuntimeError(f"Zielvolumen {self.target_volume_ml:g} mL erreicht (noch {max(room, 0):.2f} mL frei), "
+                                   f"Ziel-pH nicht erreicht: pH {ph:.2f}, Ziel {self.target_ph:g}")
+        self.additions += 1
+        self.history.append((direction, ph, self.stage))
+        label = (f"Dose {self.additions}, Stufe {self.stage + 1}: {used_strength}e {direction} {dose * 1000:g} uL "
+                 f"(pH {ph:.2f}, Ziel {self.target_ph:g}) - {reason}")
+        return port, dose, label
+
+
 def plan_totals(steps) -> dict:
     """Summe der Schrittliste: Reagenz, Wasser, Gesamtvolumen in den Reaktor (mL) und Dauer (s, ohne Ventil)."""
     reagent = sum(s.volume_ml for s in steps if s.kind == "pump" and s.role == "reagent")
@@ -525,6 +613,27 @@ class ValveDosingMixIn:
             step.loop = loop
             steps.append(step)
             return steps
+        return self._dosing_request(str(title), plan)
+
+    def adjust_ph_staged(self, target_ph, tolerance=0.2, port_base_stark=0, port_base_schwach=0,
+                         port_saeure_stark=0, port_saeure_schwach=0, vol_gross=0.2, vol_klein=0.05, wait_s=30,
+                         target_volume=0, start_volume=0, title="pH regeln", **kwargs):
+        """pH-Regelung in vier Stufen (PhStageLoop, Vorgabe des Chemikers): pH vom Geraet `dosing: ph_device`;
+        unter dem Ziel Base, ueber dem Ziel Saeure; Stufen stark/gross -> stark/klein -> schwach/gross ->
+        schwach/klein, bei jedem Ueber-/Unterschreiten des Ziels eine Stufe weiter. Jede Dose mit Spuelen,
+        dann wait_s warten, wieder messen, bis target_ph +- tolerance. Kein Auffuellen."""
+        def plan(settings, positions):
+            if settings.ph_device is None:
+                raise ValueError("dosing: kein ph_device eingetragen - die pH-Regelung weiss nicht, wo sie messen soll")
+            if self._dosing_ph_device is None:
+                raise ValueError(f"pH-Geraet {settings.ph_device} ist nicht verbunden")
+            ports = {("Base", "stark"): port_base_stark, ("Base", "schwach"): port_base_schwach,
+                     ("Saeure", "stark"): port_saeure_stark, ("Saeure", "schwach"): port_saeure_schwach}
+            loop = PhStageLoop(target_ph, tolerance, ports, vol_gross, vol_klein, wait_s, target_volume, start_volume,
+                               settings, positions)
+            step = Step("ph", label="pH messen")
+            step.loop = loop
+            return [step]
         return self._dosing_request(str(title), plan)
 
     # -- Ablauf ----------------------------------------------------------------------------------------
