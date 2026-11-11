@@ -121,8 +121,8 @@ Lauf kleiner einstellen bzw. verduennen.
 5. In der Routine ansatz
 ------------------------
 
-ansatz regelt mit genau dieser Logik: nach den festen Zugaben (Leitsalz, Wasser, Saeure 1, Saeure 2, NaOH
-aequimolar = vol_naoh, von Hand gerechnet, aus dem Port der starken Base) und
+ansatz regelt mit genau dieser Logik: nach den festen Zugaben (Leitsalz Port 7, Wasser, Carbonsaeure Port 6,
+NaOH Port 4 aequimolar = vol_naoh, von Hand gerechnet; Ports fest in dosing: ansatz_ports / ph_ports) und
 vor dem Auffuellen. Die alte Zwei-Flaschen-Logik vom 10.11. (port_naoh / Saeure 1, Dose nach Abstand) ist
 entfernt. ansatz hat dieselben Regel-Parameter wie ph_regelung (ziel_ph, toleranz, vol_gross, vol_klein,
 wartezeit_ph_messung, zielvolumen) plus die festen Zugaben und pause_zugabe.

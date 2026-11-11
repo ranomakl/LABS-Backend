@@ -62,13 +62,15 @@ DOSING_OBSERVABLE = "dosing"          # "running" / "finished" / "failed" / "can
 REQUIRED_KEYS = ("valve", "water_port", "dead_volume_ml", "flush_factor",
                  "min_rate_ml_min", "max_rate_ml_min", "min_dose_seconds")
 PH_PORT_KEYS = ("base_stark", "base_schwach", "saeure_stark", "saeure_schwach")
+ANSATZ_PORT_KEYS = ("leitsalz", "carbonsaeure")
 OPTIONAL_KEYS = {"valve_timeout_s": 20.0,    # so lange darf das Ventil brauchen, bis es die Position meldet
                  "settle_s": 0.5,            # Pause zwischen Ventil-Bestaetigung und Pumpenstart
                  "ph_device": None,          # Geraet, das den pH liefert (pH-Regelung), z.B. liquiline
                  "ph_observable": "ph_value",  # dessen Observable mit dem pH; Status = gleicher Name mit _status
                  "ph_max_age_s": 15.0,       # aelter darf der letzte pH-Wert nicht sein (Messgeraet liefert?)
-                 "ph_ports": None}           # Flaschen der pH-Regelung: {base_stark: p, base_schwach: p,
+                 "ph_ports": None,           # Flaschen der pH-Regelung: {base_stark: p, base_schwach: p,
                                              #   saeure_stark: p, saeure_schwach: p}; 0/fehlt = nicht vorhanden
+                 "ansatz_ports": None}       # feste Zugaben des Ansatzes: {leitsalz: p, carbonsaeure: p}
 
 
 class DosingSettings:
@@ -119,6 +121,22 @@ class DosingSettings:
             used = [v for v in self.ph_ports.values() if v]
             if len(used) != len(set(used)):
                 raise ValueError(f"dosing: ph_ports: ein Port ist doppelt vergeben: {self.ph_ports}")
+        self.ansatz_ports = None
+        ports = config.get("ansatz_ports")
+        if ports is not None:
+            if not isinstance(ports, dict):
+                raise ValueError(f"dosing: ansatz_ports muss ein Abschnitt mit leitsalz/carbonsaeure sein, nicht {ports!r}")
+            unknown = [k for k in ports if k not in ANSATZ_PORT_KEYS]
+            if unknown:
+                raise ValueError(f"dosing: ansatz_ports: unbekannte Schluessel {unknown}; erlaubt sind {list(ANSATZ_PORT_KEYS)}")
+            self.ansatz_ports = {}
+            for key in ANSATZ_PORT_KEYS:
+                value = _number_or_zero(ports.get(key))
+                if value != int(value) or value < 0:
+                    raise ValueError(f"dosing: ansatz_ports: {key} = {ports.get(key)!r} ist keine ganze Zahl >= 0")
+                if int(value) == self.water_port:
+                    raise ValueError(f"dosing: ansatz_ports: {key} = {int(value)} ist der Wasser-Port")
+                self.ansatz_ports[key] = int(value)
         if self.water_port < 1:
             raise ValueError(f"dosing: water_port {self.water_port} muss >= 1 sein")
         if self.dead_volume_ml <= 0:
@@ -546,7 +564,7 @@ class ValveDosingMixIn:
             self._dosing_check_ph(settings)
             loop = PhRegelung(target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume, start_volume,
                               settings, positions)
-            parsed = parse_additions(additions)
+            parsed = additions(settings) if callable(additions) else parse_additions(additions)
             naoh_ml = _number_or_zero(vol_naoh)
             if naoh_ml < 0:
                 raise ValueError(f"vol_naoh {naoh_ml} mL darf nicht negativ sein")
@@ -569,6 +587,36 @@ class ValveDosingMixIn:
             steps.append(step)
             return steps
         return self._dosing_request(str(title), plan)
+
+    def prepare_solution(self, vol_leitsalz=0.0, vol_wasser=0.0, vol_carbonsaeure=0.0, vol_naoh=0.0, target_ph=7.0,
+                         tolerance=0.2, vol_gross=0.2, vol_klein=0.05, wait_s=30, target_volume=0, pause_s=0.0,
+                         start_volume=0.0, title="Ansatz", **kwargs):
+        """Routine ansatz mit festen Ports (Rafael 11.11.2026): Leitsalz (dosing: ansatz_ports leitsalz) -> Wasser ->
+        Carbonsaeure (ansatz_ports carbonsaeure) -> NaOH (ph_ports base_stark, aequimolar, von Hand gerechnet) ->
+        wait_s -> pH-Regelung wie regulate_ph -> Auffuellen auf target_volume. Volumen 0 = Zugabe entfaellt.
+        Im Frontend werden nur Volumina eingegeben, keine Ports."""
+        def additions(settings):
+            if settings.ansatz_ports is None:
+                raise ValueError("dosing: ansatz_ports fehlt - die Ports fuer Leitsalz und Carbonsaeure muessen in der "
+                                 "Konfiguration stehen")
+            parsed = []
+            for label, key, volume in (("Leitsalz", "leitsalz", vol_leitsalz), ("Wasser", None, vol_wasser),
+                                       ("Carbonsaeure", "carbonsaeure", vol_carbonsaeure)):
+                volume_ml = _number_or_zero(volume)
+                if volume_ml < 0:
+                    raise ValueError(f"{label}: Volumen {volume_ml} mL darf nicht negativ sein")
+                if volume_ml == 0:
+                    continue
+                if key is None:
+                    parsed.append((label, None, volume_ml))
+                    continue
+                port = settings.ansatz_ports.get(key) or 0
+                if not port:
+                    raise ValueError(f"{label}: Volumen {volume_ml} mL, aber dosing: ansatz_ports hat keinen Port fuer {key}")
+                parsed.append((label, port, volume_ml))
+            return parsed
+        return self.add_recipe_ph(additions, target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume, pause_s,
+                                  start_volume, vol_naoh, title)
 
     def _dosing_check_ph(self, settings):
         if settings.ph_device is None:

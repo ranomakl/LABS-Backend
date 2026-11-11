@@ -239,16 +239,16 @@ Noch zu tun:
 ## 9. Routine `ansatz`: Loesung ansetzen und auf den Ziel-pH bringen (11.11.2026)
 
 Der ganze Ansatz in EINEM Lauf: feste Zugaben, dann die pH-Regelung aus Abschnitt 12, dann Auffuellen. Der
-Sinn des Ansatzes ist der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026). Die Flaschen
-der Regelung stehen fest in der Config (`dosing: ph_ports`), nicht im Frontend (Rafael, 11.11.2026).
+Sinn des Ansatzes ist der Ziel-pH, darum ist er ein Parameter der Routine (Rafael, 10.11.2026). ALLE Ports
+stehen fest in der Config (Rafael, 11.11.2026): `dosing: ansatz_ports` (Leitsalz 7, Carbonsaeure 6) und
+`dosing: ph_ports` (NaOH = starke Base 4, Regelung). Im Frontend werden nur Volumina eingegeben.
 
 | Parameter | Einheit | Bedeutung |
 |---|---|---|
-| `port_leitsalz`, `vol_leitsalz` | -, mL | Leitsalz-Loesung: Ventil-Port und Volumen; 0 = keine |
+| `vol_leitsalz` | mL | Leitsalz-Loesung aus Port 7; 0 = keine |
 | `vol_wasser` | mL | Wasser vorab; 0 = keins |
-| `port_saeure1`, `vol_saeure1` | -, mL | erste Carbonsaeure (Reaktand), feste Zugabe; 0 = keine |
-| `port_saeure2`, `vol_saeure2` | -, mL | zweite Carbonsaeure; 0 = keine |
-| `vol_naoh` | mL | aequimolare Menge NaOH zur Carbonsaeure, von Hand gerechnet (Vorgabe: 1 M CA auf 100 mL -> 10 mL 10 M NaOH); aus dem Port der starken Base (`ph_ports base_stark`); 0 = keine |
+| `vol_carbonsaeure` | mL | Carbonsaeure (Reaktand) aus Port 6; 0 = keine |
+| `vol_naoh` | mL | aequimolare Menge NaOH zur Carbonsaeure, von Hand gerechnet (Vorgabe: 1 M CA auf 100 mL -> 10 mL 10 M NaOH); aus Port 4 (starke Base); 0 = keine |
 | `ziel_ph`, `toleranz` | pH | Ziel, z.B. 9 und 0.2: Schluss, wenn der pH zwischen 8,8 und 9,2 liegt |
 | `vol_gross`, `vol_klein` | mL | Dosen der Regelung, Start 0.2 und 0.05 |
 | `wartezeit_ph_messung` | s | nach den festen Zugaben und nach jeder Dose warten, bevor gemessen wird |
@@ -257,24 +257,25 @@ der Regelung stehen fest in der Config (`dosing: ph_ports`), nicht im Frontend (
 
 **Ablauf**
 
-1. Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH (`vol_naoh`), jede Chemikalie mit Spuelen
-   (Abschnitt 1), dazwischen `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
+1. Leitsalz -> Wasser -> Carbonsaeure -> NaOH, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen
+   `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
 2. `wartezeit_ph_messung` warten, pH messen.
 3. pH-Regelung in vier Schritten, genau wie `ph_regelung` (Abschnitt 12).
 4. Mit Wasser auf `zielvolumen` auffuellen.
 
 **Volumenbudget:** Vor dem ersten Ventilschritt werden die festen Zugaben + Spuelwasser gerechnet; passt das
 nicht ins Zielvolumen, bewegt sich nichts (Failed mit Meldung). Waehrend der Regelung wird vor jeder Dose
-geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmenge mit (2,25 mL bei Totvolumen
-1,5 mL); zehn Dosen sind 22,5 mL Wasser. Darum `zielvolumen` grosszuegig setzen.
+geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmenge mit (3,0 mL bei Totvolumen
+2,0 mL); zehn Dosen sind 30 mL Wasser. Darum `zielvolumen` grosszuegig setzen.
 
 **Abbruch** wie bei `ph_regelung` (Abschnitt 12). **Monitoring** wie dort, dazu die festen Zugaben in
-`dosing_addition` ("Leitsalz", "Saeure 1", ...).
+`dosing_addition` ("Leitsalz", "Carbonsaeure", "NaOH").
 
 **Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Blatt 2). Die Routine nimmt Volumina.
 
-**Technik:** `add_recipe_ph` in valve_dosing.py = `plan_recipe` (ohne Auffuellen) + Schritt "pH messen"
-(`PhRegelung`) + Auffuellen. Tests: AnsatzTests in backend/test/test_valve_dosing.py.
+**Technik:** `prepare_solution` in valve_dosing.py baut aus den Volumina und den Config-Ports die Zugabenliste
+und reicht sie an `add_recipe_ph` weiter (= `plan_recipe` ohne Auffuellen + Schritt "pH messen" (`PhRegelung`)
++ Auffuellen). Tests: AnsatzFestePortsTests in backend/test/test_valve_dosing.py.
 
 ## 10. Erster Lauf am Geraet (10.11.2026)
 

@@ -13,8 +13,8 @@ den Ventil-Ports und stehen in der Konfiguration, nicht im Frontend.
   Port 3   Base schwach
   Port 4   Base stark
   Port 5   Saeure stark
-  Port 6   Carbonsaeure   (feste Zugabe in ansatz, Port dort eingeben)
-  Port 7   Leitsalz       (feste Zugabe in ansatz, Port dort eingeben)
+  Port 6   Carbonsaeure   (feste Zugabe in ansatz, Port fest in der Config: dosing: ansatz_ports)
+  Port 7   Leitsalz       (feste Zugabe in ansatz, Port fest in der Config: dosing: ansatz_ports)
   (so angesteckt am 11.11.2026)
 
 Base HEBT den pH, Saeure SENKT ihn.
@@ -41,8 +41,8 @@ mit der ersten Dose in den Reaktor und die Messung ist verfaelscht - das Log war
   zielvolumen             Obergrenze fuer alles, was dazukommt; am Ende wird mit Wasser bis dorthin
                           aufgefuellt. 0 = keine Grenze, kein Auffuellen.
 
-ansatz hat dieselben Regel-Parameter plus die festen Zugaben am Anfang (Leitsalz, Wasser, Saeure 1,
-Saeure 2, je Port und Volumen, 0 = entfaellt) und pause_zugabe (Ruhezeit zwischen diesen Zugaben).
+ansatz hat dieselben Regel-Parameter plus die festen Zugaben am Anfang (vol_leitsalz, vol_wasser,
+vol_carbonsaeure, vol_naoh - nur Volumina, Ports aus der Config, 0 = entfaellt) und pause_zugabe.
 
 
 3. Die vier Schritte

@@ -68,6 +68,10 @@ devices:
         base_schwach: 3
         base_stark: 4
         saeure_stark: 5
+      # Feste Zugaben des Ansatzes (Routine ansatz), ebenfalls fest - im Frontend nur Volumina.
+      ansatz_ports:
+        carbonsaeure: 6
+        leitsalz: 7
 
   # Endress+Hauser Liquiline CM44x (zweites Geraet, Messstand II), Modbus RTU ueber FTDI-Adapter BG02Q3TM.
   # AM GERAET VERIFIZIERT 04.11.2026 14:20: antwortet bei 19200 Baud, 8E1, Adresse 247, Modus RTU
@@ -278,13 +282,14 @@ experiments:
     commands:
       - [pump1, pump_water, [], { volume: "{volume}", repeats: "{repeats}", pause_s: "{pause}" }]
   # ---- Ansatz: Reaktionsloesung ansetzen UND auf den Ziel-pH bringen (11.11.2026) -----------------------------
-  # EINE Routine fuer den ganzen Ansatz, Volumina direkt in mL (die Umrechnung aus Konzentrationen nach
-  # Blatt 2 der Exceltabelle ist noch offen und wird vorher von Hand gemacht).
-  # Ablauf: Leitsalz -> Wasser -> Saeure 1 -> Saeure 2 -> NaOH (feste Zugaben, Volumen 0 = entfaellt,
-  #         dazwischen pause_zugabe s) -> wartezeit_ph_messung s warten -> pH-Regelung wie ph_regelung
-  #         (Flaschen aus dosing: ph_ports) -> mit Wasser auf zielvolumen auffuellen (0 = nicht, keine Grenze).
+  # EINE Routine fuer den ganzen Ansatz, nur Volumina in mL (die Umrechnung aus Konzentrationen nach Blatt 2
+  # der Exceltabelle ist noch offen und wird vorher von Hand gemacht). Alle Ports stehen fest in der Config
+  # (dosing: ansatz_ports fuer Leitsalz und Carbonsaeure, dosing: ph_ports fuer NaOH und die Regelung).
+  # Ablauf: Leitsalz (Port 7) -> Wasser -> Carbonsaeure (Port 6) -> NaOH (Port 4, starke Base) - feste Zugaben,
+  #         Volumen 0 = entfaellt, dazwischen pause_zugabe s -> wartezeit_ph_messung s warten -> pH-Regelung wie
+  #         ph_regelung -> mit Wasser auf zielvolumen auffuellen (0 = nicht auffuellen, keine Grenze).
   # vol_naoh = aequimolare Menge 10 M NaOH zur Carbonsaeure, VON HAND gerechnet (Vorgabe: 1 M CA auf 100 mL
-  #         Gesamtvolumen -> 10 mL 10 M NaOH); kommt aus dem Port der starken Base (ph_ports base_stark = 4).
+  #         Gesamtvolumen -> 10 mL 10 M NaOH).
   # Jede Chemikalien-Zugabe und jede Dose wird mit der Spuelmenge Wasser nachgespuelt (zaehlt zum Volumen).
   # VOR dem ersten Ventilschritt wird gerechnet: passen die festen Zugaben + Spuelwasser nicht ins Zielvolumen,
   # bewegt sich nichts, Lauf endet als Failed. Abbrueche in der Regelung: siehe ph_regelung.
@@ -292,13 +297,9 @@ experiments:
     conditions:
     stopconditions:
     parameters:
-      port_leitsalz: [float, ""]
       vol_leitsalz: [float, mL]
       vol_wasser: [float, mL]
-      port_saeure1: [float, ""]
-      vol_saeure1: [float, mL]
-      port_saeure2: [float, ""]
-      vol_saeure2: [float, mL]
+      vol_carbonsaeure: [float, mL]
       vol_naoh: [float, mL]
       ziel_ph: [float, pH]
       toleranz: [float, pH]
@@ -320,7 +321,7 @@ experiments:
       - [pump1, dosing_flow_ml_min, float, mL/min]
     commands:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
-      - [pump1, add_recipe_ph, [], { additions: "Leitsalz={port_leitsalz}:{vol_leitsalz};Wasser={vol_wasser};Saeure 1={port_saeure1}:{vol_saeure1};Saeure 2={port_saeure2}:{vol_saeure2}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}", vol_naoh: "{vol_naoh}" }]
+      - [pump1, prepare_solution, [], { vol_leitsalz: "{vol_leitsalz}", vol_wasser: "{vol_wasser}", vol_carbonsaeure: "{vol_carbonsaeure}", vol_naoh: "{vol_naoh}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
 
   # ---- Schlaeuche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
   # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je

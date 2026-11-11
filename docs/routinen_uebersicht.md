@@ -78,7 +78,7 @@ Reaktionsloesung:
 | `dosiertest` | volume (mL), repeats, pause (s) | mehrmals dasselbe Wasservolumen, zum Auswiegen |
 | `vorfuellen` | vol_wasser (mL), port_a..port_d (0 = ungenutzt), vol_je_port (mL) | vor dem ersten Ansatz alle Schlaeuche fuellen: Wasser, dann je Port seine Chemikalie mit Spuelen; Auslauf ins Becherglas (10.11.2026) |
 | `ph_regelung` | ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), startvolumen, zielvolumen (mL) | pH in vier Schritten nach Vorgabe des Chemikers auf ziel_ph regeln, Flaschen fest aus config (dosing: ph_ports), dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
-| `ansatz` | port/vol Leitsalz, vol Wasser, port/vol Saeure 1 und 2, vol_naoh (aequimolar, von Hand gerechnet, aus Port der starken Base), ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), zielvolumen (mL), pause_zugabe (s) | ganzer Ansatz in einem Lauf: feste Zugaben mit Spuelen, dann pH-Regelung wie ph_regelung, dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
+| `ansatz` | vol_leitsalz, vol_wasser, vol_carbonsaeure, vol_naoh (aequimolar, von Hand gerechnet) - Ports fest in der Config (Leitsalz 7, Carbonsaeure 6, NaOH 4) -, ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), zielvolumen (mL), pause_zugabe (s) | ganzer Ansatz in einem Lauf: feste Zugaben mit Spuelen, dann pH-Regelung wie ph_regelung, dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
 
 Beschreibung, Testreihenfolge fuers Labor, bekannte Grenzen und offene Fragen:
 `docs/messstand2_zugabe_06-11-2026.md`.

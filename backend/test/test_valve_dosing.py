@@ -211,7 +211,7 @@ class _Pump(vd.ValveDosingMixIn, _Base):
         self.link_devices(devices)
         # pH-Aenderung je mL nach Port, wirkt beim Pumpenstopp. Wie im Labor (11.11.2026): 2 Saeure schwach,
         # 3 Saeure stark, 4 Base schwach, 5 Base stark. stark 20/mL (200 uL = 4), schwach 4/mL (200 uL = 0,8).
-        self.ph_effect = {2: -4.0, 3: -20.0, 4: 4.0, 5: 20.0}
+        self.ph_effect = {2: -4.0, 3: -20.0, 4: 4.0, 5: 20.0, 6: -4.0, 7: 0.0}   # 6 Carbonsaeure, 7 Leitsalz
 
     def busy(self, condition):
         self.state = devicestate.Busy
@@ -613,7 +613,8 @@ class RecipeRunTests(unittest.TestCase):
 # ---------------------------------------------------------------------------------------------------
 
 PH_PORTS = {"saeure_schwach": 2, "saeure_stark": 3, "base_schwach": 4, "base_stark": 5}
-PH_CONFIG = {**CONFIG, "ph_device": "liquiline", "ph_ports": PH_PORTS}
+ANSATZ_PORTS = {"leitsalz": 7, "carbonsaeure": 6}
+PH_CONFIG = {**CONFIG, "ph_device": "liquiline", "ph_ports": PH_PORTS, "ansatz_ports": ANSATZ_PORTS}
 
 
 def make_ph_pump(ph, ports=PH_PORTS):
@@ -650,6 +651,14 @@ class PhPortsSettingsTests(unittest.TestCase):
     def test_bad_ports_are_rejected(self):
         for ports in ({"base_stark": 1}, {"base_stark": 2.5}, {"base_stark": 5, "base_schwach": 5}, {"naoh": 5}, "5"):
             self.assertRaises(ValueError, vd.DosingSettings, {**PH_CONFIG, "ph_ports": ports})
+
+    def test_ansatz_ports(self):
+        self.assertEqual(vd.DosingSettings(PH_CONFIG).ansatz_ports, ANSATZ_PORTS)
+        self.assertEqual(vd.DosingSettings({**PH_CONFIG, "ansatz_ports": {"carbonsaeure": 6}}).ansatz_ports,
+                         {"leitsalz": 0, "carbonsaeure": 6})
+        self.assertIsNone(vd.DosingSettings(CONFIG).ansatz_ports)
+        for ports in ({"leitsalz": 1}, {"salz": 7}, 7):
+            self.assertRaises(ValueError, vd.DosingSettings, {**PH_CONFIG, "ansatz_ports": ports})
 
 
 class PhRegelungTests(unittest.TestCase):
@@ -782,8 +791,8 @@ class PhRegelungTests(unittest.TestCase):
 
 
 class AnsatzTests(unittest.TestCase):
-    """ansatz = feste Zugaben -> pH-Regelung -> Auffuellen. Leitsalz an Port 6 (wirkt nicht), Saeure 1 = Port 3."""
-    LINE = "Leitsalz=6.0:0.1;Wasser=0.2;Saeure 1=3.0:0.01;Saeure 2=0.0:0.1"
+    """add_recipe_ph mit freier Rezeptzeile. Leitsalz an Port 7 (wirkt nicht), Saeure 1 = Port 3."""
+    LINE = "Leitsalz=7.0:0.1;Wasser=0.2;Saeure 1=3.0:0.01;Saeure 2=0.0:0.1"
 
     def test_zugaben_dann_regelung_dann_auffuellen(self):
         # Saeure 1 10 uL stark = -0,2 -> 4,8; dann starke Base 200 = +4 -> 8,8: im Fenster; auffuellen auf 10
@@ -792,7 +801,7 @@ class AnsatzTests(unittest.TestCase):
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
         valves = [e[1] for e in pump.events if e[0] == "valve"]
-        self.assertEqual(valves, [6, 1, 3, 1, 5, 1, 1])
+        self.assertEqual(valves, [7, 1, 3, 1, 5, 1, 1])
         self.assertAlmostEqual(meter.ph, 8.8)
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
@@ -803,7 +812,7 @@ class AnsatzTests(unittest.TestCase):
 
     def test_ohne_feste_zugaben_wie_ph_regelung(self):
         pump, meter = make_ph_pump(8.4)
-        pump.add_recipe_ph("Leitsalz=6.0:0", target_ph=9.0, tolerance=0.1, wait_s=0, target_volume=20)
+        pump.add_recipe_ph("Leitsalz=7.0:0", target_ph=9.0, tolerance=0.1, wait_s=0, target_volume=20)
         pump.run_all(1200)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
         self.assertEqual(doses(pump), [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50)])
@@ -834,6 +843,64 @@ class AnsatzTests(unittest.TestCase):
     def test_budget_der_festen_zugaben_vor_dem_start(self):
         pump, meter = make_ph_pump(7.0)
         pump.add_recipe_ph(self.LINE, target_ph=9.0, target_volume=1.0)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("Zielvolumen", pump.last("dosing_step"))
+
+
+class AnsatzFestePortsTests(unittest.TestCase):
+    """Routine ansatz (prepare_solution): nur Volumina im Frontend, Ports aus der Config."""
+
+    def test_leitsalz_wasser_carbonsaeure_naoh_regelung_auffuellen(self):
+        # Leitsalz 0,1 (Port 7, wirkt nicht) -> Wasser 0,2 -> Carbonsaeure 0,05 (Port 6, -0,2) -> 4,8
+        # -> NaOH 0,2 (Port 5 im Test, +4) -> 8,8: im Fenster -> auffuellen auf 10
+        pump, meter = make_ph_pump(5.0)
+        pump.prepare_solution(vol_leitsalz=0.1, vol_wasser=0.2, vol_carbonsaeure=0.05, vol_naoh=0.2, target_ph=9.0,
+                              tolerance=0.2, wait_s=20, target_volume=10)
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [7, 1, 6, 1, 5, 1, 1])
+        self.assertAlmostEqual(meter.ph, 8.8)
+        self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(labels[1:5], ["Leitsalz", "Wasser", "Carbonsaeure", "NaOH"])
+        self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
+        self.assertEqual(pump.last("ph_additions"), 0)
+
+    def test_nur_regelung_wenn_alle_volumina_null(self):
+        pump, meter = make_ph_pump(4.0)
+        pump.prepare_solution(target_ph=9.0, tolerance=0.2, wait_s=0, target_volume=20)
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual(doses(pump), [(5, 200), (5, 200), (3, 50), (3, 50), (3, 50)])
+        self.assertAlmostEqual(pump.last("delivered_ml"), 20.0)
+
+    def test_fehlende_ansatz_ports(self):
+        pump = _Pump(dosing={**CONFIG, "ph_device": "liquiline", "ph_ports": PH_PORTS})
+        meter = _PhMeter(pump.clock, ph=5.0)
+        pump.ph_meter = meter
+        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
+        pump.prepare_solution(vol_leitsalz=0.1, target_ph=9.0)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("ansatz_ports", pump.last("dosing_step"))
+
+    def test_volumen_ohne_port(self):
+        pump = _Pump(dosing={**PH_CONFIG, "ansatz_ports": {"carbonsaeure": 6}})
+        meter = _PhMeter(pump.clock, ph=5.0)
+        pump.ph_meter = meter
+        pump.link_devices({"valve1": pump.valve, "liquiline": meter})
+        pump.prepare_solution(vol_leitsalz=0.1, target_ph=9.0)
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("leitsalz", pump.last("dosing_step"))
+
+    def test_budget_vor_dem_start(self):
+        pump, meter = make_ph_pump(5.0)
+        pump.prepare_solution(vol_wasser=5.0, vol_carbonsaeure=0.5, target_ph=9.0, target_volume=2.0)
         pump.run_all(5)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertEqual(pump.events, [])
