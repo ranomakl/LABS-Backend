@@ -1,0 +1,169 @@
+Excel-Versuchsplan in LABS: Hochladen, Vorbelegen, Ergebnis-Excel herunterladen (18.11.2026)
+==============================================================================================
+
+Fuer Chemiker und Bediener. Technik am Ende. Gebaut am 18.11.2026 im Frontend (LABS-User-Interface) und
+mit einem kleinen Zusatz im Backend (LABS-Backend). Grundlage: docs/konzept_excel_versuchsplan_10-11-2026.md.
+
+
+1. Worum es geht
+----------------
+
+Jeder Versuch wird in der Excel-Vorlage geplant (Experiment_<Nr>_flow_cell_...xlsx, Blaetter Setup_parameter,
+Exp_preparation, Exp_protocol, Exp_postprocessing, Analytics). Bisher musste man die Werte daraus von Hand ins
+LABS-Formular tippen und nach dem Versuch die Messwerte von Hand in das Blatt Exp_protocol eintragen.
+
+Jetzt macht LABS beides:
+  a) VOR dem Lauf:  Excel hochladen -> LABS liest die Zellen und fuellt das Formular der Routine vor.
+  b) NACH dem Lauf: Knopf druecken -> LABS schreibt die Messwerte in eine KOPIE der Excel und bietet sie zum
+                    Download an (Dateiname <Original>_LABS.xlsx). Das Original bleibt unveraendert.
+
+Die Vorlage selbst bleibt, wie sie ist. LABS erkennt sie an den Beschriftungen in Spalte A ("Pool volume",
+"flow rate", ...). Verschiebt jemand eine Zeile, passt eine Beschriftung nicht mehr und LABS lehnt die Datei
+ab - mit der Angabe, welche Zelle nicht stimmt. Lieber ablehnen als still falsche Werte lesen.
+
+
+2. Bedienung Schritt fuer Schritt
+---------------------------------
+
+Im Frontend: Experiments -> Design -> Stage. Eine Stage gehoert zu genau EINER Routine (z.B. kolbe_elektrolyse_gc
+oder ansatz). Auf der Stage-Seite gibt es jetzt zwei neue Bloecke.
+
+Block "Versuchsplan (Excel-Vorlage der Chemiker)":
+  1. Datei auswaehlen, "Versuchsplan lesen und Formular vorbelegen".
+  2. LABS zeigt die Tabelle "Aus dem Versuchsplan gelesen": je Parameter die Zelle, die Beschriftung in der
+     Vorlage, der gelesene Rohwert, der uebernommene Wert und ein Hinweis. Gelb = kein Wert in der Vorlage.
+  3. Unten im Formular "Add run" stehen die Werte schon drin. Felder mit gelbem Rand von Hand fuellen.
+  4. "Add" druecken -> der Lauf ist angelegt. Dann wie bisher "Submit Stage" -> an die Station.
+  LABS legt NIE von selbst einen Lauf an und schickt nichts an die Station. Pruefen und Add druecken macht der
+  Mensch.
+
+Block "Ergebnis-Excel":
+  Nach dem Hochladen steht hier "Abgelegt: <Dateiname> (<Datum>)". Die Datei wird im Frontend bei der Stage
+  gespeichert (Ordner instance/versuchsplaene, eine Datei je Stage; ein neuer Upload ersetzt sie).
+  Wenn der Lauf fertig ist: "Ergebnis-Excel herunterladen". LABS holt sich vom Backend die Messwerte des
+  letzten fertigen Laufs dieser Stage, schreibt sie in eine Kopie und der Browser laedt sie herunter.
+  Oben auf der Seite steht danach, was eingetragen wurde (z.B. "Exp_protocol: 75 Messwerte im Zeitraster").
+
+Was passiert, wenn ...
+  - der Lauf noch nicht fertig ist: Meldung "Lauf noch nicht beendet", kein Download. Spaeter noch einmal.
+  - noch kein Lauf geschickt wurde: Meldung, kein Download.
+  - die Station aus ist: Meldung "Station nicht erreichbar".
+  - die Datei keine Vorlage ist: Meldung mit den Zellen, die nicht passen.
+  - eine Formelzelle (z.B. Dauer) keinen Wert hat: Meldung "Datei in Excel oeffnen, speichern, erneut
+    hochladen" - Excel speichert die Formelergebnisse erst beim Speichern, LABS rechnet keine Formeln.
+
+
+3. Was aus der Vorlage gelesen wird (vor dem Lauf)
+--------------------------------------------------
+
+Messstand I, Kolbe-Elektrolyse:
+  Routine                 aus der Vorlage                                          von Hand
+  kolbe_elektrolyse_gc    versuch (B1), rate (B18), current (B30, mA -> A),        max_voltage
+                          minutes (B33, Formel), gc_minutes (Exp_protocol A3:A17)
+  kolbe_elektrolyse_2k    wie oben                                                 max_voltage, rate_anolyte
+  kolbe_elektrolyse(_ph)  rate, current, minutes                                   max_voltage
+  kolbe_n2_spuelung       rate (B18), minutes (Analytics!B12)                      -
+  kolbe_pumpe_zeit        rate                                                     minutes
+  kolbe_gc_messung        method (Analytics!B3), name (B1)                         tags
+
+Messstand II, Ansetzen:
+  ansatz                  vol_wasser (Exp_preparation!B5), vol_carbonsaeure (B6+B7+B8, fertige Mischung an
+                          Port 6), vol_naoh (B12, falls eingetragen), ziel_ph (Setup!B26), zielvolumen (B27)
+                          von Hand: vol_leitsalz (Na2SO4 steht in Gramm - Frage an den Chemiker), toleranz,
+                          vol_gross, vol_klein, wartezeit_ph_messung, pause_zugabe
+  ph_regelung             ziel_ph, zielvolumen; von Hand: toleranz, vol_gross, vol_klein, wartezeit, startvolumen
+
+Beispiel Versuch 26174: rate 100, current 0.55 (aus 550 mA), minutes 219.3, gc_minutes 0;10;20;...;219;
+ansatz: vol_wasser 50, vol_carbonsaeure 17.92, ziel_ph 9.5, zielvolumen 100.
+
+
+4. Was in die Ergebnis-Excel geschrieben wird (nach dem Lauf)
+-------------------------------------------------------------
+
+Jede Stage fuellt den Teil der Vorlage, der zu ihrer Routine gehoert:
+
+Stage mit kolbe_elektrolyse_* (Messstand I) -> Blatt Exp_protocol:
+  Zeile je Zeitpunkt (Spalte A: 0, 10, 20, ... 219 min ab Start DIESES Laufs):
+    B  kumuliertes Gasvolumen [mLn]   = MFC-Zaehler zum Zeitpunkt minus Zaehler bei t = 0
+    C  pH                             = Liquiline, naechster Messwert (hoechstens 60 s entfernt)
+    D  Leitfaehigkeit [mS/cm]         = Liquiline
+    F  Zellspannung [V]               = Netzteil psu1
+    G  Temperatur [degC]              = Liquiline
+    E  kumuliertes H2                 bleibt leer (braucht GC-Daten, noch nicht)
+    H  Beobachtungen                  Zeile 3: Vermerk "aus LABS-Lauf <Name> befuellt am <Datum>"
+  Zeile 18 "After Electrolysis": letzte Werte des Laufs fuer C, D, F, G.
+  Zeitpunkte nach dem Laufende bleiben leer (ein 100-Minuten-Lauf fuellt nur bis Zeile 11).
+  Setup_parameter!B2 (Experiment date) = Startdatum des Laufs.
+
+Stage mit kolbe_n2_spuelung -> Exp_protocol Zeile 2 "Before": pH (C2) und Leitfaehigkeit (D2) am Ende der
+  Spuelung.
+
+Stage mit ansatz (Messstand II) -> Blatt Exp_preparation:
+  B12 "+ NaOH (10 M)"  = alles dosierte Reagenz des Laufs minus die festen Zugaben Carbonsaeure und Leitsalz
+                         (also NaOH + die Dosen der pH-Regelung; Achtung: darin stecken auch Saeure-Dosen)
+  B18 "final pH"       = letzter pH-Wert des Laufs
+  Setup_parameter!B2   = Startdatum
+
+Stage mit ph_regelung -> Exp_preparation!B18 = letzter pH.
+
+Nicht befuellt (Handarbeit wie bisher): Exp_postprocessing (Wiegungen, Dichten, Phasentrennung), Analytics
+(GC-MS), Exp_protocol Zeilen "After Acidification" / "After Purging", Leitfaehigkeit am Messstand II (noch
+kein Sensor in der Config).
+
+Laedt man dieselbe Excel auf mehreren Stages hoch (Ansatz, Spuelung, Elektrolyse), bekommt jede Stage ihre
+eigene Kopie mit ihrem Teil. Eine zusammengefuehrte Datei ueber alle Stages eines Versuchs gibt es noch nicht
+(dafuer braeuchte LABS ein Merkmal, das die Stages verbindet, z.B. die Versuchsnummer).
+
+
+5. Grenzen und Hinweise
+-----------------------
+
+- openpyxl behaelt Formeln, Formate und Eingaben, verliert aber Diagramme und Bilder. Die Vorlage hat
+  keine (Stand 10/2026). Sollte eine spaetere Vorlage welche haben, fehlen sie in der Kopie.
+- Formelzellen in der Kopie (z.B. Water part 2 = Rest) rechnet Excel beim Oeffnen neu.
+- Zeitbezug: t = 0 ist der Start des Elektrolyse-Laufs (starting_time in lauf.json), nicht der Start der
+  Spuelung davor.
+- "naechster Messwert" heisst: der Messwert, der dem Zeitpunkt am naechsten liegt, hoechstens 60 s entfernt.
+  Die Liquiline misst alle 2 s, das Netzteil jede Sekunde - also praktisch immer ein Treffer.
+- Die Ablage der hochgeladenen Datei liegt im Frontend-Ordner instance/versuchsplaene (nicht im Git). Beim
+  Umzug des Frontends mitnehmen oder die Datei neu hochladen.
+- Am Pi noch nicht ausprobiert. Dort: in LABS-User-Interface und LABS-Backend `git pull`, beide neu starten.
+  Keine Datenbankaenderung, keine neuen Pakete (openpyxl und PyYAML sind schon da).
+
+
+6. Offene Fragen an den Chemiker
+--------------------------------
+
+docs/fragen_chemiker_excel_vorlage_18-11-2026.txt: Leitsalz-Stammloesung (Gramm -> mL), NaOH-Formel in B12,
+max_voltage und rate_anolyte in der Vorlage ergaenzen?, N2-Spuelung nach der Elektrolyse (Volumen statt Zeit),
+mA oder A, GC-Zeitraster oder Dauermessung, weitere Vorlagen (Batch, Zweikammer).
+
+
+7. Technik (fuer die Weiterarbeit)
+----------------------------------
+
+Frontend LABS-User-Interface/app/experiments/:
+  versuchsplan.py                 Lesen: Vorlage erkennen, Zellen laut Zuordnung lesen, Ergebnis (Werte,
+                                  Anzeigezeilen, Hinweise, offene Parameter). Ohne Flask testbar.
+  versuchsplan_befuellen.py       Schreiben: Zeitraster + einzelne Zellen aus lauf.json/values.json in die
+                                  Kopie; gibt Bytes + Protokoll zurueck. Ohne Flask testbar.
+  versuchsplan_ablage.py          Datei je Stage ablegen/laden (instance/versuchsplaene/stage_<id>.xlsx + .json).
+  versuchsplan_vorlagen/kolbe_flow_v1.yml
+                                  Die Zuordnung. `vorlage/erkennung` (Beschriftungen), `routinen/<name>/parameter`
+                                  (Lesen), `ausgabe/<name>` (Schreiben: zeitraster, zellen). Eine neue Vorlage =
+                                  neue YAML-Datei, kein Code.
+  views.py                        POST /upload_versuchsplan/<stage_id> (lesen, ablegen, Formular vorbelegen),
+                                  GET  /download_ergebnis/<stage_id> (run_log holen, befuellen, send_file).
+  ../templates/experiments/stage_detail.html   die beiden Bloecke, Tabelle, Vorbelegung im Formular.
+
+Backend LABS-Backend/backend/setup/setup.py:
+  remote_run_log(experiment_id) -> GET /api/run_log?experiment_id="<Lauf>": liefert lauf.json und values.json
+  des Laufs aus logs/<J>/<M>/<T>/<Lauf>/ (neuester Treffer); Fehler als {"error": ...}. Lauf-IDs mit
+  Pfadtrennern werden abgelehnt.
+
+Tests:
+  Frontend: tests/test_versuchsplan.py (14), tests/test_versuchsplan_befuellen.py (10),
+            tests/test_versuchsplan_route.py (8, durch die Flask-Seite, Station per mock)
+            -> .venv/Scripts/python -m unittest tests.test_versuchsplan tests.test_versuchsplan_befuellen tests.test_versuchsplan_route
+  Backend:  backend/test/test_run_log.py (5)
+            -> .venv/Scripts/python -c "import sys; sys.argv=['trial','backend.test.test_run_log']; from twisted.scripts.trial import run; run()"

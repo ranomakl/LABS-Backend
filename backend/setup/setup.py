@@ -1,4 +1,5 @@
 from collections import ChainMap, defaultdict
+import json
 from pathlib import Path
 import time
 import sys
@@ -25,6 +26,30 @@ def initialize_logger(level, filename):
     app_observer = textFileLogObserver(sys.stdout)
     app_observer = FilteringLogObserver(app_observer, [filter_predicate])
     globalLogBeginner.beginLoggingTo([app_observer, json_observer])
+
+
+def run_log_lesen(experiment_id: str, logpath: Path) -> dict:
+    """{"experiment_id", "lauf": lauf.json, "values": values.json} oder {"error": Text}. Ohne Dateisystemzugriff
+    ausserhalb von logpath (Lauf-IDs mit Pfadtrennern werden abgelehnt)."""
+    name = str(experiment_id)
+    if not name or any(ch in name for ch in "/\\") or name in (".", ".."):
+        return {"error": f"ungueltige Lauf-ID {experiment_id!r}"}
+    treffer = sorted(Path(logpath).glob(f"*/*/*/{name}"), key=lambda p: p.stat().st_mtime)
+    treffer = [p for p in treffer if p.is_dir()]
+    if not treffer:
+        return {"error": f"kein Lauf {name!r} unter {logpath}"}
+    ordner = treffer[-1]
+    out = {"experiment_id": name, "ordner": str(ordner)}
+    for key, datei in (("lauf", "lauf.json"), ("values", "values.json")):
+        pfad = ordner / datei
+        if not pfad.exists():
+            return {"error": f"{datei} fehlt in {ordner} (Lauf noch nicht fertig?)"}
+        try:
+            with pfad.open(encoding="utf-8") as handle:
+                out[key] = json.load(handle)
+        except (OSError, ValueError) as exc:
+            return {"error": f"{datei} in {ordner} nicht lesbar: {exc}"}
+    return out
 
 
 class Setup(IObserver, StateMachineMixIn, BaseObservable):
@@ -141,6 +166,11 @@ class Setup(IObserver, StateMachineMixIn, BaseObservable):
                 "observables": experiment_factory.experiment_observable_details
             }
         return experiment_types
+
+    def remote_run_log(self, experiment_id: str):
+        """lauf.json und values.json eines Laufs (fuer das Frontend: Excel-Versuchsplan befuellen, 18.11.2026).
+        Sucht logs/<J>/<M>/<T>/<experiment_id>/; bei mehreren Treffern der neueste. Fehler als {"error": ...}."""
+        return run_log_lesen(experiment_id, Path("logs/"))
 
     def remote_station_run_tables(self):
         experiments = []

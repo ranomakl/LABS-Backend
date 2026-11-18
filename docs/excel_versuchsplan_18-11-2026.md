@@ -1,8 +1,9 @@
-# Excel-Versuchsplan einlesen: Stufe 1 + 2 gebaut (18.11.2026)
+# Excel-Versuchsplan: Stufe 1 bis 3 gebaut (18.11.2026)
 
-Umsetzung von docs/konzept_excel_versuchsplan_10-11-2026.md, Stufen 1 (Datei lesen, Werte zeigen) und 2
-(Routinenformular vorbelegen). Stufe 3 (Messwerte nach dem Lauf in eine Kopie der Datei schreiben) ist noch
-nicht gebaut. Alles liegt im Frontend (LABS-User-Interface), das Backend ist unveraendert.
+Umsetzung von docs/konzept_excel_versuchsplan_10-11-2026.md: Stufe 1 (Datei lesen, Werte zeigen), Stufe 2
+(Routinenformular vorbelegen) und Stufe 3 (Messwerte nach dem Lauf in eine KOPIE der Datei schreiben,
+Download auf der Stage-Seite). Frontend: LABS-User-Interface; Backend: nur der neue Endpunkt /api/run_log.
+Erklaerung fuer Chemiker und Bediener: docs/excel_versuchsplan_erklaert_18-11-2026.txt.
 
 Entscheidungen mit Rafael am 18.11.2026:
 
@@ -94,11 +95,25 @@ vol_carbonsaeure 17.92, ziel_ph 9.5, zielvolumen 100.
   Flask-Seite: Vorbelegung, Warnung, Ablehnung, ohne Datei). Lauf im Frontend-Ordner:
   `.venv/Scripts/python -m unittest tests.test_versuchsplan tests.test_versuchsplan_route`.
 
-## 5. Offen
+## 5. Stufe 3: Ergebnis-Excel (18.11.2026, zweiter Commit)
+
+- Der hochgeladene Versuchsplan wird je Stage abgelegt (Frontend instance/versuchsplaene/stage_<id>.xlsx,
+  versuchsplan_ablage.py). Block "Ergebnis-Excel" auf der Stage-Seite zeigt die abgelegte Datei und den Knopf.
+- GET /download_ergebnis/<stage_id>: fuer alle geschickten Runs der Stage /api/run_log an der Station abfragen,
+  den letzten fertigen nehmen, mit versuchsplan_befuellen.befuellen() die Kopie schreiben, als
+  <Original>_LABS.xlsx senden. Protokoll (was eingetragen wurde) als Meldungen.
+- Zuordnung im Abschnitt `ausgabe` der YAML: kolbe_elektrolyse_* -> Exp_protocol Zeitraster (B Gaszaehler-
+  Differenz, C pH, D Leitfaehigkeit, F Spannung, G Temperatur; Zeile 18 letzte Werte; H3 Vermerk; Setup!B2 Datum);
+  kolbe_n2_spuelung -> Zeile "Before"; ansatz -> Exp_preparation B12 (dosed_ml minus feste Zugaben), B18 End-pH;
+  ph_regelung -> B18.
+- Backend: `Setup.remote_run_log(experiment_id)` / `run_log_lesen()` in setup.py, Test backend/test/test_run_log.py.
+- Tests Frontend: tests/test_versuchsplan_befuellen.py (10), tests/test_versuchsplan_route.py (8, Station per mock).
+
+## 6. Offen
 
 - Antworten des Chemikers: docs/fragen_chemiker_excel_vorlage_18-11-2026.txt (Leitsalz, NaOH-Formel,
   max_voltage, N2 nach der Elektrolyse, weitere Vorlagen).
-- Stufe 3: Messwerte nach dem Lauf in Exp_protocol einer Kopie der Datei schreiben (Konzept Abschnitt 6:
-  Backend-Endpunkt fuer die Tabelle im Zeitraster + openpyxl im Frontend).
-- Am Pi noch nicht ausprobiert; das Frontend muss dort nur gepullt und neu gestartet werden, Datenbank und
-  Routinen bleiben wie sie sind.
+- Eine zusammengefuehrte Ergebnisdatei ueber alle Stages eines Versuchs (Ansatz + Spuelung + Elektrolyse):
+  braucht ein verbindendes Merkmal (Versuchsnummer).
+- Spalte E (kumuliertes H2) aus GC-Daten; Leitfaehigkeit am Messstand II (kein Sensor in der Config).
+- Am Pi noch nicht ausprobiert: Frontend und Backend pullen und neu starten, keine DB-Aenderung, keine neuen Pakete.
