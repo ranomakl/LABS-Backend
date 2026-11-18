@@ -1,0 +1,117 @@
+GASHANDLING AM MESSSTAND I - gebaut am 19.11.2026 (Vorgabe "Gashandling 16.11 - 20.11")
+=======================================================================================
+
+Stand: gebaut und am PC gegen die Config geprueft (Tests), im Labor NOCH NICHT getestet.
+Rafael verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
+
+
+1. Die Vorgabe (so wie sie am 18.11. kam)
+-----------------------------------------
+Hardware: Gashandler von MP (1 GPIO-Pin, zu waehlen) und Bronkhorst-Massendurchflussmesser (mfc1).
+
+  a) Gas-Spuelung vor der Reaktion:  GPIO-Pin an/high; Bronkhorst 10 min auf 50 mL/min, dann zu;
+                                     waehrenddessen Pumpe an.
+  b) Wege aendern fuer die Messung:  alle GPIO-Pins aus/low; Bronkhorst-Zaehler (auf 0); Bronkhorst auf.
+  c) microGC-Messung:                wie erprobt.
+  Test: Standardablauf Spuelen -> Umschalten -> Messen.
+
+Entscheidung Rafael 19.11.: die alte Routine kolbe_n2_spuelung BLEIBT, alles andere wie vorgeschlagen.
+
+
+2. Was gebaut wurde (nur config.yml, kein neuer Python-Treiber)
+---------------------------------------------------------------
+Neues Geraet  gashandler   (config.yml, Abschnitt devices, direkt nach ventil_z3)
+  - Derselbe Relaistreiber wie die drei GC-Ventile (raspi_gpio_relay_valve), dieselbe Platine.
+  - Position B = Relais an  = "GPIO an/high" aus der Vorgabe = SPUELWEG
+    Position A = Relais aus = "GPIO aus/low"                 = MESSWEG  (stromlos, sicherer Zustand)
+  - Pin: BCM 23 = Header-Pin 16 (VORSCHLAG, s. Abschnitt 3).
+  - inverted: true und release_when_off: true wie bei ventil_z1-3 (Low-Active-Platine, Steuerseite an 5 V,
+    siehe docs/relaisplatine_erklaerung_28-10-2026.txt). "An" = Pin auf Masse, "aus" = Pin loslassen.
+  - safe_state A: beim Start des Backends, am Ende JEDER Routine und beim Beenden steht der Gashandler
+    auf A (Messweg). Das macht LABS von selbst, das muss keine Routine tun.
+
+Neue Routine  gas_spuelung   (Parameter: gasrate, minutes, rate)
+  Schritt a) der Vorgabe. Alle drei Geraete laufen gleichzeitig `minutes` Minuten:
+    gashandler  hold_position B fuer `minutes`      -> Spuelweg offen, solange gespuelt wird
+    mfc1        reset_counter                       -> Zaehler auf 0
+    mfc1        set_setpoint gasrate                -> z.B. 50 mL/min
+    mfc1        measure_for_minutes minutes         -> Fluss und Zaehler jede Sekunde lesen
+    mfc1        set_setpoint 0                      -> "dann zu" (Vorbehalt, s. Abschnitt 6, Punkt 1)
+    dosing_pump run_for_minutes rate, minutes       -> Pumpe laeuft die ganze Zeit mit
+  Vorgabewerte: gasrate 50, minutes 10, rate 100 (Pumpenrate wie bei der Elektrolyse; Annahme).
+  Live zu sehen: gashandler position, mfc1 flow/counter/setpoint, Pumpe rpm und mL/min.
+
+Neue Routine  gas_messweg   (keine Parameter)
+  Schritt b) der Vorgabe:
+    gashandler  set_position A      -> Messweg (= alle Relais aus; steht nach gas_spuelung sowieso schon so)
+    mfc1        reset_counter       -> Zaehler auf 0
+    mfc1        open_valve          -> Bronkhorst ganz auf (Setpoint 100 %)
+    mfc1        read_setpoint       -> Kontrolle: Observable setpoint muss 50.0 zeigen
+  Die Routine ist in wenigen Sekunden fertig.
+
+Schritt c) microGC-Messung: nichts Neues. Wie erprobt mit kolbe_elektrolyse_gc (Elektrolyse mit GC-Messplan)
+oder einzeln mit kolbe_gc_messung.
+
+Ablauf im Labor (Warteschlange im Frontend, in dieser Reihenfolge einreihen):
+    1. gas_spuelung      gasrate 50, minutes 10, rate 100
+    2. gas_messweg
+    3. kolbe_elektrolyse_gc   (wie bisher)
+
+Die beiden neuen Routinen sind in config.yml UND config.dummy.yml (dort mit simulate: true fuer den
+Gashandler, damit es ohne Pi laeuft).
+
+
+3. Welcher Pin und warum
+------------------------
+Belegt sind Header-Pin 11, 13, 15 (BCM 17, 27, 22 = ventil_z1, z2, z3).
+Vorschlag fuer den Gashandler: Header-Pin 16 = BCM 23.
+  - Nachbarn: Pin 14 = Masse, Pin 18 = GPIO 24. Kein 3,3-V- oder 5-V-Pin direkt daneben
+    (Pin 17 = 3,3 V liegt in der anderen Reihe schraeg gegenueber - beim Stecken hinschauen).
+  - Pin 16 liegt direkt neben Pin 15 (ventil_z3), die Leitungen bleiben also beieinander.
+Stecken nur bei ausgeschaltetem Pi (wie in docs/stand_27-10-2026_relaisplatine.txt festgehalten).
+Wenn ein anderer Pin gewaehlt wird: in config.yml bei gashandler `address: "GPIOnn"` und `pin: nn`
+(BCM-Nummer, nicht Header-Nummer!) aendern, sonst nichts.
+
+
+4. Erster Test im Labor (Vorschlag)
+-----------------------------------
+  1. Backend starten, im Frontend die Routinen laden (gas_spuelung und gas_messweg sind neue Namen,
+     werden also importiert).
+  2. gas_spuelung mit minutes 0.5 starten: Relais des Gashandlers muss fuer 30 s anziehen (klicken/LED),
+     Bronkhorst zeigt Fluss nahe 50, Pumpe laeuft. Nach 30 s faellt das Relais ab, Pumpe stoppt.
+     -> Damit ist der Pin bestaetigt. Dann den Kommentar "VORSCHLAG" in config.yml anpassen.
+  3. Pruefen, ob bei Relais AN wirklich der Spuelweg offen ist (Annahme!). Wenn es andersherum ist:
+     safe_state darf trotzdem A bleiben, aber dann heisst A Spuelweg - in dem Fall melden, wir drehen
+     die Positionen in den Routinen (hold_position A / set_position B) und NICHT safe_state.
+  4. gas_messweg starten: Setpoint-Observable muss 50.0 zeigen, Zaehler 0.
+  5. Dann der echte Ablauf mit 10 min.
+
+
+5. Wo im Code
+-------------
+  config.yml           devices: gashandler (nach ventil_z3)
+                       experiments: gas_spuelung, gas_messweg (nach kolbe_n2_spuelung, vor kolbe_elektrolyse)
+  config.dummy.yml     dasselbe mit simulate: true
+  backend/drivers/raspi_gpio_relay_valve.py   Relaistreiber (set_position, hold_position, final_commands -> safe_state)
+  backend/drivers/bronkhorst_mfc.py           set_setpoint, open_valve, reset_counter, measure_for_minutes, read_setpoint
+  backend/test/test_gashandling.py            5 Tests: Befehle/Methoden/Platzhalter stimmen, Pin frei, Mock-Pin schaltet
+  docs/routinen_uebersicht.md                 zwei neue Zeilen
+
+
+6. Annahmen und offene Punkte fuer den 20.11.
+---------------------------------------------
+  1. "Bronkhorst dann zu" am Ende der Spuelung: Der Befehl steht drin (Setpoint 0 nach den Minuten).
+     ABER: LABS oeffnet den Bronkhorst am Ende jeder Routine automatisch wieder ganz (Treiber-Regel seit
+     08.10.: Gaszaehler-Betrieb, der Gasweg darf nie versperrt bleiben, sonst baut sich Druck auf).
+     "Zu" gilt also nur den Moment zwischen Ende der Minuten und Routinenende, danach steht er wieder auf
+     100 %. Frage: Muss der Bronkhorst ueberhaupt zu, wenn der Gashandler sowieso auf Messweg geht und
+     gas_messweg ihn gleich wieder oeffnet? Wenn ja, muss die Treiber-Regel fuer diese Routine ausgesetzt
+     werden - das ist ein Eingriff in bronkhorst_mfc.py, den ich nicht ohne Rueckfrage mache.
+  2. Position B = Spuelweg ist eine Annahme (Verrohrung des Gashandlers). Im Labor pruefen, s. Abschnitt 4.
+  3. Pin BCM 23 / Header 16 ist ein Vorschlag. Nach dem Stecken Kommentar in config.yml anpassen.
+  4. Pumpenrate waehrend der Spuelung: Parameter `rate`, Vorschlag 100 mL/min wie bei der Elektrolyse.
+  5. Soll die Spuelung spaeter in kolbe_elektrolyse_gc eingebaut werden (ein Lauf statt drei)? Heute
+     bewusst getrennt gelassen, weil die Vorgabe drei Schritte beschreibt und zwischen Spuelen und
+     Elektrolyse Handarbeit liegen kann.
+  6. kolbe_n2_spuelung bleibt unveraendert (Rafael 19.11.). Unterschied zu gas_spuelung: kein Gashandler,
+     kein Setpoint am Bronkhorst (nur zaehlen), kein "zu" am Ende.

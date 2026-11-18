@@ -30,6 +30,8 @@ docs/zweikammer_2k_02-11-2026.md, docs/gc_rundlauf_3_zellen_26-10-2026.md.
 | `kolbe_n2_spuelung` | wie kolbe_pumpe_zeit, Zaehler vorher auf 0 (N2-Spuelung) | rate, minutes |
 | `kolbe_gas_zaehlen` | nur mfc1: Zaehler auf 0, `minutes` lang zaehlen, keine Pumpe | minutes |
 | `kolbe_gas_zaehlen_pumpe` | Gas zaehlen, waehrend die Pumpe umwaelzt | minutes, rate |
+| `gas_spuelung` | 19.11.2026 Gashandling: Gashandler auf Spuelweg (B) halten, mfc1 Zaehler 0 + Setpoint `gasrate`, Pumpe laeuft `minutes` lang, danach mfc1 zu (wird vom Routinenende wieder geoeffnet, s. docs/gashandling_19-11-2026.txt) | gasrate, minutes, rate |
+| `gas_messweg` | 19.11.2026 Gashandling: Gashandler auf Messweg (A), mfc1 Zaehler 0 + ganz auf; danach kolbe_elektrolyse_gc | - |
 | `kolbe_gc_messung` | eine einzelne GC-Messung von Hand (Methode laden, Lauf mit Name/Tags, Daten holen) | method, name, tags |
 | `..._3x` (kolbe_pumpe_zeit_3x, kolbe_n2_spuelung_3x, kolbe_gas_zaehlen_pumpe_3x) | dasselbe fuer drei Zellen: mfc1-3 und beide Pumpen | rate, rate_anolyte, minutes |
 
