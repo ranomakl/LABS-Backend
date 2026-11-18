@@ -1,0 +1,85 @@
+Fragen an den Chemiker zur Excel-Vorlage (Versuchsplan) - 18.11.2026
+=====================================================================
+
+Hintergrund: LABS liest seit 18.11.2026 den ausgefuellten Versuchsplan (Experiment_<Nr>_flow_cell_...xlsx)
+im Frontend ein und belegt damit die Routinen-Parameter vor (Stage-Seite, "Versuchsplan hochladen").
+Die Zuordnung Zelle -> Parameter steht in LABS-User-Interface/app/experiments/versuchsplan_vorlagen/
+kolbe_flow_v1.yml. Die Vorlage selbst bleibt unveraendert; sie wird an ihren Beschriftungen erkannt.
+Beschreibung: docs/excel_versuchsplan_18-11-2026.md.
+
+Folgende Punkte kann LABS nicht aus der Vorlage ableiten. Bis sie geklaert sind, bleiben die Felder beim
+Hochladen leer und werden im Frontend als "von Hand eintragen" gemeldet.
+
+
+1. Leitsalz Na2SO4 (Exp_preparation!B17, in Gramm)
+--------------------------------------------------
+Die Vorlage rechnet das Leitsalz als Feststoff in Gramm (Konzentration x Poolvolumen x Molmasse).
+LABS dosiert am Messstand II nur Fluessigkeiten (Port 7 = Leitsalz-Loesung).
+
+  Frage: Gibt es eine Leitsalz-Stammloesung mit fester Konzentration (mol/L oder g/L)?
+         Dann rechnet LABS: Volumen [mL] = Gramm / (Konzentration [mol/L] x 142,04 g/mol) x 1000
+         bzw. = Gramm / Konzentration [g/L] x 1000, und belegt vol_leitsalz vor.
+         Oder bleibt die Einwaage Handarbeit (Feststoff direkt ins Gefaess), und vol_leitsalz = 0?
+
+  Antwort: ____________________________________________________________________
+
+
+2. NaOH (Exp_preparation!B12, "+ NaOH (10 M)")
+----------------------------------------------
+In der Vorlage ein Handeintrag ("adjust pH to planned pH"). In LABS ist vol_naoh die aequimolare
+Startmenge vor der pH-Regelung (Vorgabe: 1 M Carbonsaeure auf 100 mL -> 10 mL 10 M NaOH).
+
+  Frage: Soll die Vorlage die aequimolare Menge selbst ausrechnen (Formel in B12 aus B23, B27 und 10 M),
+         damit LABS sie uebernehmen kann? Oder traegt der Chemiker sie weiter von Hand in B12 ein?
+
+  Antwort: ____________________________________________________________________
+
+
+3. Carbonsaeure-Mischung (Exp_preparation!B6:B8)
+------------------------------------------------
+Die Vorlage rechnet n-C4, n-C6, n-C8 einzeln mit festem Verhaeltnis 3:8:1 (Hinweis in D6:D8), obwohl
+Setup_parameter!B22 ein freies Verhaeltnis enthaelt. LABS addiert die drei Volumina und gibt die Summe aus
+Port 6 (fertige Mischung) zu - Entscheidung Rafael 18.11.2026.
+
+  Frage: Ist die Mischung an Port 6 immer im Verhaeltnis der Vorlage angesetzt? Soll B22 die Formeln in
+         B6:B8 steuern (dann muesste die Vorlage angepasst werden)?
+
+  Antwort: ____________________________________________________________________
+
+
+4. Nicht in der Vorlage, aber Parameter der Kolbe-Routinen (Messstand I)
+------------------------------------------------------------------------
+  - max_voltage (Spannungsgrenze des Netzteils, V): fester Wert je Zelle? Zelle in der Vorlage ergaenzen?
+  - rate_anolyte (Zweikammer, mL/min): zweite Pumpe, steht nicht in der Vorlage.
+  - Umwaelzzeit vor der Elektrolyse (kolbe_pumpe_zeit, min).
+  - N2-Spuelung NACH der Elektrolyse: die Vorlage gibt ein Volumen (Analytics!B13, mLn), die Routine
+    kolbe_gas_zaehlen_pumpe eine Zeit (min). Zeit eintragen, oder Routine mit Zaehler-Stopp bauen?
+
+  Antwort: ____________________________________________________________________
+
+
+5. Strom (Setup_parameter!B30, mA)
+----------------------------------
+LABS rechnet beim Einlesen mA -> A (Faktor 0,001), weil die Routinen current in A fuehren. 550 mA -> 0,55 A.
+
+  Frage: in Ordnung, oder soll die Vorlage auf A umgestellt werden?
+
+  Antwort: ____________________________________________________________________
+
+
+6. GC-Messzeitpunkte (Exp_protocol!A3:A17)
+------------------------------------------
+LABS uebernimmt das Zeitraster des Protokollblatts (0;10;20;...;219 min) als gc_minutes. Alternative laut
+ANFORDERUNGEN.txt: gc_minutes = 0 -> Dauermessung, sobald der microGC bereit ist.
+
+  Frage: Zeitraster oder Dauermessung als Standard?
+
+  Antwort: ____________________________________________________________________
+
+
+7. Weitere Vorlagen
+-------------------
+Untersucht ist nur die Flusszellen-Vorlage (Experiment_26174-26177). Gibt es weitere (Batch, Zweikammer,
+drei Zellen) mit anderem Aufbau? Jede braucht eine eigene Zuordnungsdatei.
+
+  Antwort: ____________________________________________________________________
