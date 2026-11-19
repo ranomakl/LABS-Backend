@@ -4,6 +4,29 @@ GASHANDLING AM MESSSTAND I - gebaut am 19.11.2026 (Vorgabe "Gashandling 16.11 - 
 Stand: gebaut und am PC gegen die Config geprueft (Tests), im Labor NOCH NICHT getestet.
 Rafael verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
 
+!!! KORREKTUR 19.11.2026 abends (Rafael): Das Gashandling gehoert zu MESSSTAND II, nicht zu Messstand I.
+!!! Gebaut wurde es in config.yml (Messstand I). Es muss nach config.messstand2.yml - dort fehlen aber
+!!! Bronkhorst, Relaisplatine und microGC noch komplett (nur auskommentierte Vorlagen ohne Adressen).
+!!! Offene Fragen dazu: Abschnitt 0. Bis zu den Antworten wird nichts verschoben oder geloescht.
+
+
+0. Umzug nach Messstand II - Fragen an Rafael (19.11.2026)
+----------------------------------------------------------
+Plan nach den Antworten: gashandler + gas_spuelung + gas_messweg nach config.messstand2.yml (und Dummy-Config,
+Test, diese Doku) uebernehmen; aus config.yml (Messstand I) wieder entfernen, wenn Rafael das Loeschen bestaetigt.
+
+  1. Bronkhorst an Messstand II: Ist einer am Pi 2 angesteckt? Adapterpfad noetig. Am Pi 2:
+         ls -l /dev/serial/by-id/
+     Ausgabe schicken (Seriennummer des FTDI-Adapters), dazu Typenschild (50 mln/min?) und Node-Adresse (03?).
+  2. Pumpe waehrend der Spuelung ("waehrenddessen Pumpe an"): Welche? pump1 ist die Dosierpumpe hinter dem
+     16-Wege-Ventil (BT100-1F). Soll die laufen, oder gibt es eine zweite Pumpe, die noch nicht in der Config
+     steht (Modell, Adapter)?
+  3. Relaisplatine an Messstand II: dieselbe Low-Active-Platine mit 5-V-Steuerseite wie an Messstand I?
+     Welcher GPIO-Pin fuer den Gashandler? Vorschlag wie bisher BCM 23 = Header-Pin 16.
+  4. microGC an Messstand II: erreichbar, ueber welche Adresse? An Messstand I haengt er per LAN direkt am Pi
+     (169.254.1.1). Haengt derselbe GC jetzt an Pi 2, oder ein zweiter?
+  5. Loeschen aus config.yml (Messstand I): ja, oder dort zusaetzlich lassen?
+
 
 1. Die Vorgabe (so wie sie am 18.11. kam)
 -----------------------------------------
