@@ -629,12 +629,13 @@ experiments:
       - [microgc, run_schedule_named, [], { method_name: microGC_Standard_Method_calibrated_0726, prefix: "{versuch}", minutes: "{gc_minutes}", until_minutes: "{minutes}", tags: "Kolbe;MP", final_run: true }]
 
   # 02.11.2026 Zwei-Kammer-Zelle, EIN Versuch (ANFORDERUNGEN "1er-Versuch mit 2-Kammern", Antworten Rafael
-  # 29.10./02.11.): wie kolbe_elektrolyse_gc, dazu mfc2 am Katholytgas (nur Zaehler/Fluss, kein Sollwert),
-  # zweiter pH-Sensor ph_z2 (Liquiline CH3 = AI4) mit seiner Temperatur temperature_z2 (AI6 - am Geraet
+  # 29.10./02.11.): wie kolbe_elektrolyse_gc, dazu ein zweiter Bronkhorst am Katholytgas (nur Zaehler/Fluss, kein
+  # Sollwert). Zuordnung seit 19.11.2026 (Rafael): mfc1 (MFM1) = Katholytgas, mfc3 (MFM3) = Anolytgas; vorher mfc1 = Anolyt, mfc2 = Katholyt.
+  # Dazu zweiter pH-Sensor ph_z2 (Liquiline CH3 = AI4) mit seiner Temperatur temperature_z2 (AI6 - am Geraet
   # unter Setup/Outputs/Modbus AI 6 auf CH3 Temperatur legen, sonst Status "Not assigned") und beide Pumpen:
   # dosing_pump am Katholyt mit `rate`, anolyte_pump am Anolyt mit `rate_anolyte` (Zuordnung der Pumpen =
-  # ANNAHME nach den Namen, docs/neuePumpe.txt), beide `minutes` lang. mfc1 bleibt am Anolytgas, der GC
-  # misst wie bisher nur diesen Strom (kein Ventil-Rundlauf), mit Abschlussmessung nach dem Ende.
+  # ANNAHME nach den Namen, docs/neuePumpe.txt), beide `minutes` lang. Der GC
+  # misst wie bisher nur das Anolytgas (kein Ventil-Rundlauf), mit Abschlussmessung nach dem Ende.
   kolbe_elektrolyse_2k:
     conditions:
     stopconditions:
@@ -650,10 +651,10 @@ experiments:
       - [psu1, current, float, A]
       - [psu1, voltage, float, V]
       - [psu1, amount_of_charge, float, C]
-      - [mfc1, flow, float, mL/min]
+      - [mfc1, flow, float, mL/min]       # Katholytgas (MFM1)
       - [mfc1, counter, float, mLn]
-      - [mfc2, flow, float, mL/min]
-      - [mfc2, counter, float, mLn]
+      - [mfc3, flow, float, mL/min]       # Anolytgas (MFM3)
+      - [mfc3, counter, float, mLn]
       - [dosing_pump, speed_rpm, int, rpm]
       - [dosing_pump, flow_ml_min, float, mL/min]
       - [anolyte_pump, speed_rpm, int, rpm]
@@ -682,8 +683,8 @@ experiments:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
       - [mfc1, reset_counter, [], {}]
       - [mfc1, start_measuring, [], { interval: 1.0 }]
-      - [mfc2, reset_counter, [], {}]
-      - [mfc2, start_measuring, [], { interval: 1.0 }]
+      - [mfc3, reset_counter, [], {}]
+      - [mfc3, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
       - [anolyte_pump, run_for_minutes, [], { rate: "{rate_anolyte}", minutes: "{minutes}" }]
       - [psu1, output_constant_current, [], { current: "{current}", max_voltage: "{max_voltage}" }]

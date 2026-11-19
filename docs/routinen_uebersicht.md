@@ -11,7 +11,7 @@ Wie die Konfigurationsdatei aufgebaut ist und wie man Routinen aendert: docs/yam
 | Routine | Aufbau | Geraete | Parameter |
 |---|---|---|---|
 | `kolbe_elektrolyse_gc` | **eine Zelle, eine Kammer** (wie bisher) | psu1, mfc1, dosing_pump, Liquiline (pH CH1, Leitfaehigkeit, Temperatur), microGC | versuch, gc_minutes, current, max_voltage, minutes, rate |
-| `kolbe_elektrolyse_2k` | **eine Zelle, zwei Kammern** (neu 02.11.) | wie _gc, dazu mfc2 am Katholytgas, zweiter pH ph_z2 mit Temperatur temperature_z2, zweite Pumpe anolyte_pump | wie _gc, dazu rate_anolyte |
+| `kolbe_elektrolyse_2k` | **eine Zelle, zwei Kammern** (neu 02.11.) | wie _gc, aber mfc1 am Katholytgas und mfc3 am Anolytgas (seit 19.11.), zweiter pH ph_z2 mit Temperatur temperature_z2, zweite Pumpe anolyte_pump | wie _gc, dazu rate_anolyte |
 | `kolbe_elektrolyse_3x` | **drei Zellen parallel** (26.10.) | psu1-3, mfc1-3, beide Pumpen, Liquiline (pH Z1/Z2/Z3), microGC im Kreis ueber ventil_z1-3 | versuch, gc_minutes, current_z1/z2/z3, max_voltage, minutes, rate, rate_anolyte |
 | `kolbe_elektrolyse_ph` | eine Zelle ohne GC (aelter) | psu1, mfc1, dosing_pump, Liquiline | current, max_voltage, minutes, rate |
 | `kolbe_elektrolyse` | eine Zelle ohne GC und ohne Liquiline (aelteste) | psu1, mfc1, dosing_pump | current, max_voltage, minutes, rate |
