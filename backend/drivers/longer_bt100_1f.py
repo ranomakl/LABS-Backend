@@ -6,7 +6,8 @@
 # Alle Beispiel-Frames aus Anhang 7 des Dokuments sind in backend/test/test_longer_bt100_1f.py als
 # Pruefvektoren hinterlegt (Frameaufbau, XOR-Pruefsumme, Byte-Stuffing, Parser).
 #
-# AM GERAET VERIFIZIERT 04.11.2026 (Messstand II, Kopf DG 6 Rollen, Schlauch Nr. 5 = 1,65 mm):
+# AM GERAET VERIFIZIERT 04.11.2026 (Messstand II, Kopf DG 6 Rollen, Schlauch damals 1,65 mm; seit 19.11.2026 1,02 mm,
+# Bereich 5,8 uL/min - 5,8 mL/min, Schlauch-ID am Geraet eingestellt - s. dosing: in config.messstand2.yml):
 #   - RID/RT/RF/RD/RSD/RB werden beantwortet (tools/lese_bt100_1f.py), 1200 Baud 8E1, Adresse 1.
 #   - Routine test_pump1_flow mit 5 mL/min, 0,5 min: WF-Start bestaetigt, 26 RF-Abfragen "laeuft, cw,
 #     5,0 mL/min", nach 30 s WF-Stopp bestaetigt, Experiment Finished. Antwortzeit RF ~170 ms.
