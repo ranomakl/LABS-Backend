@@ -68,6 +68,9 @@ war beim Backend-Start eines ihrer Geraete aus (Backend ueberspringt sie mit War
 
 ## Messstand II (zweiter Pi, config.messstand2.yml)
 
+Drehrichtung der Dosierpumpe pump1 bei allen Zugaben ueber das Ventil: `dosing: clockwise` in config.messstand2.yml.
+Seit 19.11.2026 `false` = nach links (Rafael); gilt fuer vorfuellen, ansatz, ph_regelung, zugabe, spuelen, dosiertest.
+
 Diese Uebersicht beschreibt Messstand I (config.yml). Messstand II hat eine eigene Konfiguration und eigene
 Routinen. Stand 06.11.2026: Geraetetests (`test_valve1_position`, `test_pump1_read`, `test_pump1_flow`,
 `test_pump1_stop`, `test_liquiline_scan`) und der erste Baustein fuer das automatische Ansetzen der

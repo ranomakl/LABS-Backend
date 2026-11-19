@@ -410,12 +410,13 @@ class Device(ValveDosingMixIn, BaseDevice, SinglechannelBaseDevice):
     # Beide Befehle gehen als dringend raus, weil die Pumpe waehrend der ganzen Zugabe Busy ist. Kein
     # periodisches RF dabei: der Stopp soll nie hinter einer Abfrage warten (Dosiergenauigkeit).
 
-    def _dosing_pump_start(self, rate_ml_min):
-        """Ein WF-Frame: Flussrate setzen UND starten (im Uhrzeigersinn). Rueckgabe: der Befehl."""
+    def _dosing_pump_start(self, rate_ml_min, clockwise=True):
+        """Ein WF-Frame: Flussrate setzen UND starten. Richtung aus `dosing: clockwise` (19.11.2026:
+        Messstand II dreht bei der Zugabe nach links = false). Rueckgabe: der Befehl."""
         self.stop_measuring()
         self._flow_nl_min = _clamp_flow_nl_min(float(rate_ml_min) * NL_PER_ML)
         self._flow_known = True
-        self._clockwise = True
+        self._clockwise = bool(clockwise)
         self._running = True
         return self._send_state(urgent=True, run_while_device_busy=True)
 

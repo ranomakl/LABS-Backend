@@ -62,6 +62,8 @@ devices:
       min_rate_ml_min: 0.018   # Bereich der Pumpe mit Kopf DG 6 Rollen / Schlauch Nr. 5 (1,65 mm)
       max_rate_ml_min: 5.0     # am Geraet getestet bis 5 mL/min (04.11.2026); laut Handbuch bis 18
       min_dose_seconds: 10     # kleine Volumen so langsam, dass die Pumpe mindestens 10 s laeuft
+      clockwise: false         # 19.11.2026 Rafael: Dosierpumpe dreht bei allen Zugaben ueber das Ventil nach LINKS
+                               # (vorfuellen, ansatz, ph_regelung, zugabe, spuelen). true = im Uhrzeigersinn.
       ph_device: liquiline     # pH fuer die Regelung (ph_regelung, ansatz) kommt von der Liquiline (Kanal ph = AI 1)
       ph_observable: ph_value
       # Flaschen der pH-Regelung, fest verdrahtet (Rafael 11.11.2026) - NICHT im Frontend. 0 = Flasche nicht da,

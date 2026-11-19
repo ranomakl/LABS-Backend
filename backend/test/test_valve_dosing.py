@@ -46,6 +46,13 @@ class SettingsTests(unittest.TestCase):
     def test_not_a_mapping(self):
         self.assertRaises(ValueError, vd.DosingSettings, "valve1")
 
+    def test_clockwise_default_true_and_false_from_config(self):
+        # 19.11.2026 Rafael: Dosierpumpe am Messstand II dreht bei allen Zugaben nach links (clockwise: false).
+        self.assertTrue(settings().clockwise)
+        self.assertFalse(settings(clockwise=False).clockwise)
+        for wert in ("false", 0, None, "links"):
+            self.assertRaises(ValueError, settings, clockwise=wert)
+
 
 class RateTests(unittest.TestCase):
     def test_small_volumes_run_at_least_min_dose_seconds(self):
@@ -197,6 +204,7 @@ class _Pump(vd.ValveDosingMixIn, _Base):
         self.callLater = self.clock.callLater
         self._dosing_now = self.clock.seconds
         self.events = []
+        self.directions = []
         self.updates = []
         self.log = _Log()
         self.state = devicestate.Ready
@@ -223,8 +231,9 @@ class _Pump(vd.ValveDosingMixIn, _Base):
     def update_observables(self, values, timestamp=None):
         self.updates.append(dict(values))
 
-    def _dosing_pump_start(self, rate):
+    def _dosing_pump_start(self, rate, clockwise=True):
         command = _Command(time=self.clock.seconds())
+        self.directions.append(clockwise)
         self.events.append(("start", round(self.clock.seconds(), 3), round(rate, 6)))
         if self.start_delay:
             self.clock.callLater(self.start_delay, command.deferred_result.callback, None)
@@ -275,6 +284,16 @@ class RunTests(unittest.TestCase):
         self.assertEqual(pump.log.errors, [])
         self.assertFalse(pump._dosing.open)
         self.assertIsNone(pump._dosing.reagent_port)
+
+    def test_direction_from_settings_reaches_every_pump_start(self):
+        pump = _Pump(dosing={**CONFIG, "clockwise": False})
+        pump.add_from_port(3, 0.2)
+        pump.run_all(60)
+        self.assertEqual(pump.directions, [False, False])        # Dosis und Spuelen beide nach links
+        pump = _Pump()
+        pump.add_from_port(3, 0.2)
+        pump.run_all(60)
+        self.assertEqual(pump.directions, [True, True])
 
     def test_finished_is_the_condition_the_pump_waits_for(self):
         pump = _Pump()
@@ -466,6 +485,10 @@ class DriverWiringTests(unittest.TestCase):
         self.assertEqual(bytes(stop.bytestring), build_wire_frame(1, b"WF" + bytes.fromhex("00124F80") + b"\x02"))
         self.assertTrue(stop.parameters.urgent and stop.parameters.run_while_device_busy)
         self.assertEqual(len(sent), 3)                        # Start, Stopp, RF zum Zuruecklesen
+        links = device._dosing_pump_start(1.2, clockwise=False)
+        # State1 = 01 (Start, gegen den Uhrzeigersinn) - Messstand II seit 19.11.2026
+        self.assertEqual(bytes(links.bytestring), build_wire_frame(1, b"WF" + bytes.fromhex("00124F80") + b""))
+        self.assertFalse(device._clockwise)
         self.assertEqual(bytes(sent[2].bytestring), build_wire_frame(1, b"RF"))
 
     def test_mixin_stop_comes_first_in_the_mro(self):

@@ -21,7 +21,7 @@ die Pumpe bleibt fuer die ganze Zugabe Busy und stellt das Ventil selbst. Der Ke
 bleibt unveraendert.
 
 Der Wirts-Treiber (z.B. longer_bt100_1f.Device) muss liefern:
-    _dosing_pump_start(rate_ml_min) -> Befehl (.deferred_result feuert bei der Bestaetigung, .time ist der
+    _dosing_pump_start(rate_ml_min, clockwise=True) -> Befehl (.deferred_result feuert bei der Bestaetigung, .time ist der
                                        Zeitpunkt des Sendens); muss auch im Busy-Zustand rausgehen
     _dosing_pump_stop()             -> Befehl, ebenso
 und in __init__ self._init_dosing(dosing) aufrufen (dosing = Abschnitt `dosing:` des Geraets in der
@@ -70,7 +70,9 @@ OPTIONAL_KEYS = {"valve_timeout_s": 20.0,    # so lange darf das Ventil brauchen
                  "ph_max_age_s": 15.0,       # aelter darf der letzte pH-Wert nicht sein (Messgeraet liefert?)
                  "ph_ports": None,           # Flaschen der pH-Regelung: {base_stark: p, base_schwach: p,
                                              #   saeure_stark: p, saeure_schwach: p}; 0/fehlt = nicht vorhanden
-                 "ansatz_ports": None}       # feste Zugaben des Ansatzes: {leitsalz: p, carbonsaeure: p}
+                 "ansatz_ports": None,       # feste Zugaben des Ansatzes: {leitsalz: p, carbonsaeure: p}
+                 "clockwise": True}          # Drehrichtung der Dosierpumpe bei JEDER Zugabe ueber das Ventil
+                                             #   (19.11.2026 Rafael: Messstand II nach links = false)
 
 
 class DosingSettings:
@@ -101,6 +103,9 @@ class DosingSettings:
         self.ph_max_age_s = float(config.get("ph_max_age_s", OPTIONAL_KEYS["ph_max_age_s"]))
         if self.ph_max_age_s <= 0:
             raise ValueError("dosing: ph_max_age_s muss > 0 sein")
+        self.clockwise = config.get("clockwise", OPTIONAL_KEYS["clockwise"])
+        if not isinstance(self.clockwise, bool):
+            raise ValueError(f"dosing: clockwise muss true oder false sein, nicht {self.clockwise!r}")
         self.ph_ports = None
         ports = config.get("ph_ports")
         if ports is not None:
@@ -836,7 +841,7 @@ class ValveDosingMixIn:
 
         run.pump_running = True
         requested = self._dosing_now()
-        commands["start"] = self._dosing_pump_start(step.rate_ml_min)
+        commands["start"] = self._dosing_pump_start(step.rate_ml_min, clockwise=self._dosing_settings.clockwise)
         commands["start"].deferred_result.addCallbacks(started, result.errback)
         return result
 
