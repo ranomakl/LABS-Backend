@@ -333,6 +333,40 @@ experiments:
       - [liquiline, start_measuring, [], { interval: 2.0 }]
       - [pump1, prepare_solution, [], { vol_leitsalz: "{vol_leitsalz}", vol_wasser: "{vol_wasser}", vol_carbonsaeure: "{vol_carbonsaeure}", vol_naoh: "{vol_naoh}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}" }]
 
+  # ---- Ansatz NEU: gleiche Routine, andere Reihenfolge der festen Zugaben (Rafael 23.11.2026) -------------------
+  # Wie ansatz, nur: Carbonsaeure (Port 6) -> Leitsalz Na2SO4 (Port 7) -> Wasser -> NaOH (Port 4), dann wie oben
+  # warten, pH-Regelung, Auffuellen. Die Reihenfolge steht im Feld order (Namen leitsalz, wasser, carbonsaeure,
+  # je genau einmal); ansatz selbst bleibt bei Leitsalz -> Wasser -> Carbonsaeure.
+  ansatz_neu:
+    conditions:
+    stopconditions:
+    parameters:
+      vol_carbonsaeure: [float, mL]
+      vol_leitsalz: [float, mL]
+      vol_wasser: [float, mL]
+      vol_naoh: [float, mL]
+      ziel_ph: [float, pH]
+      toleranz: [float, pH]
+      vol_gross: [float, mL]
+      vol_klein: [float, mL]
+      wartezeit_ph_messung: [float, s]
+      zielvolumen: [float, mL]
+      pause_zugabe: [float, s]
+    observables:
+      - [liquiline, ph_value, float, pH]
+      - [liquiline, ph_status, str, ""]
+      - [pump1, ph_additions, int, ""]
+      - [valve1, position, str, ""]
+      - [pump1, dosing_addition, str, ""]
+      - [pump1, dosing_step, str, ""]
+      - [pump1, dosed_ml, float, mL]
+      - [pump1, flushed_ml, float, mL]
+      - [pump1, delivered_ml, float, mL]
+      - [pump1, dosing_flow_ml_min, float, mL/min]
+    commands:
+      - [liquiline, start_measuring, [], { interval: 2.0 }]
+      - [pump1, prepare_solution, [], { order: "carbonsaeure,leitsalz,wasser", vol_leitsalz: "{vol_leitsalz}", vol_wasser: "{vol_wasser}", vol_carbonsaeure: "{vol_carbonsaeure}", vol_naoh: "{vol_naoh}", target_ph: "{ziel_ph}", tolerance: "{toleranz}", vol_gross: "{vol_gross}", vol_klein: "{vol_klein}", wait_s: "{wartezeit_ph_messung}", target_volume: "{zielvolumen}", pause_s: "{pause_zugabe}", title: "Ansatz neu" }]
+
   # ---- Schlaeuche fuellen vor dem ersten Ansatz (10.11.2026) -------------------------------------------------
   # Auslauf in ein Becherglas! Erst 'vol_wasser' mL Wasser (Wasserweg + Schlauch zum Reaktor luftfrei), dann je
   # Port 'vol_je_port' mL seiner Chemikalie (fuellt die Zuleitung Vorratsgefaess -> Ventil), jeweils mit Wasser

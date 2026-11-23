@@ -891,6 +891,27 @@ class AnsatzFestePortsTests(unittest.TestCase):
         self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
         self.assertEqual(pump.last("ph_additions"), 0)
 
+    def test_reihenfolge_ansatz_neu(self):
+        # Routine ansatz_neu (23.11.2026): Carbonsaeure (Port 6) -> Leitsalz (Port 7) -> Wasser -> NaOH (Port 5 im Test)
+        pump, meter = make_ph_pump(5.0)
+        pump.prepare_solution(vol_leitsalz=0.1, vol_wasser=0.2, vol_carbonsaeure=0.05, vol_naoh=0.2, target_ph=9.0,
+                              tolerance=0.2, wait_s=20, target_volume=10, order="carbonsaeure,leitsalz,wasser")
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [6, 1, 7, 1, 5, 1, 1])
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertEqual(labels[1:5], ["Carbonsaeure", "Leitsalz", "Wasser", "NaOH"])
+        self.assertAlmostEqual(meter.ph, 8.8)
+        self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
+
+    def test_reihenfolge_unvollstaendig_failed_ohne_bewegung(self):
+        pump, meter = make_ph_pump(5.0)
+        pump.prepare_solution(vol_leitsalz=0.1, target_ph=9.0, order="carbonsaeure,leitsalz")
+        pump.run_all(5)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertEqual(pump.events, [])
+        self.assertIn("order", pump.last("dosing_step"))
+
     def test_nur_regelung_wenn_alle_volumina_null(self):
         pump, meter = make_ph_pump(4.0)
         pump.prepare_solution(target_ph=9.0, tolerance=0.2, wait_s=0, target_volume=20)

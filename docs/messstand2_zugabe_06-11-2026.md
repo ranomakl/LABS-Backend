@@ -273,6 +273,12 @@ geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmeng
 
 **Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Blatt 2). Die Routine nimmt Volumina.
 
+**Variante `ansatz_neu` (Rafael, 23.11.2026):** dieselbe Routine, nur die festen Zugaben in anderer Reihenfolge:
+Carbonsaeure -> Leitsalz (Na2SO4) -> Wasser, dann wie gehabt NaOH, Warten, pH-Regelung, Auffuellen. Gleiche
+Parameter und Ports wie `ansatz`. Technik: `prepare_solution` hat ein Feld `order` (Namen `leitsalz`, `wasser`,
+`carbonsaeure`, jeder genau einmal, mit Komma getrennt); `ansatz_neu` setzt es in der Config auf
+`carbonsaeure,leitsalz,wasser`. Fehlt ein Name oder ist einer doppelt, endet der Lauf als Failed ohne Bewegung.
+
 **Technik:** `prepare_solution` in valve_dosing.py baut aus den Volumina und den Config-Ports die Zugabenliste
 und reicht sie an `add_recipe_ph` weiter (= `plan_recipe` ohne Auffuellen + Schritt "pH messen" (`PhRegelung`)
 + Auffuellen). Tests: AnsatzFestePortsTests in backend/test/test_valve_dosing.py.

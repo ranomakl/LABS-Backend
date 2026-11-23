@@ -593,20 +593,31 @@ class ValveDosingMixIn:
             return steps
         return self._dosing_request(str(title), plan)
 
+    ANSATZ_ORDER = "leitsalz,wasser,carbonsaeure"   # Reihenfolge der festen Zugaben in ansatz (Routine ansatz)
+    ANSATZ_ADDITIONS = {"leitsalz": ("Leitsalz", "leitsalz"), "wasser": ("Wasser", None),
+                        "carbonsaeure": ("Carbonsaeure", "carbonsaeure")}
+
     def prepare_solution(self, vol_leitsalz=0.0, vol_wasser=0.0, vol_carbonsaeure=0.0, vol_naoh=0.0, target_ph=7.0,
                          tolerance=0.2, vol_gross=0.2, vol_klein=0.05, wait_s=30, target_volume=0, pause_s=0.0,
-                         start_volume=0.0, title="Ansatz", **kwargs):
+                         start_volume=0.0, title="Ansatz", order=ANSATZ_ORDER, **kwargs):
         """Routine ansatz mit festen Ports (Rafael 11.11.2026): Leitsalz (dosing: ansatz_ports leitsalz) -> Wasser ->
         Carbonsaeure (ansatz_ports carbonsaeure) -> NaOH (ph_ports base_stark, aequimolar, von Hand gerechnet) ->
         wait_s -> pH-Regelung wie regulate_ph -> Auffuellen auf target_volume. Volumen 0 = Zugabe entfaellt.
-        Im Frontend werden nur Volumina eingegeben, keine Ports."""
+        Im Frontend werden nur Volumina eingegeben, keine Ports.
+        order: Reihenfolge der drei festen Zugaben, Namen aus ANSATZ_ADDITIONS mit Komma getrennt (Routine
+        ansatz_neu, 23.11.2026: "carbonsaeure,leitsalz,wasser"). NaOH kommt immer danach. Jeder Name genau einmal."""
+        volumes = {"leitsalz": vol_leitsalz, "wasser": vol_wasser, "carbonsaeure": vol_carbonsaeure}
+        keys = [k.strip().lower() for k in str(order).split(",") if k.strip()]
+
         def additions(settings):
+            if sorted(keys) != sorted(self.ANSATZ_ADDITIONS):
+                raise ValueError(f"order {order!r}: erwartet jeden der Namen {', '.join(self.ANSATZ_ADDITIONS)} "
+                                 f"genau einmal")
             if settings.ansatz_ports is None:
                 raise ValueError("dosing: ansatz_ports fehlt - die Ports fuer Leitsalz und Carbonsaeure muessen in der "
                                  "Konfiguration stehen")
             parsed = []
-            for label, key, volume in (("Leitsalz", "leitsalz", vol_leitsalz), ("Wasser", None, vol_wasser),
-                                       ("Carbonsaeure", "carbonsaeure", vol_carbonsaeure)):
+            for label, key, volume in ((*self.ANSATZ_ADDITIONS[k], volumes[k]) for k in keys):
                 volume_ml = _number_or_zero(volume)
                 if volume_ml < 0:
                     raise ValueError(f"{label}: Volumen {volume_ml} mL darf nicht negativ sein")

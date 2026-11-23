@@ -84,6 +84,7 @@ Reaktionsloesung:
 | `vorfuellen` | vol_wasser (mL), port_a..port_f (0 = ungenutzt, sechs Felder fuer Ports 2..7), vol_je_port (mL) | vor dem ersten Ansatz alle Schlaeuche fuellen: Wasser, dann je Port seine Chemikalie mit Spuelen; Auslauf ins Becherglas (10.11.2026) |
 | `ph_regelung` | ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), startvolumen, zielvolumen (mL) | pH in vier Schritten nach Vorgabe des Chemikers auf ziel_ph regeln, Flaschen fest aus config (dosing: ph_ports), dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
 | `ansatz` | vol_leitsalz, vol_wasser, vol_carbonsaeure, vol_naoh (aequimolar, von Hand gerechnet) - Ports fest in der Config (Leitsalz 7, Carbonsaeure 6, NaOH 4) -, ziel_ph, toleranz, vol_gross, vol_klein (mL), wartezeit_ph_messung (s), zielvolumen (mL), pause_zugabe (s) | ganzer Ansatz in einem Lauf: feste Zugaben mit Spuelen, dann pH-Regelung wie ph_regelung, dann mit Wasser auf das Zielvolumen auffuellen (11.11.2026) |
+| `ansatz_neu` | wie `ansatz` | wie `ansatz`, aber Reihenfolge der festen Zugaben Carbonsaeure -> Leitsalz (Na2SO4) -> Wasser -> NaOH (Rafael 23.11.2026); Reihenfolge im Feld `order` der Routine |
 
 Beschreibung, Testreihenfolge fuers Labor, bekannte Grenzen und offene Fragen:
 `docs/messstand2_zugabe_06-11-2026.md`.
