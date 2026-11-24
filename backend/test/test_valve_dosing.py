@@ -843,16 +843,17 @@ class AnsatzTests(unittest.TestCase):
 
     def test_naoh_aequimolar_vor_der_regelung(self):
         # Saeure 1 10 uL stark (-0,2) -> 4,8; NaOH 200 uL aus dem Port der starken Base (im Test 5, +4) -> 8,8:
-        # im Fenster, keine Dose noetig
+        # im Fenster, keine Dose noetig. NaOH in zwei Haelften je 100 uL, dazwischen Spuelen (24.11.2026).
         pump, meter = make_ph_pump(5.0)
         pump.add_recipe_ph("Saeure 1=3.0:0.01", target_ph=9.0, tolerance=0.2, wait_s=0, target_volume=10,
                            vol_naoh=0.2)
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1, 5, 1, 5, 1, 1])
+        self.assertEqual(doses(pump), [(3, 10), (5, 100), (5, 100)])
         self.assertAlmostEqual(meter.ph, 8.8)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertEqual(labels[1:3], ["Saeure 1", "NaOH"])
+        self.assertEqual(labels[1:4], ["Saeure 1", "NaOH 1/2", "NaOH 2/2"])
         self.assertEqual(pump.last("ph_additions"), 0)
 
     def test_naoh_ohne_starke_base_in_der_config(self):
@@ -877,17 +878,17 @@ class AnsatzFestePortsTests(unittest.TestCase):
 
     def test_leitsalz_wasser_carbonsaeure_naoh_regelung_auffuellen(self):
         # Leitsalz 0,1 (Port 7, wirkt nicht) -> Wasser 0,2 -> Carbonsaeure 0,05 (Port 6, -0,2) -> 4,8
-        # -> NaOH 0,2 (Port 5 im Test, +4) -> 8,8: im Fenster -> auffuellen auf 10
+        # -> NaOH 0,2 in zwei Haelften (Port 5 im Test, +4) -> 8,8: im Fenster -> auffuellen auf 10
         pump, meter = make_ph_pump(5.0)
         pump.prepare_solution(vol_leitsalz=0.1, vol_wasser=0.2, vol_carbonsaeure=0.05, vol_naoh=0.2, target_ph=9.0,
                               tolerance=0.2, wait_s=20, target_volume=10)
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [7, 1, 6, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [7, 1, 6, 1, 5, 1, 5, 1, 1])
         self.assertAlmostEqual(meter.ph, 8.8)
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertEqual(labels[1:5], ["Leitsalz", "Wasser", "Carbonsaeure", "NaOH"])
+        self.assertEqual(labels[1:6], ["Leitsalz", "Wasser", "Carbonsaeure", "NaOH 1/2", "NaOH 2/2"])
         self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
         self.assertEqual(pump.last("ph_additions"), 0)
 
@@ -898,9 +899,9 @@ class AnsatzFestePortsTests(unittest.TestCase):
                               tolerance=0.2, wait_s=20, target_volume=10, order="carbonsaeure,leitsalz,wasser")
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [6, 1, 7, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [6, 1, 7, 1, 5, 1, 5, 1, 1])
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertEqual(labels[1:5], ["Carbonsaeure", "Leitsalz", "Wasser", "NaOH"])
+        self.assertEqual(labels[1:6], ["Carbonsaeure", "Leitsalz", "Wasser", "NaOH 1/2", "NaOH 2/2"])
         self.assertAlmostEqual(meter.ph, 8.8)
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
 

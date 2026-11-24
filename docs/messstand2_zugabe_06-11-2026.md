@@ -258,7 +258,9 @@ stehen fest in der Config (Rafael, 11.11.2026): `dosing: ansatz_ports` (Leitsalz
 **Ablauf**
 
 1. Leitsalz -> Wasser -> Carbonsaeure -> NaOH, jede Chemikalie mit Spuelen (Abschnitt 1), dazwischen
-   `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
+   `pause_zugabe`. Volumen 0 laesst die Zugabe aus. NaOH wird seit dem 24.11.2026 (Rafael) in zwei Haelften
+   gegeben: `vol_naoh`/2, Spuelen mit Wasser, `pause_zugabe`, `vol_naoh`/2, Spuelen. Das kostet eine Spuelmenge
+   Wasser mehr als vorher (zaehlt im Volumenbudget mit).
 2. `wartezeit_ph_messung` warten, pH messen.
 3. pH-Regelung in vier Schritten, genau wie `ph_regelung` (Abschnitt 12).
 4. Mit Wasser auf `zielvolumen` auffuellen.
@@ -269,7 +271,7 @@ geprueft, ob Dose + Spuelmenge noch hineinpassen. Jede Dose bringt die Spuelmeng
 2,0 mL); zehn Dosen sind 30 mL Wasser. Darum `zielvolumen` grosszuegig setzen.
 
 **Abbruch** wie bei `ph_regelung` (Abschnitt 12). **Monitoring** wie dort, dazu die festen Zugaben in
-`dosing_addition` ("Leitsalz", "Carbonsaeure", "NaOH").
+`dosing_addition` ("Leitsalz", "Carbonsaeure", "NaOH 1/2", "NaOH 2/2").
 
 **Noch nicht drin:** die Rezeptrechnung aus Konzentrationen (Blatt 2). Die Routine nimmt Volumina.
 

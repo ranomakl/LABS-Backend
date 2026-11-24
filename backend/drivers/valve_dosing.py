@@ -562,8 +562,10 @@ class ValveDosingMixIn:
                       target_volume=0, pause_s=0.0, start_volume=0.0, vol_naoh=0.0, title="Ansatz", **kwargs):
         """Routine ansatz: erst die festen Zugaben aus `additions` (wie add_recipe, ohne Auffuellen), dann
         vol_naoh mL NaOH aus dem Port der starken Base (dosing: ph_ports base_stark; aequimolare Menge, von Hand
-        gerechnet; 0 = keine), dann wait_s warten, dann die pH-Regelung wie regulate_ph, zum Schluss mit Wasser
-        auf target_volume auffuellen. Vor dem Start: passen die festen Zugaben samt Spuelwasser nicht ins
+        gerechnet; 0 = keine) in ZWEI Haelften "NaOH 1/2" und "NaOH 2/2" (Rafael 24.11.2026): nach der ersten
+        Haelfte wird mit Wasser gespuelt (und pause_s gewartet), dann kommt die zweite Haelfte mit ihrem Spuelen.
+        Dann wait_s warten, dann die pH-Regelung wie regulate_ph, zum Schluss mit Wasser auf target_volume
+        auffuellen. Vor dem Start: passen die festen Zugaben samt Spuelwasser (beide NaOH-Spuelungen) nicht ins
         Zielvolumen -> Failed ohne Bewegung."""
         def plan(settings, positions):
             self._dosing_check_ph(settings)
@@ -577,7 +579,11 @@ class ValveDosingMixIn:
                 naoh_port = settings.ph_ports.get("base_stark") or 0
                 if not naoh_port:
                     raise ValueError("vol_naoh > 0, aber dosing: ph_ports hat keine starke Base (base_stark = 0)")
-                parsed.append(("NaOH", naoh_port, naoh_ml))
+                # Zwei Haelften (Rafael 24.11.2026): plan_recipe spuelt nach jeder Reagenz-Zugabe mit Wasser, der
+                # Spuelschritt der ersten Haelfte liegt damit zwischen den beiden NaOH-Dosen. Zwei verschiedene
+                # Labels, damit _dosing_next beide als eigene Zugabe meldet (gleiche Labels wuerden zusammenfallen).
+                parsed.append(("NaOH 1/2", naoh_port, naoh_ml / 2))
+                parsed.append(("NaOH 2/2", naoh_port, naoh_ml / 2))
             steps = plan_recipe(parsed, settings, target_volume_ml=0, pause_s=pause_s,
                                 start_volume_ml=start_volume, positions=positions) if parsed else []
             fixed = loop.start_volume_ml + plan_totals(steps)["total_ml"]
@@ -601,8 +607,9 @@ class ValveDosingMixIn:
                          tolerance=0.2, vol_gross=0.2, vol_klein=0.05, wait_s=30, target_volume=0, pause_s=0.0,
                          start_volume=0.0, title="Ansatz", order=ANSATZ_ORDER, **kwargs):
         """Routine ansatz mit festen Ports (Rafael 11.11.2026): Leitsalz (dosing: ansatz_ports leitsalz) -> Wasser ->
-        Carbonsaeure (ansatz_ports carbonsaeure) -> NaOH (ph_ports base_stark, aequimolar, von Hand gerechnet) ->
-        wait_s -> pH-Regelung wie regulate_ph -> Auffuellen auf target_volume. Volumen 0 = Zugabe entfaellt.
+        Carbonsaeure (ansatz_ports carbonsaeure) -> NaOH (ph_ports base_stark, aequimolar, von Hand gerechnet; in
+        zwei Haelften mit Spuelschritt dazwischen, siehe add_recipe_ph) -> wait_s -> pH-Regelung wie regulate_ph ->
+        Auffuellen auf target_volume. Volumen 0 = Zugabe entfaellt.
         Im Frontend werden nur Volumina eingegeben, keine Ports.
         order: Reihenfolge der drei festen Zugaben, Namen aus ANSATZ_ADDITIONS mit Komma getrennt (Routine
         ansatz_neu, 23.11.2026: "carbonsaeure,leitsalz,wasser"). NaOH kommt immer danach. Jeder Name genau einmal."""
