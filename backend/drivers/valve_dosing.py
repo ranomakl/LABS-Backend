@@ -41,6 +41,8 @@ pH-Regelung (11.11.2026, Vorgabe des Chemikers): vier Flaschen an festen Ventil-
 Base stark/schwach, Saeure stark/schwach), vier Schritte in fester Reihenfolge stark/gross -> stark/klein ->
 schwach/gross -> schwach/klein. Richtung nach dem aktuellen pH (unter dem Ziel Base, ueber dem Ziel Saeure);
 gleiche Seite wie vor der letzten Dose = Schritt bleibt, Seite gewechselt = naechster Schritt, nie zurueck.
+Im letzten Schritt (schwach/klein) wird bei jedem weiteren Seitenwechsel die Dose halbiert (Rafael 24.11.2026),
+statt mit vol_klein hin und her zu pendeln - bis der pH im Zielfenster liegt.
 Jede Dose mit Spuelen, dann Wartezeit, dann wieder messen, bis der pH im Zielfenster liegt; danach mit Wasser
 auf das Zielvolumen auffuellen. regulate_ph = nur Regelung + Auffuellen (Routine ph_regelung); add_recipe_ph =
 feste Zugaben + Regelung + Auffuellen (Routine ansatz). Abbruch (Failed): kein oder veralteter pH-Wert,
@@ -357,6 +359,9 @@ class PhRegelung:
       - Richtung nach dem aktuellen pH: unter dem Ziel Base (hebt), ueber dem Ziel Saeure (senkt).
       - Schritt: erste Dose 1; liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose, bleibt der
         Schritt; hat er die Seite gewechselt (ueber-/unterschossen), naechster Schritt, hoechstens 4, nie zurueck.
+      - Im Schritt 4 (Rafael 24.11.2026): jeder weitere Seitenwechsel halbiert die Dose (vol_klein/2, /4, /8 ...),
+        gleiche Seite = Dose bleibt. Keine Untergrenze ausser der Notbremse max_additions; die Pumpe faehrt
+        kleine Volumen mit min_rate_ml_min (choose_rate).
       - Fehlt die Flasche der noetigen Staerke (Port 0), wird die andere Staerke derselben Richtung genommen.
       - Abbruch nur, wenn Dose + Spuelmenge nicht mehr unter das Zielvolumen passen (Rafael 11.11.2026:
         keine "pH reagiert nicht"-Pruefung mehr, die war zu streng). Notbremse: max_additions Dosen.
@@ -397,6 +402,7 @@ class PhRegelung:
                 raise ValueError(f"dosing: ph_ports: keine Flasche fuer {direction} (beide Ports 0)")
         self.additions = 0
         self.stage = 0             # Index in STAGES
+        self.halvings = 0          # Seitenwechsel im letzten Schritt: Dose = vol_klein / 2**halvings
         self.history = []          # (Richtung, pH vor der Dose, Schritt) je Dose
 
     def decide(self, ph, delivered_ml, settings: DosingSettings):
@@ -412,7 +418,8 @@ class PhRegelung:
                     self.stage += 1
                     reason = "Seite gewechselt, naechster Schritt"
                 else:
-                    reason = "Seite gewechselt, bleibt im letzten Schritt"
+                    self.halvings += 1
+                    reason = f"Seite gewechselt, letzter Schritt: Dose zum {self.halvings}. Mal halbiert"
             else:
                 reason = "gleiche Seite, Schritt bleibt"
         if self.additions >= self.max_additions:
@@ -424,7 +431,7 @@ class PhRegelung:
             used_strength = "schwach" if strength == "stark" else "stark"
             port = self.ports.get((direction, used_strength))
             reason += f", keine {strength}e Flasche -> {used_strength}"
-        dose = self.vol_gross if size == "gross" else self.vol_klein
+        dose = self.vol_gross if size == "gross" else self.vol_klein / 2 ** self.halvings
         if self.target_volume_ml:
             room = self.target_volume_ml - self.start_volume_ml - delivered_ml
             if dose + settings.flush_volume_ml > room + 1e-9:
@@ -548,8 +555,8 @@ class ValveDosingMixIn:
     def regulate_ph(self, target_ph, tolerance=0.2, vol_gross=0.2, vol_klein=0.05, wait_s=30, target_volume=0,
                     start_volume=0, title="pH-Regelung", **kwargs):
         """Routine ph_regelung: pH in vier Schritten auf target_ph +- tolerance regeln (PhRegelung, Flaschen aus
-        dosing: ph_ports), danach mit Wasser auf target_volume auffuellen (0 = nicht). Die Pumpe ist bis zum
-        Ende Busy. Das Messgeraet muss waehrenddessen messen (Routine: [liquiline, start_measuring, ...])."""
+        dosing: ph_ports; im vierten Schritt wird die Dose bei jedem Seitenwechsel halbiert), danach mit Wasser auf
+        target_volume auffuellen (0 = nicht). Die Pumpe ist bis zum Ende Busy. Das Messgeraet muss waehrenddessen messen (Routine: [liquiline, start_measuring, ...])."""
         def plan(settings, positions):
             self._dosing_check_ph(settings)
             step = Step("ph", label="pH messen")

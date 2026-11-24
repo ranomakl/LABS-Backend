@@ -377,6 +377,13 @@ ueber dem Ziel Saeure). Liegt der pH auf derselben Seite des Ziels wie vor der l
 Hat er die Seite gewechselt (ueber- oder unterschossen): naechster Schritt, hoechstens 4, nie zurueck. Dose
 foerdern, Spuelen, `wartezeit_ph_messung`, wieder messen.
 
+**Schritt 4 halbiert (Rafael, 24.11.2026):** Ist Schritt 4 (schwach/`vol_klein`) erreicht und der pH wechselt
+noch einmal die Seite, wird die Dose halbiert (`vol_klein`/2, dann /4, /8 ...), gleiche Seite = Dose bleibt. So
+lange, bis der pH im Fenster liegt. Vorher pendelte die Regelung mit `vol_klein` hin und her. Es gibt keine
+Untergrenze fuer die Dose ausser der Notbremse 40 Dosen. Kleine Volumen faehrt die Pumpe mit der
+Mindestflussrate 0,0058 mL/min (6 uL dauern damit etwa 1 min). Werden die Dosen so klein, stimmen eher
+`vol_klein` oder die Konzentration der schwachen Flaschen nicht.
+
 **Abbruch als Failed mit Meldung:** Zielvolumen voll, Ziel-pH nicht erreicht (einzige fachliche Grenze; die
 "pH reagiert nicht"-Pruefung wurde am 11.11. auf Wunsch von Rafael entfernt, sie war zu streng). Kein
 pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s, Status
@@ -385,9 +392,9 @@ nicht "Good". Mehr als 40 Dosen.
 **Im Monitoring** `dosing_addition` je Dose, z.B. "Dose 3, Schritt 2: starke Saeure 50 uL (Port 3, pH 10.60,
 Ziel 9) - Seite gewechselt, naechster Schritt". `ph_additions` zaehlt die Dosen, `ph_value` ist die Kurve.
 
-**Bekannte Grenze:** Schiesst selbst `vol_klein` der schwachen Flasche noch ueber das Ziel, pendelt es in
-Schritt 4, bis es trifft oder nach 40 Dosen abbricht. Dann `vol_klein` kleiner oder die schwache Flasche
-verduennen. Die Regel kennt keinen Rueckweg zu groesseren Dosen (bewusst, Rafael 11.11.2026, Variante 1).
+**Bekannte Grenze:** Die Regel kennt keinen Rueckweg zu groesseren Dosen (bewusst, Rafael 11.11.2026,
+Variante 1). Das fruehere Pendeln mit `vol_klein` in Schritt 4 ist seit dem 24.11.2026 durch das Halbieren
+ersetzt (siehe oben).
 
 Technik: `PhRegelung` und `regulate_ph` in valve_dosing.py. Dieselbe Regelung steckt in `ansatz`
 (Abschnitt 9). Tests: PhRegelungTests in backend/test/test_valve_dosing.py.

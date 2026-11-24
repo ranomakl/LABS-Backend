@@ -710,6 +710,31 @@ class PhRegelungTests(unittest.TestCase):
         self.assertTrue(any(l.startswith("Dose 6, Schritt 3: schwache Base 200 uL (Port 4") for l in labels), labels)
         self.assertTrue(any(l.startswith("Dose 7, Schritt 4: schwache Saeure 50 uL (Port 2") for l in labels), labels)
 
+    def test_schritt_4_halbiert_bei_jedem_seitenwechsel(self):
+        # 8,5 -> 12,5 (S1) -> starke Saeure 50 x4 -> 8,5 (S2) -> S3 schwache Base 200 +0,8 -> 9,3 -> S4 schwache
+        # Saeure 50 -0,2 -> 9,1 (gleiche Seite, bleibt 50) -> 8,9: Seite gewechselt im letzten Schritt -> Dose
+        # halbiert: schwache Base 25 uL +0,1 -> 9,0 fertig (Toleranz 0,05). Vorher pendelte es mit 50 uL (24.11.2026).
+        pump, meter = make_ph_pump(8.5)
+        pump.regulate_ph(9.0, 0.05, wait_s=0)
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertEqual(doses(pump), [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50), (2, 50), (4, 25)])
+        self.assertAlmostEqual(meter.ph, 9.0)
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertTrue(any(l.startswith("Dose 9, Schritt 4: schwache Base 25 uL (Port 4") and "1. Mal halbiert" in l
+                            for l in labels), labels)
+
+    def test_halbierung_mehrfach_und_gleiche_seite_bleibt(self):
+        # Nur die Entscheidung (decide), ohne Pumpe: im letzten Schritt angekommen, dann Seite wechseln,
+        # bleiben, wechseln -> 50, 25, 25, 12,5 uL.
+        settings = vd.DosingSettings(PH_CONFIG)
+        loop = vd.PhRegelung(9.0, 0.01, 0.2, 0.05, 0, 0, 0, settings)
+        loop.stage = len(loop.STAGES) - 1
+        loop.history.append(("Saeure", 9.3, loop.stage))
+        got = [loop.decide(ph, 0.0, settings)[1] * 1000 for ph in (9.2, 8.8, 8.9, 9.1)]
+        self.assertEqual(got, [50, 25, 25, 12.5])
+        self.assertEqual(loop.halvings, 2)
+
     def test_eigene_volumina(self):
         pump, meter = make_ph_pump(4.0)
         pump.regulate_ph(9.0, 0.2, vol_gross=0.1, vol_klein=0.02, wait_s=0)
