@@ -730,10 +730,41 @@ class PhRegelungTests(unittest.TestCase):
         settings = vd.DosingSettings(PH_CONFIG)
         loop = vd.PhRegelung(9.0, 0.01, 0.2, 0.05, 0, 0, 0, settings)
         loop.stage = len(loop.STAGES) - 1
-        loop.history.append(("Saeure", 9.3, loop.stage))
+        loop.history.append(("Saeure", 9.3, loop.stage, "schwach"))
         got = [loop.decide(ph, 0.0, settings)[1] * 1000 for ph in (9.2, 8.8, 8.9, 9.1)]
         self.assertEqual(got, [50, 25, 25, 12.5])
         self.assertEqual(loop.halvings, 2)
+
+    def test_dreifache_dose_wenn_die_erste_starke_dose_nicht_wirkt(self):
+        # Starke Base (Port 5) wirkt in diesem Test nicht: 200 uL -> pH bleibt 4,0 (< 0,1 Aenderung) -> einmalig
+        # 600 uL -> wirkt wieder nicht -> normal 200 uL weiter (einmalig!), bis das Zielvolumen voll ist.
+        pump, meter = make_ph_pump(4.0)
+        pump.ph_effect[5] = 0.0
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=13.3, start_volume=10)   # 0,2+0,75 / 0,6+0,75 / 0,2+0,75
+        pump.run_all(900)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertIn("Zielvolumen", pump.last("dosing_step"))
+        self.assertEqual(doses(pump), [(5, 200), (5, 600), (5, 200)])
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        self.assertTrue(any(l.startswith("Dose 2, Schritt 1: starke Base 600 uL (Port 5") and "3-fache Dose" in l
+                            for l in labels), labels)
+
+    def test_dreifache_dose_je_starke_flasche_einmal_und_nur_bei_der_ersten(self):
+        # Nur decide: starke Base 200 wirkt kaum (+0,05) -> 600; wechselt die Seite -> Schritt 2 starke Saeure 50:
+        # erste starke Saeure-Dose wirkt nicht -> 150; danach wirkt sie und es bleibt bei 50.
+        settings = vd.DosingSettings(PH_CONFIG)
+        loop = vd.PhRegelung(9.0, 0.1, 0.2, 0.05, 0, 0, 0, settings)
+        got = [round(loop.decide(ph, 0.0, settings)[1] * 1000) for ph in (4.0, 4.05, 12.0, 11.95, 11.0, 10.0)]
+        self.assertEqual(got, [200, 600, 50, 150, 50, 50])
+        self.assertEqual(loop.boosted, {"Base", "Saeure"})
+
+    def test_keine_dreifache_dose_wenn_die_erste_starke_dose_wirkt(self):
+        settings = vd.DosingSettings(PH_CONFIG)
+        loop = vd.PhRegelung(9.0, 0.1, 0.2, 0.05, 0, 0, 0, settings)
+        # 4,0 -> 4,2 (Aenderung 0,2 >= 0,1) -> normal 200; spaeter wirkt eine Dose nicht mehr -> trotzdem normal
+        got = [round(loop.decide(ph, 0.0, settings)[1] * 1000) for ph in (4.0, 4.2, 4.2, 4.2)]
+        self.assertEqual(got, [200, 200, 200, 200])
+        self.assertEqual(loop.boosted, set())
 
     def test_eigene_volumina(self):
         pump, meter = make_ph_pump(4.0)
@@ -787,7 +818,8 @@ class PhRegelungTests(unittest.TestCase):
         # Rafael 11.11.2026: keine "reagiert nicht"-Pruefung - es dosiert weiter, bis das Zielvolumen voll ist
         pump, meter = make_ph_pump(4.0)
         meter.dead = True
-        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=15.7, start_volume=10)   # Platz fuer 6 Dosen a 0,95 mL
+        # Platz fuer 6 Dosen: 5 x (0,2 + 0,75 Spuelen) + einmal die Dreifach-Dose 0,6 + 0,75 (24.11.2026) = 6,1 mL
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=16.2, start_volume=10)
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
         self.assertIn("Zielvolumen", pump.last("dosing_step"))

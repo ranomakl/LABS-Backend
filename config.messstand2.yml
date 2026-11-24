@@ -395,7 +395,9 @@ experiments:
   # -> 4 schwach/vol_klein. Richtung nach dem aktuellen pH: unter dem Ziel Base (hebt), ueber dem Ziel Saeure
   # (senkt). Liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose: Schritt bleibt. Seite
   # gewechselt (ueber-/unterschossen): naechster Schritt, nie zurueck. Im Schritt 4 halbiert jeder weitere
-  # Seitenwechsel die Dose (vol_klein/2, /4, ...; Rafael 24.11.2026) statt zu pendeln. Nach jeder Dose: Spuelen,
+  # Seitenwechsel die Dose (vol_klein/2, /4, ...; Rafael 24.11.2026) statt zu pendeln. Aendert sich der pH nach
+  # der ersten Dose aus der starken Base bzw. Saeure um weniger als 0,1, kommt einmalig die dreifache Dose
+  # (Rafael 24.11.2026). Nach jeder Dose: Spuelen,
   # wartezeit_ph_messung s warten, wieder messen - bis ziel_ph +- toleranz. Dann mit Wasser auf zielvolumen
   # auffuellen (0 = nicht auffuellen, keine Grenze). startvolumen = was schon im Gefaess ist.
   # Abbruch (Failed) mit Meldung: Zielvolumen voll (einzige fachliche Grenze, Rafael 11.11.), kein/veralteter pH-Wert,

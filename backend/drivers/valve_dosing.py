@@ -42,7 +42,9 @@ Base stark/schwach, Saeure stark/schwach), vier Schritte in fester Reihenfolge s
 schwach/gross -> schwach/klein. Richtung nach dem aktuellen pH (unter dem Ziel Base, ueber dem Ziel Saeure);
 gleiche Seite wie vor der letzten Dose = Schritt bleibt, Seite gewechselt = naechster Schritt, nie zurueck.
 Im letzten Schritt (schwach/klein) wird bei jedem weiteren Seitenwechsel die Dose halbiert (Rafael 24.11.2026),
-statt mit vol_klein hin und her zu pendeln - bis der pH im Zielfenster liegt.
+statt mit vol_klein hin und her zu pendeln - bis der pH im Zielfenster liegt. Aendert sich der pH nach der
+jeweils ersten Dose aus einer STARKEN Flasche um weniger als 0,1, kommt einmalig die dreifache Dose (Rafael
+24.11.2026; je starke Flasche hoechstens einmal).
 Jede Dose mit Spuelen, dann Wartezeit, dann wieder messen, bis der pH im Zielfenster liegt; danach mit Wasser
 auf das Zielvolumen auffuellen. regulate_ph = nur Regelung + Auffuellen (Routine ph_regelung); add_recipe_ph =
 feste Zugaben + Regelung + Auffuellen (Routine ansatz). Abbruch (Failed): kein oder veralteter pH-Wert,
@@ -362,12 +364,17 @@ class PhRegelung:
       - Im Schritt 4 (Rafael 24.11.2026): jeder weitere Seitenwechsel halbiert die Dose (vol_klein/2, /4, /8 ...),
         gleiche Seite = Dose bleibt. Keine Untergrenze ausser der Notbremse max_additions; die Pumpe faehrt
         kleine Volumen mit min_rate_ml_min (choose_rate).
+      - Dreifache Dose (Rafael 24.11.2026): hat sich der pH nach der ERSTEN Dose aus einer starken Flasche (starke
+        Base bzw. starke Saeure) um weniger als MIN_RESPONSE geaendert und die naechste Dose kommt aus derselben
+        Flasche, wird sie einmalig verdreifacht. Danach normal weiter, auch wenn der pH wieder nicht reagiert.
       - Fehlt die Flasche der noetigen Staerke (Port 0), wird die andere Staerke derselben Richtung genommen.
       - Abbruch nur, wenn Dose + Spuelmenge nicht mehr unter das Zielvolumen passen (Rafael 11.11.2026:
         keine "pH reagiert nicht"-Pruefung mehr, die war zu streng). Notbremse: max_additions Dosen.
     Nach erreichtem Ziel: fill_after -> mit Wasser auf target_volume_ml auffuellen (0 = nicht)."""
 
     STAGES = (("stark", "gross"), ("stark", "klein"), ("schwach", "gross"), ("schwach", "klein"))
+    MIN_RESPONSE = 0.1          # so viel muss sich der pH nach der ersten starken Dose mindestens aendern
+    BOOST_FACTOR = 3            # sonst einmalig das Vielfache der Dose
 
     def __init__(self, target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume_ml, start_volume_ml,
                  settings: DosingSettings, positions=None, max_additions=40):
@@ -403,7 +410,9 @@ class PhRegelung:
         self.additions = 0
         self.stage = 0             # Index in STAGES
         self.halvings = 0          # Seitenwechsel im letzten Schritt: Dose = vol_klein / 2**halvings
-        self.history = []          # (Richtung, pH vor der Dose, Schritt) je Dose
+        self.history = []          # (Richtung, pH vor der Dose, Schritt, benutzte Staerke) je Dose
+        self.strong_doses = {"Base": 0, "Saeure": 0}   # Dosen je starker Flasche (fuer die Dreifach-Dose)
+        self.boosted = set()       # Richtungen, deren starke Flasche die Dreifach-Dose schon bekommen hat
 
     def decide(self, ph, delivered_ml, settings: DosingSettings):
         """None = Ziel erreicht; sonst (port, dose_ml, label). RuntimeError = Abbruch."""
@@ -432,13 +441,22 @@ class PhRegelung:
             port = self.ports.get((direction, used_strength))
             reason += f", keine {strength}e Flasche -> {used_strength}"
         dose = self.vol_gross if size == "gross" else self.vol_klein / 2 ** self.halvings
+        if (self.history and used_strength == "stark" and direction not in self.boosted
+                and self.history[-1][0] == direction and self.history[-1][3] == "stark"
+                and self.strong_doses[direction] == 1 and abs(ph - self.history[-1][1]) < self.MIN_RESPONSE):
+            dose *= self.BOOST_FACTOR
+            self.boosted.add(direction)
+            reason += (f", pH nach der ersten starken Dose nur um {abs(ph - self.history[-1][1]):.2f} geaendert -> "
+                       f"einmalig {self.BOOST_FACTOR}-fache Dose")
         if self.target_volume_ml:
             room = self.target_volume_ml - self.start_volume_ml - delivered_ml
             if dose + settings.flush_volume_ml > room + 1e-9:
                 raise RuntimeError(f"Zielvolumen {self.target_volume_ml:g} mL erreicht (noch {max(room, 0):.2f} mL frei), "
                                    f"Ziel-pH nicht erreicht: pH {ph:.2f}, Ziel {self.target_ph:g}")
         self.additions += 1
-        self.history.append((direction, ph, self.stage))
+        if used_strength == "stark":
+            self.strong_doses[direction] += 1
+        self.history.append((direction, ph, self.stage, used_strength))
         label = (f"Dose {self.additions}, Schritt {self.stage + 1}: {used_strength}e {direction} {dose * 1000:g} uL "
                  f"(Port {port}, pH {ph:.2f}, Ziel {self.target_ph:g}) - {reason}")
         return port, dose, label

@@ -382,6 +382,14 @@ Untergrenze fuer die Dose ausser der Notbremse 40 Dosen. Kleine Volumen faehrt d
 Mindestflussrate 0,0058 mL/min (6 uL dauern damit etwa 1 min). Werden die Dosen so klein, stimmen eher
 `vol_klein` oder die Konzentration der schwachen Flaschen nicht.
 
+**Dreifache Dose, wenn die erste starke Dose nicht wirkt (Rafael, 24.11.2026):** Aendert sich der pH nach der
+jeweils ersten Dose aus der starken Base bzw. der starken Saeure um weniger als 0,1, und die naechste Dose
+kaeme wieder aus derselben starken Flasche, wird diese Dose einmalig verdreifacht (`vol_gross` x 3 bzw.
+`vol_klein` x 3). Je starke Flasche hoechstens einmal; danach geht es mit den normalen Dosen weiter, auch wenn
+der pH wieder nicht reagiert. Die Schwelle 0,1 ist fest im Code (`PhRegelung.MIN_RESPONSE`), kein
+Frontend-Parameter. Im Monitoring: "... - gleiche Seite, Schritt bleibt, pH nach der ersten starken Dose nur
+um 0.03 geaendert -> einmalig 3-fache Dose". Zaehlt im Volumenbudget wie jede Dose.
+
 **Abbruch als Failed mit Meldung:** Zielvolumen voll, Ziel-pH nicht erreicht (einzige fachliche Grenze; die
 "pH reagiert nicht"-Pruefung wurde am 11.11. auf Wunsch von Rafael entfernt, sie war zu streng). Kein
 pH-Wert (bis 15 s wird gewartet, die Liquiline laeuft im selben Moment erst an), Wert aelter als 15 s, Status
