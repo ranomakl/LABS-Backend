@@ -57,7 +57,7 @@ devices:
     dosing:
       valve: valve1
       water_port: 1            # Wasser gehoert an Port 1: dorthin faehrt das Ventil beim Backend-Start
-      dead_volume_ml: 0.9      # 24.11.2026 Rafael: 0,9 mL, 20 cm 1,6-ID-Schlauch entfernt. Spuelmenge = 1,5 x = 1,35 mL. Vorher 1,25 (23.11.), 2,0 (11.11.), 1,5, 1,85
+      dead_volume_ml: 1.0      # 24.11.2026 Rafael: 1,0 mL (nach 20 cm 1,6-ID-Schlauch entfernt erst 0,9, dann auf 1,0 hochgesetzt). Spuelmenge = 1,5 x = 1,5 mL. Vorher 1,25 (23.11.), 2,0 (11.11.), 1,5, 1,85
       flush_factor: 1.5        # Spuelmenge = 1,5 x Totvolumen (Anforderung: 1- bis 2-fach)
       min_rate_ml_min: 0.0058  # 19.11.2026 Rafael: Schlauch jetzt 1,02 x 0,86 mm, Kopf DG 6 Rollen. Handbuch S. 4:
       max_rate_ml_min: 5.8     #   5,8 uL/min bis 5,8 mL/min (Longer empfiehlt 20-80 % davon = 1,2-4,6 mL/min).
