@@ -213,3 +213,45 @@ ob Relais AN wirklich Spuelweg ist und ob die Pumpe bei B laeuft. (2) ventil_was
 (Waste oder Phasentrenner?) und Routine dafuer festlegen. (3) Netz fuer den GC, dann microgc einschalten.
 (4) Frage 5: mfc2 + Gashandling aus config.yml (Messstand I) entfernen? (5) Abschnitt 6 Punkt 1 ("Bronkhorst
 zu" nur bis Routinenende) ist weiter offen.
+
+
+8. Offene Fragen - Stand 25.11.2026 abends (Rafael am Pi 2)
+-----------------------------------------------------------
+Erledigt heute: Bronkhorst = mfc2 (Etikett 2, am Pi 2 bestaetigt); Pinbelegung GPIO 27 / 17 / 22; neue Platine ohne
+release_when_off; Low-Flow-Pumpe laeuft in gas_spuelung mit; microGC ist derselbe wie an Messstand I (war beim
+Pruefen am 25.11. ausgeschaltet). Bronkhorst-Zuordnung passt zu Commit 609e08f (19.11.): mfc1 = Katholytgas und
+mfc3 = Anolytgas bleiben an Messstand I (Zwei-Kammer-Zelle), mfc2 war dort seitdem frei.
+
+Befund am Pi 2, 25.11. ca. 16:00 (Rafael: Platine angeschlossen; microGC, Ventil und Pi haengen ueber einen
+LAN-Switch zusammen, GC aus):
+  - eth0 = 10.42.0.1/24 (NetworkManager "shared", DHCP-Server dnsmasq). Im Netz antwortet nur das Knauer-Ventil
+    10.42.0.103. Keine DHCP-Leases, keine Route zu 169.254.x.x - 169.254.1.1 waere vom Pi 2 aus auch bei
+    eingeschaltetem GC NICHT erreichbar, solange eth0 keine Link-Local-Adresse hat.
+  - GPIO als Eingang gelesen (schaltet nichts): GPIO 22 High, GPIO 27 High (passt zu einer angeschlossenen
+    Low-Active-Platine, deren Eingaenge nach oben gezogen sind), GPIO 23 (frei) High, GPIO 17 (Low-Flow-Pumpe) LOW.
+    Low an 17 passt nicht zu einem Relaismodul im Ruhezustand - entweder haengt die Pumpe nicht an einem
+    Relais, sondern an einem anderen Eingang, oder der Kanal ist gerade "an". Vor dem ersten Test klaeren (Frage 3).
+
+  1. microGC am Pi 2 - Netz. Wenn der GC an ist, pruefen:
+        a) Holt er sich eine Adresse vom Pi? -> steht dann in /var/lib/NetworkManager/dnsmasq-eth0.leases;
+           Adresse in config.messstand2.yml bei microgc auf 10.42.0.x aendern.
+        b) Bleibt er bei 169.254.1.1 -> eth0 zusaetzlich eine Link-Local-Adresse geben. Dauerhaft:
+              nmcli connection modify "Wired connection 1" +ipv4.addresses 169.254.1.2/16
+              nmcli connection up "Wired connection 1"      (trennt kurz das Ventil - nur ohne laufenden Versuch!)
+           Oder bis zum naechsten Neustart, ohne Unterbrechung:  sudo ip addr add 169.254.1.2/16 dev eth0
+     Danach `ping 169.254.1.1` bzw. die neue Adresse, dann bei microgc `enabled: false` entfernen.
+  2. Gashandler: ist Relais AN (Position B) wirklich der Spuelweg? (Annahme seit 19.11., Abschnitt 4 Punkt 3.)
+  3. Low-Flow-Pumpe an GPIO 17: Relaismodul oder direkter Steuereingang? Laeuft sie bei Position B (Pin Low)?
+     Ist sie gerade aus, obwohl der Pin Low liest? Reicht an/aus, oder braucht sie eine Drehzahl?
+  4. ventil_waste (GPIO 22): Welche Stellung hat das stromlose Ventil - Waste oder Phasentrenner? In der Config
+     steht ANNAHME A = Waste. Und: in welcher Routine soll es wann umschalten (vor der Messung? beim Spuelen?)?
+  5. Relaisplatine: schaltet sie wirklich Low-Active (Pin auf Masse = Relais an)? Falls umgekehrt: inverted: false
+     bei allen drei Relais. Beim ersten Test mit minutes 0.5 am Klicken/der LED erkennbar.
+  6. "Bronkhorst zu" am Ende der Spuelung (Abschnitt 6, Punkt 1): Das Routinenende oeffnet ihn gleich wieder
+     ganz (Treiber-Regel: Gasweg nie versperrt lassen). Muss er ueberhaupt zu, wenn der Gashandler ohnehin auf
+     Messweg geht? Wenn ja: Eingriff in bronkhorst_mfc.py noetig.
+  7. Messstand I aufraeumen (alte Frage 5): mfc2 steht in config.yml noch mit Adapter BG01B1W6, der jetzt am Pi 2
+     steckt; gashandler + gas_spuelung + gas_messweg stehen dort auch noch. Loeschen, oder enabled: false?
+  8. Spuelrate: `gasrate` 50 mL/min ist der Vollausschlag von mfc2 (50 mln/min). Passt das, oder weniger?
+  9. Erster Test im Labor (Abschnitt 4): Backend neu starten ("LABS beenden"/"LABS starten"), Routinen im
+     Frontend laden (gas_spuelung, gas_messweg sind neue Namen fuer Messstand II), gas_spuelung mit minutes 0.5.
