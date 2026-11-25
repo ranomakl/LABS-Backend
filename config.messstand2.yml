@@ -98,27 +98,39 @@ devices:
 
   # ---- Gashandling (Vorgabe 16.-20.11.2026; am 19.11. zuerst in config.yml/Messstand I gebaut, am 25.11.2026 hierher
   # umgezogen - docs/gashandling_19-11-2026.txt, Abschnitt 7) -------------------------------------------------------
-  mfc1:
-    driver: bronkhorst_mfc
-    enabled: false             # 25.11.2026: Bronkhorst an Pi 2 noch nicht zugeordnet (Rafael schaut nach). Sobald bekannt:
-                               # Adapter eintragen (ls -l /dev/serial/by-id/; am 25.11. frei: FTDI BG01B1W6, FTDI BG01XVQG,
-                               # CH340 ttyUSB4), Typenschild (max_flow_ml_min) und Node pruefen, diese Zeile entfernen.
-                               # Lesend pruefen: .venv/bin/python tools/lese_mfc.py --port /dev/serial/by-id/...
-    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_<SN>-if00-port0
-    node: "03"                 # FLOW-BUS-Knotenadresse, zwei Hex-Zeichen (Werkseinstellung 3 = "03")
-    max_flow_ml_min: 50.0      # Typenschild pruefen (Messstand I: 50 mln/min N2)
+  mfc2:                        # Bronkhorst "2" (Etikett), bisher mfc2 an Messstand I - seit 25.11.2026 hier (Rafael).
+    driver: bronkhorst_mfc     # Am 25.11.2026 am Pi 2 lesend bestaetigt (tools/lese_mfc.py): Seriennummer M18212352C,
+                               # Capacity 50 mln/min N2, Knoten 03, 38400 Baud, Sollwert stand auf 32000 = ganz auf.
+    address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B1W6-if00-port0   # ttyUSB2 am 25.11.
+    node: "03"                 # FLOW-BUS-Knotenadresse, zwei Hex-Zeichen
+    max_flow_ml_min: 50.0      # Typenschild / Capacity100% vom Geraet
     serial_parameters:
-      baudrate: 38400          # Messstand I: am Geraet verifiziert (bei 187500 antwortet es nicht)
+      baudrate: 38400          # am Geraet verifiziert (bei 187500 antwortet es nicht)
+  # Relaisplatine an Messstand II (Pinbelegung docs/gashandling_19-11-2026.txt, 25.11.2026): ANDERE Platine als an
+  # Messstand I, Schaltmechanismus laut Rafael gleich (Low-Active: Pin auf Masse = Relais an -> inverted: true),
+  # aber OHNE das 5-V-Problem der alten Platine - darum kein release_when_off, "aus" = Pin High wie normal.
+  # Beim ersten Test pruefen: Relais klickt bei Position B, faellt bei A ab. Pins: GPIO 17 (Pin 11) Low-Flow-Pumpe,
+  # GPIO 27 (Pin 13) Gashandler = Relaismodul 1, GPIO 22 (Pin 15) Ventil Waste/Phasentrenner = Relaismodul 2;
+  # frei: GPIO 23 (Pin 16, Modul 3), GPIO 24 (Pin 18, Modul 4). Nur bei ausgeschaltetem Pi stecken.
   gashandler:
     driver: raspi_gpio_relay_valve
     address: "GPIO27"
-    pin: 27                  # BCM 27 = Header-Pin 13 = Relaismodul 1 (Pinbelegung Messstand II, Doku 25.11.2026).
-                             # Belegt daneben: GPIO 17 (Pin 11) Low-Flow-Pumpe, GPIO 22 (Pin 15) Ventil
-                             # Waste/Phasentrenner (Relaismodul 2); frei: GPIO 23 (Pin 16), GPIO 24 (Pin 18).
-                             # Nur bei ausgeschaltetem Pi stecken.
-    inverted: true           # ANNAHME 25.11.2026: dieselbe Low-Active-Platine wie an Messstand I (Frage 3 der Doku)
-    release_when_off: true   # Steuerseite der Platine an 5 V, s. docs/relaisplatine_erklaerung_28-10-2026.txt
-    safe_state: "A"            # A = Messweg (spannungslos, Pin losgelassen), B = Spuelweg (ANNAHME 19.11., im Labor pruefen)
+    pin: 27                  # BCM 27 = Header-Pin 13 = Relaismodul 1
+    inverted: true           # Low-Active wie der Gasswitcher an Messstand I (Rafael 25.11.2026)
+    safe_state: "A"            # A = Messweg (Relais aus, spannungslos), B = Spuelweg (ANNAHME 19.11., im Labor pruefen)
+  lowflow_pumpe:               # Low-Flow-Pumpe, nur an/aus ueber ein Relais (kein Protokoll, keine Rate)
+    driver: raspi_gpio_relay_valve
+    address: "GPIO17"
+    pin: 17                  # BCM 17 = Header-Pin 11
+    inverted: true
+    safe_state: "A"            # A = Pumpe aus (Relais aus), B = Pumpe an. Routinenende/Stop/Start -> aus.
+  ventil_waste:                # Ventil Waste vs. Phasentrenner (Relaismodul 2); noch in keiner Routine (25.11.2026)
+    driver: raspi_gpio_relay_valve
+    address: "GPIO22"
+    pin: 22                  # BCM 22 = Header-Pin 15
+    inverted: true
+    safe_state: "A"            # A = Relais aus = spannungslose Stellung. ANNAHME 25.11.: A = Waste, B = Phasentrenner -
+                               # im Labor pruefen, welche Stellung das stromlose Ventil hat, und hier eintragen.
   microgc:
     driver: inficon_microgc_fusion
     enabled: false             # 25.11.2026: derselbe microGC wie an Messstand I (Rafael). Er hat die Link-Local-Adresse
@@ -473,16 +485,16 @@ experiments:
 
   # ===========================================================================================
   # Gashandling (Vorgabe 16.-20.11.2026; am 25.11.2026 von Messstand I hierher umgezogen) - docs/gashandling_19-11-2026.txt
-  # Ablauf im Labor: gas_spuelung -> gas_messweg -> gc_messung. Vorher in devices bei mfc1 und microgc die Zeile
-  # `enabled: false` entfernen, sonst fehlen die Routinen im Frontend (Geraet nicht verbunden).
+  # Ablauf im Labor: gas_spuelung -> gas_messweg -> gc_messung. Vorher in devices bei microgc die Zeile
+  # `enabled: false` entfernen, sonst fehlt gc_messung im Frontend (Geraet nicht verbunden).
   # ===========================================================================================
   # Gas-Spuelung vor der Reaktion: Gashandler auf Spuelweg (B) und dort `minutes` lang halten, Bronkhorst Zaehler auf 0
   # und Setpoint `gasrate` (Vorgabe 50 mL/min, 10 min), nach den Minuten Setpoint 0. ACHTUNG: das Routinenende stellt
   # den Bronkhorst gleich wieder ganz auf (Zaehlerbetrieb, final_commands im Treiber - Gasweg darf nie versperrt
   # bleiben) und den Gashandler auf A. "Zu" gilt also nur bis zum Routinenende (offen seit 19.11., Doku Abschnitt 6).
-  # OFFEN (Frage 2 der Doku): "waehrenddessen Pumpe an". An Messstand II ist pump1 die Dosierpumpe hinter dem
-  # 16-Wege-Ventil; die laeuft hier bewusst NICHT mit, bis Rafael sagt, welche Pumpe gemeint ist (an Messstand I lief
-  # dosing_pump mit Parameter rate).
+  # "Waehrenddessen Pumpe an" = die Low-Flow-Pumpe am Relais GPIO 17 (Pinbelegung 25.11.2026): hold_position B ueber
+  # dieselben Minuten, das Routinenende schaltet sie aus. Keine Rate - das Relais kennt nur an/aus. (pump1, die
+  # Dosierpumpe hinter dem 16-Wege-Ventil, laeuft NICHT mit.)
   gas_spuelung:
     conditions:
     stopconditions:
@@ -491,15 +503,17 @@ experiments:
       minutes: [float, min]
     observables:
       - [gashandler, position, str, ""]
-      - [mfc1, flow, float, mL/min]
-      - [mfc1, counter, float, mLn]
-      - [mfc1, setpoint, float, mL/min]
+      - [lowflow_pumpe, position, str, ""]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc2, setpoint, float, mL/min]
     commands:
       - [gashandler, hold_position, [], { position: B, minutes: "{minutes}" }]
-      - [mfc1, reset_counter, [], {}]
-      - [mfc1, set_setpoint, [], { flow_ml_min: "{gasrate}" }]
-      - [mfc1, measure_for_minutes, [], { minutes: "{minutes}" }]
-      - [mfc1, set_setpoint, [], { flow_ml_min: 0 }]
+      - [lowflow_pumpe, hold_position, [], { position: B, minutes: "{minutes}" }]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, set_setpoint, [], { flow_ml_min: "{gasrate}" }]
+      - [mfc2, measure_for_minutes, [], { minutes: "{minutes}" }]
+      - [mfc2, set_setpoint, [], { flow_ml_min: 0 }]
 
   # Wege aendern fuer die Messung: Gashandler auf Messweg (A = Relais aus), Bronkhorst-Zaehler auf 0, Bronkhorst ganz
   # auf, Setpoint zur Kontrolle lesen (Observable setpoint muss den Vollausschlag zeigen). Keine Parameter.
@@ -509,14 +523,14 @@ experiments:
     parameters:
     observables:
       - [gashandler, position, str, ""]
-      - [mfc1, flow, float, mL/min]
-      - [mfc1, counter, float, mLn]
-      - [mfc1, setpoint, float, mL/min]
+      - [mfc2, flow, float, mL/min]
+      - [mfc2, counter, float, mLn]
+      - [mfc2, setpoint, float, mL/min]
     commands:
       - [gashandler, set_position, [], { position: A }]
-      - [mfc1, reset_counter, [], {}]
-      - [mfc1, open_valve, [], {}]
-      - [mfc1, read_setpoint, [], {}]
+      - [mfc2, reset_counter, [], {}]
+      - [mfc2, open_valve, [], {}]
+      - [mfc2, read_setpoint, [], {}]
 
   # Eine GC-Messung von Hand (wie kolbe_gc_messung an Messstand I): Methode laden, Lauf mit Name/Tags starten,
   # danach die Daten des Laufs holen.

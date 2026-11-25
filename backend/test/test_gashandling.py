@@ -44,12 +44,14 @@ class GashandlingConfigTests(unittest.TestCase):
             for device, observable, _typ, _einheit in routine["observables"]:
                 self.assertIn(device, devices, f"{name}: Observable-Geraet {device} fehlt")
 
-    def _pruefe_gashandler(self, config):
+    def _pruefe_gashandler(self, config, release_when_off=True):
         devices = config["devices"]
         g = devices["gashandler"]
         self.assertEqual(g["driver"], "raspi_gpio_relay_valve")
         self.assertTrue(g["inverted"])
-        self.assertTrue(g["release_when_off"])
+        # Messstand I: alte Platine mit 5-V-Steuerseite -> release_when_off. Messstand II (25.11.2026): neue Platine
+        # ohne dieses Problem -> kein release_when_off (Rafael).
+        self.assertEqual(bool(g.get("release_when_off", False)), release_when_off)
         self.assertEqual(g["safe_state"], "A")
         andere = [d["pin"] for n, d in devices.items() if n != "gashandler" and d.get("driver") == "raspi_gpio_relay_valve"]
         self.assertNotIn(g["pin"], andere, "Gashandler-Pin ist schon von einem anderen Relais belegt")
@@ -67,46 +69,84 @@ class GashandlingConfigTests(unittest.TestCase):
 
     # ---- Messstand II (Umzug 25.11.2026) -------------------------------------------------------------------------
 
+    RELAIS_M2 = {"gashandler": 27, "lowflow_pumpe": 17, "ventil_waste": 22}   # Pinbelegung Messstand II 25.11.2026
+
+    def _pruefe_relais_messstand2(self, config):
+        devices = config["devices"]
+        for name, pin in self.RELAIS_M2.items():
+            d = devices[name]
+            self.assertEqual(d["driver"], "raspi_gpio_relay_valve", name)
+            self.assertEqual(d["pin"], pin, name)
+            self.assertEqual(d["address"], f"GPIO{pin}", name)
+            self.assertTrue(d["inverted"], name)                               # Low-Active wie der Gasswitcher
+            self.assertNotIn("release_when_off", d, f"{name}: neue Platine ohne 5-V-Problem")
+            self.assertEqual(d["safe_state"], "A", name)                       # A = Relais aus = spannungslos
+
     def test_config_messstand2_yml(self):
         config = _config("config.messstand2.yml")
-        self._pruefe_gashandler(config)
+        self._pruefe_gashandler(config, release_when_off=False)
+        self._pruefe_relais_messstand2(config)
         self._pruefe_routinen(config, ROUTINEN_M2)
         devices = config["devices"]
-        self.assertFalse(devices["gashandler"].get("simulate"), "echte Config darf das Relais nicht simulieren")
-        # Bronkhorst und microGC bleiben deaktiviert, solange Adapter bzw. Netz am Pi 2 nicht geklaert sind:
-        # ein Platzhalter in der Adresse ohne enabled: false wuerde beim Start nur Fehler machen.
-        self.assertIn("<SN>", devices["mfc1"]["address"])
-        self.assertIs(devices["mfc1"].get("enabled"), False, "mfc1 mit Platzhalter-Adresse muss enabled: false haben")
+        for name in self.RELAIS_M2:
+            self.assertFalse(devices[name].get("simulate"), f"echte Config darf {name} nicht simulieren")
+        # Bronkhorst "2" von Messstand I, am 25.11.2026 am Pi 2 lesend bestaetigt (M18212352C, 50 mln/min, Knoten 03)
+        mfc = devices["mfc2"]
+        self.assertEqual(mfc["address"], "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B1W6-if00-port0")
+        self.assertEqual(mfc["address"], _config("config.yml")["devices"]["mfc2"]["address"])
+        self.assertEqual((mfc["node"], mfc["max_flow_ml_min"], mfc["serial_parameters"]["baudrate"]), ("03", 50.0, 38400))
+        self.assertNotIn("enabled", mfc)
+        self.assertNotIn("mfc1", devices)
+        # microGC bleibt deaktiviert, bis eth0 am Pi 2 die Link-Local-Adresse hat
         self.assertIs(devices["microgc"].get("enabled"), False)
         self.assertEqual(devices["microgc"]["address"], "169.254.1.1")       # derselbe GC wie an Messstand I
         self.assertNotIn("streams", devices["microgc"])                       # ein Gasstrom, keine Zellenventile
 
     def test_config_messstand2_dummy_yml(self):
         config = _config("config.messstand2.dummy.yml")
-        self._pruefe_gashandler(config)
-        self.assertTrue(config["devices"]["gashandler"].get("simulate"), "Dummy-Config braucht simulate: true")
+        self._pruefe_gashandler(config, release_when_off=False)
+        self._pruefe_relais_messstand2(config)
+        for name in self.RELAIS_M2:
+            self.assertTrue(config["devices"][name].get("simulate"), f"Dummy-Config braucht simulate: true ({name})")
         self._pruefe_routinen(config, ROUTINEN_M2)
-        for name in ("mfc1", "microgc"):
+        for name in ("mfc2", "microgc"):
             self.assertTrue(config["devices"][name]["address"].startswith("127.0.0.1:"), name)
             self.assertNotIn("enabled", config["devices"][name])
+        # Routinen in beiden Messstand-II-Configs identisch
+        real = _config("config.messstand2.yml")["experiments"]
+        for name in ROUTINEN_M2:
+            self.assertEqual(config["experiments"][name], real[name], name)
 
-    def test_messstand2_spuelung_ohne_pumpe_sonst_wie_messstand_i(self):
-        # Frage 2 der Doku ist offen (welche Pumpe?): an Messstand II ist pump1 die Dosierpumpe hinter dem
-        # 16-Wege-Ventil, die darf beim Gasspuelen nicht einfach mitlaufen. Darum kein Pumpenbefehl und kein `rate`.
-        for path in ("config.messstand2.yml", "config.messstand2.dummy.yml"):
-            config = _config(path)
-            spuelung = config["experiments"]["gas_spuelung"]
-            self.assertEqual({c[0] for c in spuelung["commands"]}, {"gashandler", "mfc1"}, path)
-            self.assertNotIn("rate", spuelung["parameters"], path)
-            relais = [c for c in spuelung["commands"] if c[0] == "gashandler"]
-            self.assertEqual(relais, [["gashandler", "hold_position", [], {"position": "B", "minutes": "{minutes}"}]])
-            # Die Bronkhorst-Befehle sind dieselben wie an Messstand I
-            m1 = [c for c in _config("config.yml")["experiments"]["gas_spuelung"]["commands"] if c[0] == "mfc1"]
-            self.assertEqual([c for c in spuelung["commands"] if c[0] == "mfc1"], m1, path)
-            self.assertEqual(config["experiments"]["gas_messweg"]["commands"],
-                             _config("config.yml")["experiments"]["gas_messweg"]["commands"], path)
-            self.assertEqual(config["experiments"]["gc_messung"]["commands"],
-                             _config("config.yml")["experiments"]["kolbe_gc_messung"]["commands"], path)
+    def test_messstand2_spuelung_mit_lowflow_pumpe_sonst_wie_messstand_i(self):
+        # "Waehrenddessen Pumpe an" = Low-Flow-Pumpe am Relais GPIO 17 (Pinbelegung 25.11.2026), gehalten ueber
+        # dieselben Minuten wie der Gashandler. pump1 (Dosierpumpe hinter dem 16-Wege-Ventil) laeuft nicht mit.
+        config = _config("config.messstand2.yml")
+        spuelung = config["experiments"]["gas_spuelung"]
+        self.assertEqual({c[0] for c in spuelung["commands"]}, {"gashandler", "lowflow_pumpe", "mfc2"})
+        self.assertNotIn("rate", spuelung["parameters"])
+        halten = {"position": "B", "minutes": "{minutes}"}
+        self.assertEqual([c for c in spuelung["commands"] if c[0] == "gashandler"], [["gashandler", "hold_position", [], halten]])
+        self.assertEqual([c for c in spuelung["commands"] if c[0] == "lowflow_pumpe"], [["lowflow_pumpe", "hold_position", [], halten]])
+        # Die Bronkhorst-Befehle sind dieselben wie an Messstand I (dort mfc1)
+        def ohne_geraet(commands, device):
+            return [c[1:] for c in commands if c[0] == device]
+        m1 = _config("config.yml")["experiments"]
+        self.assertEqual(ohne_geraet(spuelung["commands"], "mfc2"), ohne_geraet(m1["gas_spuelung"]["commands"], "mfc1"))
+        messweg = config["experiments"]["gas_messweg"]["commands"]
+        self.assertEqual([[("mfc2" if c[0] == "mfc1" else c[0])] + c[1:] for c in m1["gas_messweg"]["commands"]], messweg)
+        self.assertEqual(config["experiments"]["gc_messung"]["commands"], m1["kolbe_gc_messung"]["commands"])
+
+    def test_simulierte_relais_messstand2_ohne_release(self):
+        # Neue Platine: "aus" = Pin High (Ausgang), "an" = Pin Low. Kein Loslassen des Pins.
+        for name, pin_nr in self.RELAIS_M2.items():
+            pin = build_output_pin(pin_nr, inverted=True, initial_position="A", simulate=True, release_when_off=False)
+            self.addCleanup(pin.close)
+            self.assertEqual(pin.pin.function, "output", name)
+            self.assertEqual(pin.pin.state, 1, f"{name}: A = Relais aus = High")
+            pin.on()
+            self.assertEqual(pin.pin.state, 0, f"{name}: B = Relais an = Masse")
+            pin.off()
+            self.assertEqual(pin.pin.state, 1, name)
 
     # ---- Messstand I ----------------------------------------------------------------------------------------------
 
