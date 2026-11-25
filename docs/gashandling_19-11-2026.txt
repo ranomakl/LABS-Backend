@@ -8,6 +8,9 @@ verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
 !!! Gebaut wurde es in config.yml (Messstand I). Es muss nach config.messstand2.yml - dort fehlen aber
 !!! Bronkhorst, Relaisplatine und microGC noch komplett (nur auskommentierte Vorlagen ohne Adressen).
 !!! Offene Fragen dazu: Abschnitt 0. Bis zu den Antworten wird nichts verschoben oder geloescht.
+!!!
+!!! UMZUG 25.11.2026 (Rafael am Pi 2): nach config.messstand2.yml + config.messstand2.dummy.yml uebernommen,
+!!! Stand und Restfragen in Abschnitt 7. In config.yml (Messstand I) bleibt alles, bis Frage 5 beantwortet ist.
 
 neu PIN Belegung:
 
@@ -148,3 +151,57 @@ Wenn ein anderer Pin gewaehlt wird: in config.yml bei gashandler `address: "GPIO
      Elektrolyse Handarbeit liegen kann.
   6. kolbe_n2_spuelung bleibt unveraendert (Rafael 19.11.). Unterschied zu gas_spuelung: kein Gashandler,
      kein Setpoint am Bronkhorst (nur zaehlen), kein "zu" am Ende.
+
+
+7. Umzug nach Messstand II (25.11.2026, Rafael am Pi 2)
+-------------------------------------------------------
+Antworten von Rafael: der microGC ist derselbe wie an Messstand I; welcher Bronkhorst, schaut er nach. Pinbelegung
+Messstand II (oben, 25.11. 15:27): Gashandling GPIO 27, Low-Flow-Pumpe GPIO 17 (ein Relais!), Ventil Waste vs.
+Phasentrenner GPIO 22 - die Pumpe und das Ventil sind NOCH NICHT in der Config (kommen mit Rafaels naechsten
+Anpassungen; die Low-Flow-Pumpe am Relais ist vermutlich die "Pumpe an" aus Frage 2). Frage 5 (Loeschen aus
+config.yml) ist offen.
+
+Eingetragen in config.messstand2.yml (devices nach liquiline, experiments am Ende) und ebenso in
+config.messstand2.dummy.yml (Dummy-Ports 12351 Bronkhorst, 12354 microGC, Gashandler simulate: true):
+
+  mfc1        bronkhorst_mfc, ENABLED: FALSE - Adresse ist noch der Platzhalter <SN>. Am 25.11. frei am Pi 2:
+              FTDI BG01B1W6 (ttyUSB2), FTDI BG01XVQG (ttyUSB3), CH340 ohne Seriennummer (ttyUSB4); belegt sind
+              BG01X3TF (Pumpe) und BG02Q3TM (Liquiline). Welcher davon der Bronkhorst ist, laesst sich lesend
+              pruefen: .venv/bin/python tools/lese_mfc.py --port /dev/serial/by-id/usb-FTDI_..._<SN>-if00-port0
+              (sendet nur Lesebefehle). Dann Adresse, max_flow_ml_min (Typenschild) und node eintragen und
+              `enabled: false` entfernen.
+  gashandler  raspi_gpio_relay_valve, AKTIV, BCM 27 = Header-Pin 13 = Relaismodul 1 nach der Pinbelegung oben
+              (Doku-Commit vom 25.11., 15:27; der Vorschlag BCM 23 vom 19.11. ist damit hinfaellig, Pin 16 ist
+              frei). inverted + release_when_off wie Messstand I = ANNAHME, dass der Schaltmechanismus identisch
+              zum Gasswitcher ist (so steht es oben; Frage 3 damit im Kern beantwortet). safe_state A = Pin losgelassen,
+              darum ist der aktive Eintrag auch ohne Platine harmlos. gpiozero 2.0 + lgpio sind im venv des Pi 2
+              vorhanden (LGPIOFactory), die echte GPIO geht also.
+  microgc     inficon_microgc_fusion, ENABLED: FALSE, Adresse 169.254.1.1 wie an Messstand I (Link-Local, kein
+              DHCP-Client am GC). Haken am Pi 2: eth0 ist dort "shared" (10.42.0.1/24) fuer das Knauer-Ventil
+              10.42.0.103. Damit der GC erreichbar wird, braucht eth0 ZUSAETZLICH eine 169.254.x.y-Adresse (z.B.
+              nmcli connection modify "Wired connection 1" +ipv4.addresses 169.254.1.2/16, dann die Verbindung
+              neu aktivieren - nicht waehrend ein Lauf das Ventil braucht!) und Ventil + GC haengen ueber einen
+              Switch an eth0. Erst wenn `ping 169.254.1.1` geht, `enabled: false` entfernen. Kein streams-Block:
+              an Messstand II misst der GC einen Gasstrom, keine drei Zellen.
+
+  gas_spuelung   wie Messstand I, aber OHNE Pumpenbefehl und ohne Parameter rate: pump1 ist an Messstand II die
+                 Dosierpumpe hinter dem 16-Wege-Ventil, die darf nicht einfach 10 min mitlaufen (Frage 2). Sobald
+                 klar ist, welche Pumpe gemeint ist: Befehl [<pumpe>, run_for_minutes, [], {rate, minutes}] und
+                 Parameter rate wieder dazu (longer_bt100_1f hat run_for_minutes).
+  gas_messweg    unveraendert.
+  gc_messung     = kolbe_gc_messung von Messstand I (Methode laden, Lauf mit Name/Tags, Daten holen), neuer
+                 Name, weil an Messstand II nichts Kolbe-spezifisch ist.
+
+Solange mfc1 und microgc `enabled: false` haben, fehlen gas_spuelung, gas_messweg und gc_messung im Frontend
+(das Backend ueberspringt Routinen, deren Geraet nicht verbunden ist, Log: "Geraet mfc1 ist deaktiviert").
+Der Gashandler allein laesst sich schon testen, sobald er eine Routine hat, die nur ihn braucht - bei Bedarf
+test_gashandler_position anlegen (set_position B, 30 s, zurueck auf A) oder mfc1 kurz aktivieren.
+
+Tests: backend/test/test_gashandling.py, drei neue (Messstand-II-Configs, Spuelung ohne Pumpe, Befehle gleich
+wie Messstand I). Das Backend am Pi 2 lief waehrend des Umzugs mit der alten Config weiter und wurde nicht neu
+gestartet - die neuen Eintraege greifen erst nach "LABS beenden"/"LABS starten".
+
+Naechste Schritte: (1) Bronkhorst zuordnen (Rafael), (2) Low-Flow-Pumpe (GPIO 17) und Ventil Waste/Phasentrenner
+(GPIO 22) als Relais-Geraete eintragen und die Pumpe in gas_spuelung mitlaufen lassen (hold_position B ueber
+minutes), (3) Relaisplatine an Pi 2 anstecken (Pi aus!), Pins bestaetigen, (4) Netz fuer den GC, (5) sagen, ob die
+Eintraege aus config.yml (Messstand I) raus sollen, (6) erster Test wie Abschnitt 4 mit minutes 0.5.

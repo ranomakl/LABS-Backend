@@ -101,6 +101,27 @@ devices:
       # die Routinen laufen trotzdem, nur ohne brauchbaren pH.
       ph: 0
 
+  # ---- Gashandling (25.11.2026 von Messstand I umgezogen, docs/gashandling_19-11-2026.txt Abschnitt 7) ----------
+  mfc1:
+    driver: bronkhorst_mfc
+    address: 127.0.0.1:12351   # LABS-DeviceDummys Bronkhorst-Dummy
+    node: "03"
+    max_flow_ml_min: 50.0
+  gashandler:
+    driver: raspi_gpio_relay_valve
+    address: "GPIO27"
+    pin: 27                    # Relaismodul 1 = Gashandling (Pinbelegung Messstand II, 25.11.2026)
+    inverted: true
+    release_when_off: true
+    safe_state: "A"            # A = Messweg (spannungslos), B = Spuelweg
+    simulate: true             # Dummy-Umgebung: gpiozero-Mock, kein echtes Relais
+  microgc:
+    driver: inficon_microgc_fusion
+    address: 127.0.0.1:12354   # HTTP-Dummy (LABS-DeviceDummys/inficon_microgc_fusion.py)
+    connect_timeout: 5.0
+    command_parameters:
+      timeout: 10.0
+
   # Vorlage (Beispiele aus config.yml, Messstand I; Adressen hier NICHT uebernehmen):
   #
   # FTDI-Adapter mit Seriennummer -> by-id (USB-Buchse egal):
@@ -440,3 +461,66 @@ experiments:
 
   # Erst die Geraetetests (test_...), dann die Versuchsschritte. Geaenderte Routinen bekommen einen
   # neuen Namen (das Frontend aktualisiert eine einmal geladene Routine nicht).
+
+  # ===========================================================================================
+  # Gashandling (Vorgabe 16.-20.11.2026; am 25.11.2026 von Messstand I hierher umgezogen) - docs/gashandling_19-11-2026.txt
+  # Ablauf im Labor: gas_spuelung -> gas_messweg -> gc_messung. Vorher in devices bei mfc1 und microgc die Zeile
+  # `enabled: false` entfernen, sonst fehlen die Routinen im Frontend (Geraet nicht verbunden).
+  # ===========================================================================================
+  # Gas-Spuelung vor der Reaktion: Gashandler auf Spuelweg (B) und dort `minutes` lang halten, Bronkhorst Zaehler auf 0
+  # und Setpoint `gasrate` (Vorgabe 50 mL/min, 10 min), nach den Minuten Setpoint 0. ACHTUNG: das Routinenende stellt
+  # den Bronkhorst gleich wieder ganz auf (Zaehlerbetrieb, final_commands im Treiber - Gasweg darf nie versperrt
+  # bleiben) und den Gashandler auf A. "Zu" gilt also nur bis zum Routinenende (offen seit 19.11., Doku Abschnitt 6).
+  # OFFEN (Frage 2 der Doku): "waehrenddessen Pumpe an". An Messstand II ist pump1 die Dosierpumpe hinter dem
+  # 16-Wege-Ventil; die laeuft hier bewusst NICHT mit, bis Rafael sagt, welche Pumpe gemeint ist (an Messstand I lief
+  # dosing_pump mit Parameter rate).
+  gas_spuelung:
+    conditions:
+    stopconditions:
+    parameters:
+      gasrate: [float, mL/min]
+      minutes: [float, min]
+    observables:
+      - [gashandler, position, str, ""]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc1, setpoint, float, mL/min]
+    commands:
+      - [gashandler, hold_position, [], { position: B, minutes: "{minutes}" }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, set_setpoint, [], { flow_ml_min: "{gasrate}" }]
+      - [mfc1, measure_for_minutes, [], { minutes: "{minutes}" }]
+      - [mfc1, set_setpoint, [], { flow_ml_min: 0 }]
+
+  # Wege aendern fuer die Messung: Gashandler auf Messweg (A = Relais aus), Bronkhorst-Zaehler auf 0, Bronkhorst ganz
+  # auf, Setpoint zur Kontrolle lesen (Observable setpoint muss den Vollausschlag zeigen). Keine Parameter.
+  gas_messweg:
+    conditions:
+    stopconditions:
+    parameters:
+    observables:
+      - [gashandler, position, str, ""]
+      - [mfc1, flow, float, mL/min]
+      - [mfc1, counter, float, mLn]
+      - [mfc1, setpoint, float, mL/min]
+    commands:
+      - [gashandler, set_position, [], { position: A }]
+      - [mfc1, reset_counter, [], {}]
+      - [mfc1, open_valve, [], {}]
+      - [mfc1, read_setpoint, [], {}]
+
+  # Eine GC-Messung von Hand (wie kolbe_gc_messung an Messstand I): Methode laden, Lauf mit Name/Tags starten,
+  # danach die Daten des Laufs holen.
+  gc_messung:
+    conditions:
+    stopconditions:
+    parameters:
+      method: [str, ""]
+      name: [str, ""]
+      tags: [str, ""]
+    observables:
+      - [microgc, system, str, ""]
+    commands:
+      - [microgc, load_method, [], { method_name: "{method}" }]
+      - [microgc, run_method_named, [], { name: "{name}", tags: "{tags}" }]
+      - [microgc, get_last_run_data, [], {}]
