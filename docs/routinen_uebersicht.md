@@ -30,8 +30,8 @@ docs/zweikammer_2k_02-11-2026.md, docs/gc_rundlauf_3_zellen_26-10-2026.md.
 | `kolbe_n2_spuelung` | wie kolbe_pumpe_zeit, Zaehler vorher auf 0 (N2-Spuelung) | rate, minutes |
 | `kolbe_gas_zaehlen` | nur mfc1: Zaehler auf 0, `minutes` lang zaehlen, keine Pumpe | minutes |
 | `kolbe_gas_zaehlen_pumpe` | Gas zaehlen, waehrend die Pumpe umwaelzt | minutes, rate |
-| `gas_spuelung` | 19.11.2026 Gashandling: Gashandler auf Spuelweg (B) halten, mfc1 Zaehler 0 + Setpoint `gasrate`, Pumpe laeuft `minutes` lang, danach mfc1 zu (wird vom Routinenende wieder geoeffnet, s. docs/gashandling_19-11-2026.txt). Seit 25.11.2026 auch in config.messstand2.yml (Messstand II, Abschnitt 7 der Doku): dort mfc2 (Bronkhorst "2") statt mfc1 und die Low-Flow-Pumpe am Relais GPIO 17 statt dosing_pump, darum ohne `rate` | gasrate, minutes, rate (nur Messstand I) |
-| `gas_messweg` | 19.11.2026 Gashandling: Gashandler auf Messweg (A), mfc1 Zaehler 0 + ganz auf; danach kolbe_elektrolyse_gc (Messstand I) bzw. gc_messung (Messstand II, seit 25.11.2026 auch in config.messstand2.yml) | - |
+| `gas_spuelung` | **Messstand II** (config.messstand2.yml; 19.11. an Messstand I gebaut, 25.11.2026 umgezogen und dort entfernt): Gashandler (GPIO 27) auf Spuelweg B halten, Low-Flow-Pumpe (GPIO 17) an, mfc2 (Bronkhorst 2) Zaehler 0 + Setpoint `gasrate`, `minutes` lang messen; Routinenende: Relais aus, Bronkhorst bleibt offen (s. docs/gashandling_19-11-2026.txt Abschnitt 7-9) | gasrate, minutes |
+| `gas_messweg` | **Messstand II**: Gashandler auf Messweg (A), mfc2 Zaehler 0 + ganz auf, Sollwert zur Kontrolle lesen; danach gc_messung (25.11.2026 am Geraet getestet) | - |
 | `kolbe_gc_messung` | eine einzelne GC-Messung von Hand (Methode laden, Lauf mit Name/Tags, Daten holen) | method, name, tags |
 | `gc_messung` | Messstand II (config.messstand2.yml, 25.11.2026): dieselbe einzelne GC-Messung wie kolbe_gc_messung, neuer Name ohne Kolbe-Bezug; microGC dort bis zur Netzeinrichtung `enabled: false` | method, name, tags |
 | `..._3x` (kolbe_pumpe_zeit_3x, kolbe_n2_spuelung_3x, kolbe_gas_zaehlen_pumpe_3x) | dasselbe fuer drei Zellen: mfc1-3 und beide Pumpen | rate, rate_anolyte, minutes |

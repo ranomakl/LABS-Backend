@@ -10,7 +10,9 @@ verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
 !!! Offene Fragen dazu: Abschnitt 0. Bis zu den Antworten wird nichts verschoben oder geloescht.
 !!!
 !!! UMZUG 25.11.2026 (Rafael am Pi 2): nach config.messstand2.yml + config.messstand2.dummy.yml uebernommen,
-!!! Stand und Restfragen in Abschnitt 7. In config.yml (Messstand I) bleibt alles, bis Frage 5 beantwortet ist.
+!!! Stand in Abschnitt 7, Fragen in 8, Tests in 9. Abends: aus config.yml + config.dummy.yml (Messstand I) wieder
+!!! ENTFERNT (gashandler, gas_spuelung, gas_messweg); mfc2 dort enabled: false. Abschnitte 1-6 beschreiben den
+!!! alten Stand an Messstand I (Pin 23, mfc1, dosing_pump) und gelten so nicht mehr.
 
 neu PIN Belegung:
 
@@ -256,8 +258,11 @@ LAN-Switch zusammen, GC aus):
   6. ERLEDIGT 25.11. abends: "Bronkhorst zu" am Ende der Spuelung muss nicht sein, er darf offen bleiben (Rafael).
      Der Befehl set_setpoint 0 ist aus gas_spuelung (Messstand II) raus; das Routinenende oeffnet ihn ohnehin ganz.
      Kein Eingriff in bronkhorst_mfc.py. In config.yml (Messstand I) steht der Befehl noch (Frage 7).
-  7. Messstand I aufraeumen (alte Frage 5): mfc2 steht in config.yml noch mit Adapter BG01B1W6, der jetzt am Pi 2
-     steckt; gashandler + gas_spuelung + gas_messweg stehen dort auch noch. Loeschen, oder enabled: false?
+  7. ERLEDIGT 25.11. abends (Rafael): gashandler, gas_spuelung, gas_messweg aus config.yml und config.dummy.yml
+     (Messstand I) entfernt. mfc2 bleibt in config.yml mit enabled: false stehen (Bronkhorst 2 ist am Pi 2); die
+     zwoelf Routinen, die ihn brauchen (test_mfc2_*, stop_mfc2, Drei-Zellen-*_3x, test_gasweg_z2, test_gc_ventile_3x),
+     werden dort uebersprungen - die Drei-Zellen-Routinen sind laut Rafael erstmal nicht dran. In config.dummy.yml
+     bleibt mfc2 aktiv (Dummy-Port 12356), damit sich die 3x-Routinen ohne Geraete weiter testen lassen.
   8. Spuelrate: `gasrate` 50 mL/min ist der Vollausschlag von mfc2 (50 mln/min). Passt das, oder weniger?
   9. Erster Test im Labor (Abschnitt 4): Backend neu starten ("LABS beenden"/"LABS starten"), Routinen im
      Frontend laden (gas_spuelung, gas_messweg sind neue Namen fuer Messstand II), gas_spuelung mit minutes 0.5.

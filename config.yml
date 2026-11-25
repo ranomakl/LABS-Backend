@@ -140,6 +140,10 @@ devices:
     current_limit: 5.0
   mfc2:
     driver: bronkhorst_mfc
+    enabled: false             # 25.11.2026 (Rafael): Bronkhorst "2" haengt jetzt an Messstand II (Pi 2, config.messstand2.yml
+                               # als mfc2). Hier bleibt der Eintrag fuer den Fall, dass er zurueckkommt; bis dahin werden die
+                               # Routinen, die mfc2 brauchen (test_mfc2_*, stop_mfc2, *_3x, test_gasweg_z2, test_gc_ventile_3x),
+                               # beim Start uebersprungen - die Drei-Zellen-Routinen sind ohnehin erstmal nicht dran.
     address: /dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG01B1W6-if00-port0   # M18212352C, 50 mln/min N2 = Etikett "2" (bestaetigt 27.10.)
     node: "03"
     max_flow_ml_min: 50.0
@@ -191,19 +195,6 @@ devices:
                              # 3,3 V diese Zeile entfernen (inverted: true bleibt).
     safe_state: "A"            # A = Gasweg Zelle 3 -> GC zu (spannungslos), B = offen (ANNAHME, s. Doku)
     # simulate entfernt 27.10.2026: Relaisplatine angeschlossen (Header-Pins 11/13/15), echte GPIO ueber lgpio.
-
-  # 19.11.2026 Gashandler (MP): ein weiterer Relaiskanal derselben Low-Active-Platine. Schaltet den Gasweg
-  # zwischen Spuelen (Position B = Relais an = "GPIO an/high" in der Vorgabe) und Messen (Position A =
-  # Relais aus/spannungslos = "GPIO aus/low"). A ist safe_state: beim Start, nach jeder Routine und beim
-  # Beenden steht der Gasweg auf Messen. Vorgabe + Ablauf: docs/gashandling_19-11-2026.txt
-  gashandler:
-    driver: raspi_gpio_relay_valve
-    address: "GPIO23"
-    pin: 23                  # BCM 23 = Header-Pin 16 (Nachbarn: Pin 14 = Masse, Pin 18 = GPIO24; kein 3,3-V/5-V-Pin).
-                             # VORSCHLAG 19.11.2026 - erst stecken, wenn der Pi aus ist, dann hier bestaetigen.
-    inverted: true           # wie ventil_z1-3 (Low-Active-Platine)
-    release_when_off: true   # wie ventil_z1-3 (Steuerseite an 5 V), s. docs/relaisplatine_erklaerung_28-10-2026.txt
-    safe_state: "A"            # A = Messweg (spannungslos), B = Spuelweg (ANNAHME 19.11., im Labor pruefen)
 
   # 16-Kanal-Relaisplatine (12V) an den GPIO-Pins eines Raspberry Pi, schaltet 3/2-Wege-Haehne.
   # Kein Protokoll, keine Rueckmeldung vom Geraet - ein GPIO-Pin wird nur high/low gesetzt.
@@ -366,56 +357,6 @@ experiments:
       - [mfc1, reset_counter, [], {}]
       - [mfc1, start_measuring, [], { interval: 1.0 }]
       - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
-
-  # ===========================================================================================
-  # GASHANDLING (Vorgabe "Gashandling 16.11 - 20.11", umgesetzt 19.11.2026, docs/gashandling_19-11-2026.txt)
-  # Ablauf im Labor: gas_spuelung -> gas_messweg -> kolbe_elektrolyse_gc (GC-Messung wie erprobt).
-  # kolbe_n2_spuelung bleibt unveraendert bestehen (Rafael 19.11.).
-  # ===========================================================================================
-
-  # Gas-Spuelung vor der Reaktion: Gashandler auf Spuelweg (B) und dort `minutes` lang halten, Bronkhorst
-  # auf `gasrate` (Vorgabe 50 mL/min, 10 min), Zaehler vorher auf 0, Pumpe laeuft die ganze Zeit mit `rate`.
-  # Nach den Minuten: Bronkhorst zu (Setpoint 0). ACHTUNG: Das Routinenende stellt den Bronkhorst gleich
-  # wieder ganz auf (Zaehlerbetrieb, final_commands im Treiber - Gasweg darf nie versperrt bleiben) und den
-  # Gashandler auf A. "Zu" gilt also nur bis zum Routinenende - fuer morgen zu klaeren, s. Doku.
-  gas_spuelung:
-    conditions:
-    stopconditions:
-    parameters:
-      gasrate: [float, mL/min]
-      minutes: [float, min]
-      rate: [float, mL/min]
-    observables:
-      - [gashandler, position, str, ""]
-      - [mfc1, flow, float, mL/min]
-      - [mfc1, counter, float, mLn]
-      - [mfc1, setpoint, float, mL/min]
-      - [dosing_pump, speed_rpm, int, rpm]
-      - [dosing_pump, flow_ml_min, float, mL/min]
-    commands:
-      - [gashandler, hold_position, [], { position: B, minutes: "{minutes}" }]
-      - [mfc1, reset_counter, [], {}]
-      - [mfc1, set_setpoint, [], { flow_ml_min: "{gasrate}" }]
-      - [mfc1, measure_for_minutes, [], { minutes: "{minutes}" }]
-      - [mfc1, set_setpoint, [], { flow_ml_min: 0 }]
-      - [dosing_pump, run_for_minutes, [], { rate: "{rate}", minutes: "{minutes}" }]
-
-  # Wege aendern fuer die Messung waehrend der Reaktion: Gashandler auf Messweg (A = alle Relais aus),
-  # Bronkhorst-Zaehler auf 0, Bronkhorst ganz auf. Keine Parameter. Danach kolbe_elektrolyse_gc starten.
-  gas_messweg:
-    conditions:
-    stopconditions:
-    parameters:
-    observables:
-      - [gashandler, position, str, ""]
-      - [mfc1, flow, float, mL/min]
-      - [mfc1, counter, float, mLn]
-      - [mfc1, setpoint, float, mL/min]
-    commands:
-      - [gashandler, set_position, [], { position: A }]
-      - [mfc1, reset_counter, [], {}]
-      - [mfc1, open_valve, [], {}]
-      - [mfc1, read_setpoint, [], {}]
 
   # Schritt 5: DIE ELEKTROLYSE. Zaehler auf 0, Pumpe und Netzteil laufen 'minutes' Minuten, dann
   # schaltet das Netzteil selbst ab und die Pumpe stoppt. Alle Werte live (Strom, Spannung,
