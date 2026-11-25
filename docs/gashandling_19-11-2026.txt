@@ -260,3 +260,36 @@ LAN-Switch zusammen, GC aus):
   8. Spuelrate: `gasrate` 50 mL/min ist der Vollausschlag von mfc2 (50 mln/min). Passt das, oder weniger?
   9. Erster Test im Labor (Abschnitt 4): Backend neu starten ("LABS beenden"/"LABS starten"), Routinen im
      Frontend laden (gas_spuelung, gas_messweg sind neue Namen fuer Messstand II), gas_spuelung mit minutes 0.5.
+
+
+9. Erster Test am Geraet - 25.11.2026, 16:00-16:04 (Rafael am Pi 2)
+-------------------------------------------------------------------
+Backend-Neustart 16:00:00 mit der neuen Config: mfc2 (Bronkhorst 2, BG01B1W6) Ready; Relais GPIO 27, 17, 22
+angelegt und in den sicheren Zustand A gefahren; Pumpe lief NICHT an (inverted: false fuer GPIO 17 stimmt);
+microgc deaktiviert -> nur gc_messung uebersprungen. Keine Fehler.
+
+Lauf gas_spuelung "test_gasspuelen-1-26", gasrate 50, minutes 0.5, Gas ZUGEDREHT:
+  16:03:17  GPIO 27 (Gashandler) und GPIO 17 (Low-Flow-Pumpe) auf B. Rafael: Relais hat geklickt, Pumpe ist
+            angelaufen. mfc2: Zaehler 0, Sollwert 7D00 = 32000 = 50 mL/min bestaetigt (statusindex 05 = ok).
+  16:03:47  nach 30 s beide Relais zurueck auf A (Pumpe stoppt), mfc2 Sollwert 0 gesendet, Routinenende oeffnet
+            den Bronkhorst wieder ganz (7D00) - wie vorhergesagt (Abschnitt 6, Punkt 1).
+  16:03:48  Finished. pump1 (BT100-1F) hat waehrend des Laufs keinen Befehl bekommen.
+  Messwerte mfc2 waehrend der 30 s: Fluss 0, Zaehler 0 - erwartungsgemaess, weil das Gas zugedreht war.
+
+Damit bestaetigt:   Pinbelegung GPIO 27 = Gashandler, GPIO 17 = Low-Flow-Pumpe; Relaismodul Low-Active
+                    (inverted: true); Pumpeneingang NICHT invertiert (Low = aus, High = an); kein
+                    release_when_off noetig; Pumpe laeuft nur waehrend gas_spuelung.
+Noch offen (siehe Abschnitt 8): ob Relais AN wirklich der Spuelweg ist (braucht Gas), ventil_waste GPIO 22
+(Stellung/Routine), microGC-Netz, Aufraeumen config.yml, "Bronkhorst zu".
+
+Naechste Tests:
+  a) gas_spuelung nochmal mit AUFGEDREHTEM Stickstoff, minutes 0.5: mfc2 muss Fluss nahe 50 und einen Zaehler > 0
+     zeigen; am Aufbau pruefen, dass das Gas bei Relais AN durch den Spuelweg (Reaktor) geht und nicht durch den
+     Messweg. Geht es falsch herum: Positionen in den Routinen tauschen (hold_position A / set_position B),
+     safe_state bleibt A.
+  b) gas_messweg: Sollwert-Observable muss 50.0 zeigen, Zaehler 0, Gashandler A. Dauert Sekunden.
+  c) ventil_waste von Hand schalten (Routine noch anlegen, z.B. test_ventil_waste mit set_position B, 30 s,
+     zurueck auf A): welche Stellung ist stromlos, Waste oder Phasentrenner?
+  d) microGC: einschalten, am Switch pruefen, ob er eine Adresse vom Pi bekommt oder 169.254.1.1 behaelt (Abschnitt
+     8, Punkt 1), dann enabled: false entfernen und gc_messung mit einer bekannten Methode einmal laufen lassen.
+  e) Ganzer Ablauf mit Gas: gas_spuelung 10 min -> gas_messweg -> gc_messung.
