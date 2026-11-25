@@ -2,12 +2,22 @@ GASHANDLING AM MESSSTAND I - gebaut am 19.11.2026 (Vorgabe "Gashandling 16.11 - 
 =======================================================================================
 
 Stand: gebaut und am PC gegen die Config geprueft (Tests), im Labor NOCH NICHT getestet.
-Rafael verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
+verbessert am 20.11. - offene Punkte und Annahmen stehen unten in Abschnitt 6.
 
 !!! KORREKTUR 19.11.2026 abends (Rafael): Das Gashandling gehoert zu MESSSTAND II, nicht zu Messstand I.
 !!! Gebaut wurde es in config.yml (Messstand I). Es muss nach config.messstand2.yml - dort fehlen aber
 !!! Bronkhorst, Relaisplatine und microGC noch komplett (nur auskommentierte Vorlagen ohne Adressen).
 !!! Offene Fragen dazu: Abschnitt 0. Bis zu den Antworten wird nichts verschoben oder geloescht.
+
+neu PIN Belegung:
+
+##### GPIO-Pinbelegung (schaltmechanismus sollte identisch zum Gasswitcher sein:
+
+- PIN 11 / GPIO 17: Low-Flow-Pump
+- Pin 13 / GPIO 27: Gashandling (Relaismodul 1)
+- PIN 15 / GPIO 22: Ventil - Waste vs. Phasentrenner(Relaismodul 2)
+- PIN 16/ GPIO 23: unbelegt (Relaismodul 3)
+- PIN 18 / GPIO 24: unbelegt (Relaismodul 4)
 
 
 0. Umzug nach Messstand II - Fragen an Rafael (19.11.2026)
