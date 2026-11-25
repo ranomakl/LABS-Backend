@@ -130,11 +130,15 @@ class GashandlingConfigTests(unittest.TestCase):
         halten = {"position": "B", "minutes": "{minutes}"}
         self.assertEqual([c for c in spuelung["commands"] if c[0] == "gashandler"], [["gashandler", "hold_position", [], halten]])
         self.assertEqual([c for c in spuelung["commands"] if c[0] == "lowflow_pumpe"], [["lowflow_pumpe", "hold_position", [], halten]])
-        # Die Bronkhorst-Befehle sind dieselben wie an Messstand I (dort mfc1)
+        # Die Bronkhorst-Befehle sind wie an Messstand I (dort mfc1), nur ohne das abschliessende "Setpoint 0":
+        # der Bronkhorst darf offen bleiben (Rafael 25.11.2026), das Routinenende oeffnet ihn sowieso wieder ganz.
         def ohne_geraet(commands, device):
             return [c[1:] for c in commands if c[0] == device]
         m1 = _config("config.yml")["experiments"]
-        self.assertEqual(ohne_geraet(spuelung["commands"], "mfc2"), ohne_geraet(m1["gas_spuelung"]["commands"], "mfc1"))
+        erwartet = [c for c in ohne_geraet(m1["gas_spuelung"]["commands"], "mfc1") if c != ["set_setpoint", [], {"flow_ml_min": 0}]]
+        self.assertEqual(len(erwartet), 3)
+        self.assertEqual(ohne_geraet(spuelung["commands"], "mfc2"), erwartet)
+        self.assertNotIn(["mfc2", "set_setpoint", [], {"flow_ml_min": 0}], spuelung["commands"])
         messweg = config["experiments"]["gas_messweg"]["commands"]
         self.assertEqual([[("mfc2" if c[0] == "mfc1" else c[0])] + c[1:] for c in m1["gas_messweg"]["commands"]], messweg)
         self.assertEqual(config["experiments"]["gc_messung"]["commands"], m1["kolbe_gc_messung"]["commands"])

@@ -492,9 +492,9 @@ experiments:
   # `enabled: false` entfernen, sonst fehlt gc_messung im Frontend (Geraet nicht verbunden).
   # ===========================================================================================
   # Gas-Spuelung vor der Reaktion: Gashandler auf Spuelweg (B) und dort `minutes` lang halten, Bronkhorst Zaehler auf 0
-  # und Setpoint `gasrate` (Vorgabe 50 mL/min, 10 min), nach den Minuten Setpoint 0. ACHTUNG: das Routinenende stellt
-  # den Bronkhorst gleich wieder ganz auf (Zaehlerbetrieb, final_commands im Treiber - Gasweg darf nie versperrt
-  # bleiben) und den Gashandler auf A. "Zu" gilt also nur bis zum Routinenende (offen seit 19.11., Doku Abschnitt 6).
+  # und Setpoint `gasrate` (Vorgabe 50 mL/min, 10 min). Das "dann zu" der Vorgabe ist seit 25.11.2026 raus (Rafael:
+  # der Bronkhorst darf offen bleiben): das Routinenende stellt ihn ohnehin ganz auf (Zaehlerbetrieb, final_commands
+  # im Treiber - Gasweg darf nie versperrt bleiben) und den Gashandler auf A.
   # "Waehrenddessen Pumpe an" = die Low-Flow-Pumpe am Relais GPIO 17 (Pinbelegung 25.11.2026): hold_position B ueber
   # dieselben Minuten, das Routinenende schaltet sie aus. Keine Rate - das Relais kennt nur an/aus. (pump1, die
   # Dosierpumpe hinter dem 16-Wege-Ventil, laeuft NICHT mit.)
@@ -516,7 +516,6 @@ experiments:
       - [mfc2, reset_counter, [], {}]
       - [mfc2, set_setpoint, [], { flow_ml_min: "{gasrate}" }]
       - [mfc2, measure_for_minutes, [], { minutes: "{minutes}" }]
-      - [mfc2, set_setpoint, [], { flow_ml_min: 0 }]
 
   # Wege aendern fuer die Messung: Gashandler auf Messweg (A = Relais aus), Bronkhorst-Zaehler auf 0, Bronkhorst ganz
   # auf, Setpoint zur Kontrolle lesen (Observable setpoint muss den Vollausschlag zeigen). Keine Parameter.

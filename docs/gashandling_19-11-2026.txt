@@ -196,7 +196,8 @@ config.messstand2.dummy.yml (Dummy-Ports 12351 Bronkhorst, 12354 microGC, Gashan
 
   gas_spuelung   wie Messstand I mit mfc2 statt mfc1; die Pumpe ist die Low-Flow-Pumpe am Relais (hold_position B
                  ueber `minutes`, parallel zum Gashandler) statt dosing_pump mit Rate - darum kein Parameter rate.
-                 pump1 (Dosierpumpe hinter dem 16-Wege-Ventil) laeuft nicht mit.
+                 pump1 (Dosierpumpe hinter dem 16-Wege-Ventil) laeuft nicht mit. Seit 25.11. abends ohne das
+                 abschliessende "Setpoint 0" (Rafael: Bronkhorst darf offen bleiben, s. Abschnitt 8 Punkt 6).
   gas_messweg    wie Messstand I mit mfc2 statt mfc1.
   gc_messung     = kolbe_gc_messung von Messstand I (Methode laden, Lauf mit Name/Tags, Daten holen), neuer
                  Name, weil an Messstand II nichts Kolbe-spezifisch ist.
@@ -252,9 +253,9 @@ LAN-Switch zusammen, GC aus):
      steht ANNAHME A = Waste. Und: in welcher Routine soll es wann umschalten (vor der Messung? beim Spuelen?)?
   5. Relaisplatine: schaltet sie wirklich Low-Active (Pin auf Masse = Relais an)? Falls umgekehrt: inverted: false
      bei allen drei Relais. Beim ersten Test mit minutes 0.5 am Klicken/der LED erkennbar.
-  6. "Bronkhorst zu" am Ende der Spuelung (Abschnitt 6, Punkt 1): Das Routinenende oeffnet ihn gleich wieder
-     ganz (Treiber-Regel: Gasweg nie versperrt lassen). Muss er ueberhaupt zu, wenn der Gashandler ohnehin auf
-     Messweg geht? Wenn ja: Eingriff in bronkhorst_mfc.py noetig.
+  6. ERLEDIGT 25.11. abends: "Bronkhorst zu" am Ende der Spuelung muss nicht sein, er darf offen bleiben (Rafael).
+     Der Befehl set_setpoint 0 ist aus gas_spuelung (Messstand II) raus; das Routinenende oeffnet ihn ohnehin ganz.
+     Kein Eingriff in bronkhorst_mfc.py. In config.yml (Messstand I) steht der Befehl noch (Frage 7).
   7. Messstand I aufraeumen (alte Frage 5): mfc2 steht in config.yml noch mit Adapter BG01B1W6, der jetzt am Pi 2
      steckt; gashandler + gas_spuelung + gas_messweg stehen dort auch noch. Loeschen, oder enabled: false?
   8. Spuelrate: `gasrate` 50 mL/min ist der Vollausschlag von mfc2 (50 mln/min). Passt das, oder weniger?
