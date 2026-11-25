@@ -176,8 +176,11 @@ config.messstand2.dummy.yml (Dummy-Ports 12351 Bronkhorst, 12354 microGC, Gashan
               (docs/relaisplatine_erklaerung_28-10-2026.txt gilt nur fuer Messstand I). "Aus" = Pin High, "an" =
               Pin Low. safe_state A = Relais aus. gpiozero 2.0 + lgpio sind im venv des Pi 2 vorhanden
               (LGPIOFactory), die echte GPIO geht also.
-  lowflow_pumpe  raspi_gpio_relay_valve, AKTIV, BCM 17 = Header-Pin 11. Die Low-Flow-Pumpe haengt nur an einem
-              Relais: A = aus, B = an, keine Rate. Laeuft in gas_spuelung mit (hold_position B ueber `minutes`) -
+  lowflow_pumpe  raspi_gpio_relay_valve, AKTIV, BCM 17 = Header-Pin 11. Nur an/aus, keine Rate: A = aus, B = an.
+              inverted: FALSE (seit 25.11. abends): Pin 17 las Low bei ausgeschalteter Pumpe, waehrend die
+              Relaismodul-Pins 22/27 High lesen - die Pumpe haengt also nicht an einem Low-Active-Relaismodul.
+              Mit inverted: true haette der sichere Zustand A den Pin auf High getrieben = Pumpe laeuft ab
+              Backend-Start. Laeuft in gas_spuelung mit (hold_position B ueber `minutes`) -
               das ist das "waehrenddessen Pumpe an" der Vorgabe (Frage 2 damit beantwortet). Das Routinenende,
               "Stop Experiments" und der Backend-Start schalten sie aus.
   ventil_waste   raspi_gpio_relay_valve, AKTIV, BCM 22 = Header-Pin 15 = Relaismodul 2, Ventil Waste vs.
@@ -241,8 +244,10 @@ LAN-Switch zusammen, GC aus):
            Oder bis zum naechsten Neustart, ohne Unterbrechung:  sudo ip addr add 169.254.1.2/16 dev eth0
      Danach `ping 169.254.1.1` bzw. die neue Adresse, dann bei microgc `enabled: false` entfernen.
   2. Gashandler: ist Relais AN (Position B) wirklich der Spuelweg? (Annahme seit 19.11., Abschnitt 4 Punkt 3.)
-  3. Low-Flow-Pumpe an GPIO 17: Relaismodul oder direkter Steuereingang? Laeuft sie bei Position B (Pin Low)?
-     Ist sie gerade aus, obwohl der Pin Low liest? Reicht an/aus, oder braucht sie eine Drehzahl?
+  3. Low-Flow-Pumpe an GPIO 17: Rafael 25.11.: Pumpe ist aus, Pin liest Low -> inverted: false gesetzt (Low = aus,
+     High = an). Beim ersten Test pruefen: Pumpe laeuft NUR waehrend gas_spuelung (Position B), nicht schon nach dem
+     Backend-Start. Laeuft sie beim Start, sofort "LABS beenden" und melden. Reicht an/aus, oder braucht sie eine
+     Drehzahl?
   4. ventil_waste (GPIO 22): Welche Stellung hat das stromlose Ventil - Waste oder Phasentrenner? In der Config
      steht ANNAHME A = Waste. Und: in welcher Routine soll es wann umschalten (vor der Messung? beim Spuelen?)?
   5. Relaisplatine: schaltet sie wirklich Low-Active (Pin auf Masse = Relais an)? Falls umgekehrt: inverted: false

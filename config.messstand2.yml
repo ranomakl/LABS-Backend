@@ -118,12 +118,15 @@ devices:
     pin: 27                  # BCM 27 = Header-Pin 13 = Relaismodul 1
     inverted: true           # Low-Active wie der Gasswitcher an Messstand I (Rafael 25.11.2026)
     safe_state: "A"            # A = Messweg (Relais aus, spannungslos), B = Spuelweg (ANNAHME 19.11., im Labor pruefen)
-  lowflow_pumpe:               # Low-Flow-Pumpe, nur an/aus ueber ein Relais (kein Protokoll, keine Rate)
+  lowflow_pumpe:               # Low-Flow-Pumpe, nur an/aus ueber GPIO 17 (kein Protokoll, keine Rate)
     driver: raspi_gpio_relay_valve
     address: "GPIO17"
     pin: 17                  # BCM 17 = Header-Pin 11
-    inverted: true
-    safe_state: "A"            # A = Pumpe aus (Relais aus), B = Pumpe an. Routinenende/Stop/Start -> aus.
+    inverted: false          # ANDERS als die Relaismodule: Pin 17 las am 25.11. LOW bei ausgeschalteter Pumpe
+                             # (22/27 lesen High). Also Low = aus, High = an -> nicht invertiert. Mit inverted: true
+                             # wuerde der sichere Zustand A den Pin auf High treiben = Pumpe laeuft ab Backend-Start.
+                             # Beim ersten Test pruefen: Pumpe laeuft nur waehrend gas_spuelung (Position B).
+    safe_state: "A"            # A = Pumpe aus (Pin Low), B = Pumpe an (Pin High). Routinenende/Stop/Start -> aus.
   ventil_waste:                # Ventil Waste vs. Phasentrenner (Relaismodul 2); noch in keiner Routine (25.11.2026)
     driver: raspi_gpio_relay_valve
     address: "GPIO22"

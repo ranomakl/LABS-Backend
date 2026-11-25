@@ -70,6 +70,9 @@ class GashandlingConfigTests(unittest.TestCase):
     # ---- Messstand II (Umzug 25.11.2026) -------------------------------------------------------------------------
 
     RELAIS_M2 = {"gashandler": 27, "lowflow_pumpe": 17, "ventil_waste": 22}   # Pinbelegung Messstand II 25.11.2026
+    # Relaismodule sind Low-Active (Pin Low = an). Die Low-Flow-Pumpe nicht: ihr Pin las am 25.11. Low bei
+    # ausgeschalteter Pumpe -> inverted: false, sonst liefe sie ab Backend-Start (safe_state A = Pin High).
+    INVERTED_M2 = {"gashandler": True, "lowflow_pumpe": False, "ventil_waste": True}
 
     def _pruefe_relais_messstand2(self, config):
         devices = config["devices"]
@@ -78,7 +81,7 @@ class GashandlingConfigTests(unittest.TestCase):
             self.assertEqual(d["driver"], "raspi_gpio_relay_valve", name)
             self.assertEqual(d["pin"], pin, name)
             self.assertEqual(d["address"], f"GPIO{pin}", name)
-            self.assertTrue(d["inverted"], name)                               # Low-Active wie der Gasswitcher
+            self.assertIs(d["inverted"], self.INVERTED_M2[name], name)
             self.assertNotIn("release_when_off", d, f"{name}: neue Platine ohne 5-V-Problem")
             self.assertEqual(d["safe_state"], "A", name)                       # A = Relais aus = spannungslos
 
@@ -137,16 +140,19 @@ class GashandlingConfigTests(unittest.TestCase):
         self.assertEqual(config["experiments"]["gc_messung"]["commands"], m1["kolbe_gc_messung"]["commands"])
 
     def test_simulierte_relais_messstand2_ohne_release(self):
-        # Neue Platine: "aus" = Pin High (Ausgang), "an" = Pin Low. Kein Loslassen des Pins.
+        # Neue Platine: Relaismodule "aus" = Pin High (Ausgang), "an" = Pin Low; Low-Flow-Pumpe umgekehrt
+        # (aus = Low, an = High). Kein Loslassen des Pins. Im sicheren Zustand A ist alles aus.
         for name, pin_nr in self.RELAIS_M2.items():
-            pin = build_output_pin(pin_nr, inverted=True, initial_position="A", simulate=True, release_when_off=False)
+            inverted = self.INVERTED_M2[name]
+            aus, an = (1, 0) if inverted else (0, 1)
+            pin = build_output_pin(pin_nr, inverted=inverted, initial_position="A", simulate=True, release_when_off=False)
             self.addCleanup(pin.close)
             self.assertEqual(pin.pin.function, "output", name)
-            self.assertEqual(pin.pin.state, 1, f"{name}: A = Relais aus = High")
+            self.assertEqual(pin.pin.state, aus, f"{name}: A = aus")
             pin.on()
-            self.assertEqual(pin.pin.state, 0, f"{name}: B = Relais an = Masse")
+            self.assertEqual(pin.pin.state, an, f"{name}: B = an")
             pin.off()
-            self.assertEqual(pin.pin.state, 1, name)
+            self.assertEqual(pin.pin.state, aus, name)
 
     # ---- Messstand I ----------------------------------------------------------------------------------------------
 
