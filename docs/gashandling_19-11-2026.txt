@@ -293,3 +293,8 @@ Naechste Tests:
   d) microGC: einschalten, am Switch pruefen, ob er eine Adresse vom Pi bekommt oder 169.254.1.1 behaelt (Abschnitt
      8, Punkt 1), dann enabled: false entfernen und gc_messung mit einer bekannten Methode einmal laufen lassen.
   e) Ganzer Ablauf mit Gas: gas_spuelung 10 min -> gas_messweg -> gc_messung.
+
+Lauf gas_messweg "test_messweg-1-27", 16:12:54-16:12:55, Finished:
+  Gashandler GPIO 27 auf A (Messweg); mfc2: Zaehler 0 (00000000), open_valve -> Sollwert 7D00 = 32000 = 100 % =
+  50 mL/min, read_setpoint bestaetigt 7D00. Damit ist Test b) aus der Liste oben erledigt; offen bleiben a), c),
+  d), e) - weiter am 26.11.2026.
