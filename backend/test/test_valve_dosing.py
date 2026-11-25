@@ -136,10 +136,13 @@ class _Reply:
 
 class _Log:
     def __init__(self):
-        self.errors, self.warnings = [], []
+        self.errors, self.warnings, self.infos = [], [], []
 
-    def info(self, *args, **kwargs):
-        pass
+    def info(self, message="", **kwargs):
+        try:
+            self.infos.append(message.format(**kwargs))
+        except (KeyError, IndexError, ValueError):
+            self.infos.append(message)
 
     def warn(self, message, **kwargs):
         self.warnings.append(message.format(**kwargs))
@@ -220,6 +223,7 @@ class _Pump(vd.ValveDosingMixIn, _Base):
         # pH-Aenderung je mL nach Port, wirkt beim Pumpenstopp. Wie im Labor (11.11.2026): 2 Saeure schwach,
         # 3 Saeure stark, 4 Base schwach, 5 Base stark. stark 20/mL (200 uL = 4), schwach 4/mL (200 uL = 0,8).
         self.ph_effect = {2: -4.0, 3: -20.0, 4: 4.0, 5: 20.0, 6: -4.0, 7: 0.0}   # 6 Carbonsaeure, 7 Leitsalz
+        self.ph_per_ml_water = 0.0  # so verschiebt Spuel-/Fuellwasser den pH je mL (25.11.2026: am Geraet negativ)
 
     def busy(self, condition):
         self.state = devicestate.Busy
@@ -250,6 +254,8 @@ class _Pump(vd.ValveDosingMixIn, _Base):
             step = run.steps[run.index - 1]
             if step.kind == "pump" and step.role == "reagent":
                 self.ph_meter.ph += self.ph_effect.get(self.valve.position, 0.0) * step.volume_ml
+            elif step.kind == "pump" and step.role == "water":
+                self.ph_meter.ph += self.ph_per_ml_water * step.volume_ml
         command.deferred_result.callback(None)
         return command
 
@@ -780,7 +786,50 @@ class PhRegelungTests(unittest.TestCase):
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished")
         self.assertAlmostEqual(pump.last("delivered_ml"), 15.0)          # 20 - 5 schon drin
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
-        self.assertEqual(labels[-2], "Auffuellen auf 20 mL")
+        fills = [l for l in labels if l.startswith("Auffuellen auf 20 mL: Portion ")]
+        self.assertEqual(len(fills), 10, labels)                         # zehn Portionen je 10 % (Rafael 25.11.2026)
+        self.assertTrue(fills[0].startswith("Auffuellen auf 20 mL: Portion 1, ") and "danach noch" in fills[0], fills[0])
+        self.assertTrue(fills[-1].endswith("(letzte)"), fills[-1])
+        self.assertEqual(labels[-1], "fertig")
+        water = [round(e[2] / 6.0, 4) for e in pump.events if e[0] == "start"][-10:]   # Rate x 10 s = Volumen
+        self.assertEqual(len(set(water)), 1, water)                       # alle Portionen gleich gross
+        self.assertEqual(pump.last("ph_additions"), 5)                    # keine Nachdose noetig
+        self.assertTrue(any("Zielvolumen 20 mL voll, Endwert pH 9.00" in m for m in pump.log.infos), pump.log.infos[-3:])
+
+    def test_nachregeln_beim_auffuellen_mit_den_kleinen_dosen(self):
+        # Wie test_schritt_4_halbiert..., aber Spuel- und Fuellwasser senken den pH um 0,02 je mL (am Geraet
+        # 25.11.2026: 9,8 -> 7,7 bei 13 mL). Ziel 9,0 +- 0,05 wird mit 25 uL schwacher Base getroffen (Schritt 4,
+        # einmal halbiert); 13,3 mL Wasser in Portionen je 1,33 mL (-0,027 je Portion): jede zweite Portion faellt
+        # der pH unter 8,95 -> genau eine 25-uL-Dose schwache Base (Port 4), nie zurueck zu groesseren Dosen.
+        # Dose + Spuelen (0,775 mL) gehen vom Wasser ab, darum nur 9 statt 10 Portionen; Ende 20 mL, Finished.
+        pump, meter = make_ph_pump(8.5)
+        pump.ph_per_ml_water = -0.02
+        pump.regulate_ph(9.0, 0.05, wait_s=0, target_volume=20)
+        pump.run_all(3000)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
+        self.assertAlmostEqual(pump.last("delivered_ml"), 20.0)
+        self.assertTrue(8.95 <= meter.ph <= 9.05, meter.ph)
+        all_doses = doses(pump)
+        self.assertEqual(all_doses[:8], [(5, 200), (3, 50), (3, 50), (3, 50), (3, 50), (4, 200), (2, 50), (4, 25)])
+        self.assertEqual(all_doses[8:], [(4, 25), (4, 25)])                # Nachdosen beim Auffuellen: nur die halbierte
+        self.assertEqual(pump.last("ph_additions"), 10)
+        labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
+        fills = [l for l in labels if l.startswith("Auffuellen auf 20 mL: Portion ")]
+        self.assertEqual(len(fills), 9, fills)                             # Nachdosen + Spuelen gehen vom Wasser ab
+        self.assertTrue(fills[-1].endswith("(letzte)"), fills[-1])
+        self.assertEqual(pump.log.errors, [])
+
+    def test_abbruch_wenn_beim_auffuellen_kein_platz_mehr_fuer_eine_dose(self):
+        # pH 8,9 ist sofort im Ziel 9 +- 0,2; noch 1 mL Wasser in 10 Portionen je 0,1 mL. Wasser senkt 3 je mL:
+        # nach der ersten Portion 8,6 -> Dose 200 uL + 750 uL Spuelen passt nicht mehr in 0,9 mL -> Failed.
+        pump, meter = make_ph_pump(8.9)
+        pump.ph_per_ml_water = -3.0
+        pump.regulate_ph(9.0, 0.2, wait_s=0, target_volume=20, start_volume=19)
+        pump.run_all(600)
+        self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "failed")
+        self.assertIn("Zielvolumen 20 mL erreicht", pump.last("dosing_step"))
+        self.assertEqual(doses(pump), [])
+        self.assertAlmostEqual(pump.last("delivered_ml"), 0.1)
 
     def test_ohne_zielvolumen_kein_auffuellen(self):
         pump, meter = make_ph_pump(8.9)
@@ -881,13 +930,14 @@ class AnsatzTests(unittest.TestCase):
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
         valves = [e[1] for e in pump.events if e[0] == "valve"]
-        self.assertEqual(valves, [7, 1, 3, 1, 5, 1, 1])
+        self.assertEqual(valves, [7, 1, 3, 1, 5, 1] + [1] * 10)        # zehn Wasserportionen
         self.assertAlmostEqual(meter.ph, 8.8)
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
         self.assertEqual(labels[1:4], ["Leitsalz", "Wasser", "Saeure 1"])
         self.assertTrue(any(l.startswith("Dose 1, Schritt 1: starke Base 200 uL (Port 5") for l in labels), labels)
-        self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
+        self.assertTrue(labels[-2].startswith("Auffuellen auf 10 mL: Portion 10, ") and labels[-2].endswith("(letzte)"),
+                        labels[-2])
         self.assertEqual(pump.log.errors, [])
 
     def test_ohne_feste_zugaben_wie_ph_regelung(self):
@@ -906,7 +956,7 @@ class AnsatzTests(unittest.TestCase):
                            vol_naoh=0.2)
         pump.run_all(600)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [3, 1, 5, 1] + [1] * 10)
         self.assertAlmostEqual(meter.ph, 8.8)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
         self.assertEqual(labels[1:3], ["Saeure 1", "NaOH"])
@@ -940,12 +990,12 @@ class AnsatzFestePortsTests(unittest.TestCase):
                               tolerance=0.2, wait_s=20, target_volume=10)
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [7, 1, 6, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [7, 1, 6, 1, 5, 1] + [1] * 10)
         self.assertAlmostEqual(meter.ph, 8.8)
         self.assertAlmostEqual(pump.last("delivered_ml"), 10.0)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
         self.assertEqual(labels[1:5], ["Leitsalz", "Wasser", "Carbonsaeure", "NaOH"])
-        self.assertEqual(labels[-2], "Auffuellen auf 10 mL")
+        self.assertTrue(labels[-2].startswith("Auffuellen auf 10 mL: Portion 10, "), labels[-2])
         self.assertEqual(pump.last("ph_additions"), 0)
 
     def test_reihenfolge_ansatz_neu(self):
@@ -955,7 +1005,7 @@ class AnsatzFestePortsTests(unittest.TestCase):
                               tolerance=0.2, wait_s=20, target_volume=10, order="carbonsaeure,leitsalz,wasser")
         pump.run_all(900)
         self.assertEqual(pump.last(vd.DOSING_OBSERVABLE), "finished", pump.last("dosing_step"))
-        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [6, 1, 7, 1, 5, 1, 1])
+        self.assertEqual([e[1] for e in pump.events if e[0] == "valve"], [6, 1, 7, 1, 5, 1] + [1] * 10)
         labels = [u["dosing_addition"] for u in pump.updates if "dosing_addition" in u]
         self.assertEqual(labels[1:5], ["Carbonsaeure", "Leitsalz", "Wasser", "NaOH"])
         self.assertAlmostEqual(meter.ph, 8.8)

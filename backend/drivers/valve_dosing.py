@@ -46,7 +46,10 @@ statt mit vol_klein hin und her zu pendeln - bis der pH im Zielfenster liegt. Ae
 jeweils ersten Dose aus einer STARKEN Flasche um weniger als 0,1, kommt einmalig die dreifache Dose (Rafael
 24.11.2026; je starke Flasche hoechstens einmal).
 Jede Dose mit Spuelen, dann Wartezeit, dann wieder messen, bis der pH im Zielfenster liegt; danach mit Wasser
-auf das Zielvolumen auffuellen. regulate_ph = nur Regelung + Auffuellen (Routine ph_regelung); add_recipe_ph =
+auf das Zielvolumen auffuellen - in zehn Portionen (je 10 % der Auffuellmenge), nach jeder Portion Wartezeit und
+pH-Messung; liegt der pH nicht mehr im Fenster, regelt die Schleife mit ihrem aktuellen Zustand (Schritt, halbierte
+Dose) nach, dann die naechste Portion (Rafael 25.11.2026: beim Lauf vom 25.11. zog das Fuellwasser den pH von 9,8
+auf 7,7, ohne dass es jemand gemessen haette). regulate_ph = nur Regelung + Auffuellen (Routine ph_regelung); add_recipe_ph =
 feste Zugaben + Regelung + Auffuellen (Routine ansatz). Abbruch (Failed): kein oder veralteter pH-Wert,
 Status nicht Good, Zielvolumen voll, Notbremse nach 40 Dosen. Die Schrittliste
 waechst dabei dynamisch (Step 'ph' haengt die naechsten Schritte an).
@@ -370,11 +373,17 @@ class PhRegelung:
       - Fehlt die Flasche der noetigen Staerke (Port 0), wird die andere Staerke derselben Richtung genommen.
       - Abbruch nur, wenn Dose + Spuelmenge nicht mehr unter das Zielvolumen passen (Rafael 11.11.2026:
         keine "pH reagiert nicht"-Pruefung mehr, die war zu streng). Notbremse: max_additions Dosen.
-    Nach erreichtem Ziel: fill_after -> mit Wasser auf target_volume_ml auffuellen (0 = nicht)."""
+    Nach erreichtem Ziel: fill_after -> mit Wasser auf target_volume_ml auffuellen (0 = nicht), und zwar in
+    FILL_PORTIONS Portionen (Rafael 25.11.2026): die Portion ist 1/FILL_PORTIONS der Auffuellmenge beim ersten
+    Treffer und bleibt fuer den Lauf fest. Nach jeder Portion wait_s warten und messen; pH im Fenster -> naechste
+    Portion, sonst weiter regeln wie oben (gleicher Schritt, gleiche Halbierung - kein Rueckweg zu grossen Dosen),
+    jede Dose samt Spuelwasser geht vom Restwasser ab. Die letzte Portion ist der Rest. Zielvolumen voll und pH im
+    Fenster -> fertig (Endwert im Log); voll und pH nicht im Fenster -> Abbruch wie bei jeder Dose."""
 
     STAGES = (("stark", "gross"), ("stark", "klein"), ("schwach", "gross"), ("schwach", "klein"))
     MIN_RESPONSE = 0.1          # so viel muss sich der pH nach der ersten starken Dose mindestens aendern
     BOOST_FACTOR = 3            # sonst einmalig das Vielfache der Dose
+    FILL_PORTIONS = 10          # Auffuellen in so vielen Portionen, dazwischen pH messen (Rafael 25.11.2026)
 
     def __init__(self, target_ph, tolerance, vol_gross, vol_klein, wait_s, target_volume_ml, start_volume_ml,
                  settings: DosingSettings, positions=None, max_additions=40):
@@ -413,6 +422,8 @@ class PhRegelung:
         self.history = []          # (Richtung, pH vor der Dose, Schritt, benutzte Staerke) je Dose
         self.strong_doses = {"Base": 0, "Saeure": 0}   # Dosen je starker Flasche (fuer die Dreifach-Dose)
         self.boosted = set()       # Richtungen, deren starke Flasche die Dreifach-Dose schon bekommen hat
+        self.fill_portion_ml = None   # Groesse einer Wasserportion, festgelegt beim ersten Treffer des Ziel-pH
+        self.fill_portions = 0        # bisher gepumpte Wasserportionen
 
     def decide(self, ph, delivered_ml, settings: DosingSettings):
         """None = Ziel erreicht; sonst (port, dose_ml, label). RuntimeError = Abbruch."""
@@ -574,7 +585,8 @@ class ValveDosingMixIn:
                     start_volume=0, title="pH-Regelung", **kwargs):
         """Routine ph_regelung: pH in vier Schritten auf target_ph +- tolerance regeln (PhRegelung, Flaschen aus
         dosing: ph_ports; im vierten Schritt wird die Dose bei jedem Seitenwechsel halbiert), danach mit Wasser auf
-        target_volume auffuellen (0 = nicht). Die Pumpe ist bis zum Ende Busy. Das Messgeraet muss waehrenddessen messen (Routine: [liquiline, start_measuring, ...])."""
+        target_volume auffuellen (0 = nicht) - in zehn Portionen mit pH-Messung und Nachregeln dazwischen. Die Pumpe
+        ist bis zum Ende Busy. Das Messgeraet muss waehrenddessen messen (Routine: [liquiline, start_measuring, ...])."""
         def plan(settings, positions):
             self._dosing_check_ph(settings)
             step = Step("ph", label="pH messen")
@@ -946,16 +958,28 @@ class ValveDosingMixIn:
                 result.errback(exc)
                 return
             if decision is None:
-                self.log.info("{title}: pH {ph:.2f} liegt im Ziel {target:g} +- {tol:g} nach {n} Zugaben.",
-                              title=run.title, ph=ph, target=loop.target_ph, tol=loop.tolerance, n=loop.additions)
                 self._dosing_emit({"ph_additions": loop.additions})
-                if loop.fill_after and loop.target_volume_ml:
-                    fill = loop.target_volume_ml - loop.start_volume_ml - (run.dosed_ml + run.flushed_ml)
-                    if fill > 1e-9:
-                        label = f"Auffuellen auf {loop.target_volume_ml:g} mL"
-                        for new in plan_addition(self._dosing_settings.water_port, fill, self._dosing_settings):
-                            new.label = label
-                            run.steps.append(new)
+                if not (loop.fill_after and loop.target_volume_ml):
+                    self.log.info("{title}: pH {ph:.2f} liegt im Ziel {target:g} +- {tol:g} nach {n} Zugaben.",
+                                  title=run.title, ph=ph, target=loop.target_ph, tol=loop.tolerance, n=loop.additions)
+                    result.callback(None)
+                    return
+                remaining = loop.target_volume_ml - loop.start_volume_ml - (run.dosed_ml + run.flushed_ml)
+                if loop.fill_portion_ml is None:
+                    loop.fill_portion_ml = max(remaining, 0.0) / loop.FILL_PORTIONS
+                    self.log.info("{title}: pH {ph:.2f} liegt im Ziel {target:g} +- {tol:g} nach {n} Zugaben. Auffuellen "
+                                  "auf {vol:g} mL: noch {rest:.3f} mL Wasser in {k} Portionen je {portion:.3f} mL, nach "
+                                  "jeder Portion wird der pH geprueft und bei Bedarf nachgeregelt.",
+                                  title=run.title, ph=ph, target=loop.target_ph, tol=loop.tolerance, n=loop.additions,
+                                  vol=loop.target_volume_ml, rest=max(remaining, 0.0), k=loop.FILL_PORTIONS,
+                                  portion=loop.fill_portion_ml)
+                if remaining > 1e-9:
+                    self._dosing_fill_portion(run, loop, ph, remaining)
+                else:
+                    self.log.info("{title}: Zielvolumen {vol:g} mL voll, Endwert pH {ph:.2f} liegt im Ziel {target:g} "
+                                  "+- {tol:g} ({n} Zugaben, {k} Wasserportionen).",
+                                  title=run.title, vol=loop.target_volume_ml, ph=ph, target=loop.target_ph,
+                                  tol=loop.tolerance, n=loop.additions, k=loop.fill_portions)
                 result.callback(None)
                 return
             self._dosing_ph_schedule(run, loop, ph, decision)
@@ -977,6 +1001,23 @@ class ValveDosingMixIn:
         new_steps.append(Step("ph", label=label))
         run.steps.extend(new_steps)
         self._dosing_emit({"ph_additions": loop.additions})
+
+    def _dosing_fill_portion(self, run, loop, ph, remaining):
+        """Naechste Wasserportion anhaengen (hoechstens fill_portion_ml, sonst der Rest), dann Pause und 'pH messen'."""
+        portion = min(remaining, loop.fill_portion_ml) if loop.fill_portion_ml > 1e-9 else remaining
+        rest = max(remaining - portion, 0.0)
+        loop.fill_portions += 1
+        label = (f"Auffuellen auf {loop.target_volume_ml:g} mL: Portion {loop.fill_portions}, {portion:.2f} mL Wasser"
+                 + (f", danach noch {rest:.2f} mL" if rest > 1e-9 else " (letzte)"))
+        self.log.info("{title}: pH {ph:.2f} im Ziel {target:g} +- {tol:g} -> {label}", title=run.title, ph=ph,
+                      target=loop.target_ph, tol=loop.tolerance, label=label)
+        new_steps = plan_addition(self._dosing_settings.water_port, portion, self._dosing_settings)
+        for new in new_steps:
+            new.label = label
+        if loop.wait_s:
+            new_steps.append(Step("pause", seconds=loop.wait_s, label=label))
+        new_steps.append(Step("ph", label=label))
+        run.steps.extend(new_steps)
 
     def _dosing_finish(self, run):
         run.open = False

@@ -261,7 +261,8 @@ stehen fest in der Config (Rafael, 11.11.2026): `dosing: ansatz_ports` (Leitsalz
    `pause_zugabe`. Volumen 0 laesst die Zugabe aus.
 2. `wartezeit_ph_messung` warten, pH messen.
 3. pH-Regelung in vier Schritten, genau wie `ph_regelung` (Abschnitt 12).
-4. Mit Wasser auf `zielvolumen` auffuellen.
+4. Mit Wasser auf `zielvolumen` auffuellen - seit 25.11.2026 in zehn Portionen mit pH-Messung und Nachregeln
+   dazwischen (Abschnitt 12, "Auffuellen in Portionen").
 
 **Volumenbudget:** Vor dem ersten Ventilschritt werden die festen Zugaben + Spuelwasser gerechnet; passt das
 nicht ins Zielvolumen, bewegt sich nichts (Failed mit Meldung). Waehrend der Regelung wird vor jeder Dose
@@ -370,7 +371,7 @@ Spuelwasser und am Ende Auffuellen mit Wasser; 0 = keine Grenze, kein Auffuellen
 | 3 | schwach | `vol_gross` |
 | 4 | schwach | `vol_klein` |
 
-Je Messung: pH im Fenster -> fertig, auffuellen. Sonst Richtung nach dem aktuellen pH (unter dem Ziel Base,
+Je Messung: pH im Fenster -> auffuellen (in Portionen, siehe unten). Sonst Richtung nach dem aktuellen pH (unter dem Ziel Base,
 ueber dem Ziel Saeure). Liegt der pH auf derselben Seite des Ziels wie vor der letzten Dose: Schritt bleibt.
 Hat er die Seite gewechselt (ueber- oder unterschossen): naechster Schritt, hoechstens 4, nie zurueck. Dose
 foerdern, Spuelen, `wartezeit_ph_messung`, wieder messen.
@@ -389,6 +390,36 @@ kaeme wieder aus derselben starken Flasche, wird diese Dose einmalig verdreifach
 der pH wieder nicht reagiert. Die Schwelle 0,1 ist fest im Code (`PhRegelung.MIN_RESPONSE`), kein
 Frontend-Parameter. Im Monitoring: "... - gleiche Seite, Schritt bleibt, pH nach der ersten starken Dose nur
 um 0.03 geaendert -> einmalig 3-fache Dose". Zaehlt im Volumenbudget wie jede Dose.
+
+**Auffuellen in Portionen (Rafael, 25.11.2026):** Das Fuellwasser verschiebt den pH. Lauf
+ansatz_new-testtestest_MP_2-25 am 25.11.2026: Ziel 10 +- 0,3 mit pH 9,81 getroffen, dann 13 mL Wasser in einem
+Stueck auf 37 mL Loesung - der pH fiel waehrend der 135 s Auffuellen stetig auf 7,71 (Rohwerte der Liquiline im
+Backend-Log), ohne dass es jemand gemessen haette. Reine Verduennung erklaert davon etwa 0,15; der Rest ist das
+Wasser selbst (CO2, ungepufferte Loesung mit nur wenigen Mikromol Hydroxid). Darum wird seit dem 25.11.2026 so
+aufgefuellt:
+
+1. pH im Fenster -> Auffuellmenge = `zielvolumen` - `startvolumen` - alles bisher Gefoerderte. Portion = ein
+   Zehntel davon (`PhRegelung.FILL_PORTIONS` = 10, fest im Code, kein Frontend-Parameter); einmal festgelegt, bleibt
+   fuer den Lauf.
+2. Eine Portion Wasser, `wartezeit_ph_messung` warten, messen.
+3. pH im Fenster -> naechste Portion. pH nicht im Fenster -> die Regelung macht mit ihrem Zustand von vorher weiter
+   (gleicher Schritt, gleiche Halbierung; kein Rueckweg zu grossen Dosen - gewollt, Rafael 25.11.2026: "bei den
+   kleinen Schritten am Ende bleiben"), bis der pH wieder im Fenster liegt, dann die naechste Portion.
+4. Jede Nachdose kostet Dose + Spuelmenge, das geht vom Restwasser ab; die letzte Portion ist der Rest. Es werden
+   also bis zu zehn Portionen, bei Nachdosen weniger.
+5. Zielvolumen voll und pH im Fenster -> fertig, Endwert im Log ("Zielvolumen 50 mL voll, Endwert pH 9.95 ...").
+   Voll und pH nicht im Fenster -> Abbruch wie bei jeder Dose (Zielvolumen erreicht, Ziel-pH nicht erreicht);
+   das trifft vor allem die letzte kleine Portion, wenn danach kein Platz mehr fuer Dose + Spuelen ist.
+
+Im Monitoring `dosing_addition` je Portion: "Auffuellen auf 50 mL: Portion 3, 1.30 mL Wasser, danach noch 9.10 mL",
+die letzte "... (letzte)". Dauer: zehn Portionen x `wartezeit_ph_messung` zusaetzlich (bei 15 s rund 3 min). Am
+25.11. haette das bedeutet: 10 x 1,3 mL, Drift je Portion etwa 0,2, also je eine 50-uL-Dose schwache Base
+dazwischen. Tests: test_auffuellen_nach_erreichtem_ziel, test_nachregeln_beim_auffuellen_mit_den_kleinen_dosen,
+test_abbruch_wenn_beim_auffuellen_kein_platz_mehr_fuer_eine_dose (Attrappe: `ph_per_ml_water`).
+
+Unabhaengig vom Code (Hinweis 25.11.): Auch jede Spuelung nach einer Dose ist 1,5 mL desselben Wassers. Vorratswasser
+einmal pur messen (erste Messung am 25.11. vor jeder Zugabe lag bei pH 5,5), ggf. entgasen; laengere
+`wartezeit_ph_messung`, weil die Drift langsam ist.
 
 **Abbruch als Failed mit Meldung:** Zielvolumen voll, Ziel-pH nicht erreicht (einzige fachliche Grenze; die
 "pH reagiert nicht"-Pruefung wurde am 11.11. auf Wunsch von Rafael entfernt, sie war zu streng). Kein
